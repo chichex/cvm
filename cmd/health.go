@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/chichex/cvm/internal/automation"
 	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/kb"
 	"github.com/chichex/cvm/internal/profile"
@@ -89,6 +90,11 @@ var healthCmd = &cobra.Command{
 		globalProfiles, _ := profile.List(config.ScopeGlobal, "")
 		localProfiles, _ := profile.List(config.ScopeLocal, cwd)
 		fmt.Printf("profiles:       %d global, %d local\n", len(globalProfiles), len(localProfiles))
+
+		autoState, err := automation.Load()
+		if err == nil {
+			fmt.Printf("automation:     %d pending candidate(s)\n", autoState.PendingCount())
+		}
 
 		return nil
 	},

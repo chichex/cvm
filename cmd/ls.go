@@ -26,15 +26,15 @@ var lsCmd = &cobra.Command{
 		if len(globalProfiles) > 0 {
 			fmt.Println("Global profiles:")
 			for _, p := range globalProfiles {
-				marker := "  "
+				status := "idle"
 				if p.Active {
-					marker = "* "
+					status = "IN USE"
 				}
 				source := "(local)"
-				if r, ok := st.Remotes[p.Name]; ok {
+				if r, ok := st.FindRemote(config.ScopeGlobal, p.Name, ""); ok {
 					source = r.Repo
 				}
-				fmt.Printf("  %s%-18s %-35s %d items\n", marker, p.Name, source, p.Items)
+				fmt.Printf("  %-18s %-8s %-35s %d items\n", p.Name, status, source, p.Items)
 			}
 		} else {
 			fmt.Println("Global profiles: none")
@@ -45,11 +45,15 @@ var lsCmd = &cobra.Command{
 		if len(localProfiles) > 0 {
 			fmt.Println("\nLocal profiles:")
 			for _, p := range localProfiles {
-				marker := "  "
+				status := "idle"
 				if p.Active {
-					marker = "* "
+					status = "IN USE"
 				}
-				fmt.Printf("  %s%-18s %-35s %d items\n", marker, p.Name, "(local)", p.Items)
+				source := "(local)"
+				if r, ok := st.FindRemote(config.ScopeLocal, p.Name, cwd); ok {
+					source = r.Repo
+				}
+				fmt.Printf("  %-18s %-8s %-35s %d items\n", p.Name, status, source, p.Items)
 			}
 		}
 

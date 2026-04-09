@@ -60,4 +60,13 @@ if command -v cvm &>/dev/null; then
   fi
 fi
 
-printf '%b' "${GREEN}>${RESET} ${CYAN}${short_cwd}${RESET}${git_info}${cvm_info}${ctx_info}\n"
+auto_info=""
+auto_state="$HOME/.cvm/automation/state.json"
+if [ -f "$auto_state" ]; then
+  pending=$(jq -r '.pending | length' "$auto_state" 2>/dev/null)
+  if [ -n "$pending" ] && [ "$pending" -gt 0 ] 2>/dev/null; then
+    auto_info=" ${YELLOW}[auto:${pending}]${RESET}"
+  fi
+fi
+
+printf '%b' "${GREEN}>${RESET} ${CYAN}${short_cwd}${RESET}${git_info}${cvm_info}${auto_info}${ctx_info}\n"

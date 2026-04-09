@@ -20,6 +20,11 @@ type Entry struct {
 	LastReferenced time.Time `json:"last_referenced,omitempty"`
 }
 
+type Document struct {
+	Entry Entry
+	Body  string
+}
+
 type Index struct {
 	Entries []Entry `json:"entries"`
 }
@@ -60,7 +65,9 @@ func loadIndex(scope config.Scope, projectPath string) (*Index, error) {
 
 func saveIndex(scope config.Scope, projectPath string, idx *Index) error {
 	dir := kbDir(scope, projectPath)
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(idx, "", "  ")
 	if err != nil {
 		return err
@@ -70,7 +77,9 @@ func saveIndex(scope config.Scope, projectPath string, idx *Index) error {
 
 func Put(scope config.Scope, projectPath, key, body string, tags []string) error {
 	dir := entriesDir(scope, projectPath)
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
 
 	idx, err := loadIndex(scope, projectPath)
 	if err != nil {
@@ -100,6 +109,57 @@ func Put(scope config.Scope, projectPath, key, body string, tags []string) error
 
 	content := fmt.Sprintf("---\nkey: %s\ntags: [%s]\n---\n\n%s\n", key, strings.Join(tags, ", "), body)
 	if err := os.WriteFile(entryPath(scope, projectPath, key), []byte(content), 0644); err != nil {
+		return err
+	}
+
+	return saveIndex(scope, projectPath, idx)
+}
+
+func LoadDocuments(scope config.Scope, projectPath string) ([]Document, error) {
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return nil, err
+	}
+
+	docs := make([]Document, 0, len(idx.Entries))
+	for _, entry := range idx.Entries {
+		body, err := readBody(scope, projectPath, entry.Key)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		docs = append(docs, Document{
+			Entry: entry,
+			Body:  body,
+		})
+	}
+	return docs, nil
+}
+
+func SaveDocument(scope config.Scope, projectPath string, doc Document) error {
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for i, entry := range idx.Entries {
+		if entry.Key == doc.Entry.Key {
+			idx.Entries[i] = doc.Entry
+			found = true
+			break
+		}
+	}
+	if !found {
+		idx.Entries = append(idx.Entries, doc.Entry)
+	}
+
+	if err := os.MkdirAll(entriesDir(scope, projectPath), 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(entryPath(scope, projectPath, doc.Entry.Key), []byte(renderDocument(doc.Entry.Key, doc.Entry.Tags, doc.Body)), 0644); err != nil {
 		return err
 	}
 
@@ -253,4 +313,23 @@ func Stats(scope config.Scope, projectPath string) (total, enabled, stale int, e
 		}
 	}
 	return total, enabled, stale, nil
+}
+
+func renderDocument(key string, tags []string, body string) string {
+	return fmt.Sprintf("---\nkey: %s\ntags: [%s]\n---\n\n%s\n", key, strings.Join(tags, ", "), body)
+}
+
+func readBody(scope config.Scope, projectPath, key string) (string, error) {
+	data, err := os.ReadFile(entryPath(scope, projectPath, key))
+	if err != nil {
+		return "", err
+	}
+	content := string(data)
+
+	const frontmatterEnd = "\n---\n\n"
+	if idx := strings.Index(content, frontmatterEnd); idx >= 0 {
+		return strings.TrimSpace(content[idx+len(frontmatterEnd):]), nil
+	}
+
+	return strings.TrimSpace(content), nil
 }

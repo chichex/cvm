@@ -36,6 +36,7 @@ func init() {
 	rootCmd.AddCommand(healthCmd)
 	rootCmd.AddCommand(nukeCmd)
 	rootCmd.AddCommand(restoreCmd)
+	rootCmd.AddCommand(bypassCmd)
 
 	// Subsystems
 	rootCmd.AddCommand(kbCmd)

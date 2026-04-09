@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -312,6 +313,64 @@ func TestStatus(t *testing.T) {
 	assertContains(t, out, "statustest")
 }
 
+func TestProfileInspect(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+	e.seedLocalClaude("# local vanilla")
+
+	e.mustRun("global", "init", "inspect-global")
+	e.mustRun("local", "init", "inspect-local")
+
+	globalSkillDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect-global", "skills")
+	globalAgentDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect-global", "agents")
+	globalHookDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect-global", "hooks")
+	if err := os.MkdirAll(globalSkillDir, 0755); err != nil {
+		t.Fatalf("mkdir global skill dir: %v", err)
+	}
+	if err := os.MkdirAll(globalAgentDir, 0755); err != nil {
+		t.Fatalf("mkdir global agent dir: %v", err)
+	}
+	if err := os.MkdirAll(globalHookDir, 0755); err != nil {
+		t.Fatalf("mkdir global hook dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(globalSkillDir, "deploy.md"), []byte(""), 0644); err != nil {
+		t.Fatalf("write global skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(globalAgentDir, "reviewer.md"), []byte(""), 0644); err != nil {
+		t.Fatalf("write global agent: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(globalHookDir, "post.sh"), []byte(""), 0644); err != nil {
+		t.Fatalf("write global hook: %v", err)
+	}
+
+	localRuleDir := filepath.Join(e.home, ".cvm", "local", "profiles", "inspect-local", "rules")
+	if err := os.MkdirAll(localRuleDir, 0755); err != nil {
+		t.Fatalf("mkdir local rule dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(localRuleDir, "scope.md"), []byte(""), 0644); err != nil {
+		t.Fatalf("write local rule: %v", err)
+	}
+
+	e.mustRun("global", "use", "inspect-global")
+	e.mustRun("local", "use", "inspect-local")
+
+	out := e.mustRun("profile")
+	assertContains(t, out, "Global profile: inspect-global")
+	assertContains(t, out, "Skills (1): deploy.md")
+	assertContains(t, out, "Agents (1): reviewer.md")
+	assertContains(t, out, "Hooks (1): post.sh")
+	assertContains(t, out, "Local profile: inspect-local")
+	assertContains(t, out, "Rules (1): scope.md")
+
+	out = e.mustRun("profile", "show", "inspect-global")
+	assertContains(t, out, "Global profile: inspect-global")
+	assertContains(t, out, "Skills (1): deploy.md")
+
+	out = e.mustRun("profile", "show", "inspect-local", "--local")
+	assertContains(t, out, "Local profile: inspect-local")
+	assertContains(t, out, "Rules (1): scope.md")
+}
+
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
@@ -324,6 +383,46 @@ func TestHealth(t *testing.T) {
 	assertContains(t, out, "cvm health")
 	assertContains(t, out, "global profile:")
 	assertContains(t, out, "profiles:")
+}
+
+func TestLsShowsInUseProfiles(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+	e.seedLocalClaude("# local vanilla")
+
+	e.mustRun("global", "init", "work")
+	e.mustRun("local", "init", "dev")
+	e.mustRun("global", "use", "work")
+	e.mustRun("local", "use", "dev")
+
+	out := e.mustRun("ls")
+	assertContains(t, out, "work")
+	assertContains(t, out, "dev")
+	assertContains(t, out, "IN USE")
+}
+
+func TestBypassCommand(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+
+	e.mustRun("global", "init", "bypass-global")
+	e.mustRun("global", "use", "bypass-global")
+
+	out := e.mustRun("bypass", "status")
+	assertContains(t, out, "global profile \"bypass-global\"")
+
+	out = e.mustRun("bypass", "on")
+	assertContains(t, out, "bypassPermissions")
+
+	globalProfileSettings := filepath.Join(e.home, ".cvm", "global", "profiles", "bypass-global", "settings.json")
+	activeSettings := filepath.Join(e.home, ".claude", "settings.json")
+	assertSettingsMode(t, globalProfileSettings, "bypassPermissions")
+	assertSettingsMode(t, activeSettings, "bypassPermissions")
+
+	out = e.mustRun("bypass", "off")
+	assertContains(t, out, "default")
+	assertSettingsMode(t, globalProfileSettings, "default")
+	assertSettingsMode(t, activeSettings, "default")
 }
 
 // ---------------------------------------------------------------------------
@@ -739,5 +838,26 @@ func assertNotContains(t *testing.T, haystack, needle string) {
 	t.Helper()
 	if strings.Contains(haystack, needle) {
 		t.Errorf("expected output NOT to contain %q, got:\n%s", needle, haystack)
+	}
+}
+
+func assertSettingsMode(t *testing.T, path, want string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read settings %s: %v", path, err)
+	}
+
+	var cfg struct {
+		Permissions struct {
+			DefaultMode string `json:"defaultMode"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal settings %s: %v", path, err)
+	}
+	if cfg.Permissions.DefaultMode != want {
+		t.Fatalf("settings %s defaultMode = %q, want %q", path, cfg.Permissions.DefaultMode, want)
 	}
 }

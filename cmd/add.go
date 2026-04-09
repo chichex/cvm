@@ -48,12 +48,12 @@ Examples:
 			url := args[1]
 			repo, repoPath := parseURL(url)
 
-			if err := remote.Add(name, repo, repoPath, "", scope); err != nil {
+			if err := remote.Add(name, repo, repoPath, "", scope, projectPath); err != nil {
 				return err
 			}
 
 			fmt.Printf("Added profile %q from %s (%s)\n", name, repo, scope)
-			fmt.Printf("  activate: cvm use %s\n", name)
+			fmt.Printf("  activate: %s\n", useCommand(name, scope))
 			fmt.Printf("  update:   cvm pull %s\n", name)
 			return nil
 		}
@@ -63,7 +63,7 @@ Examples:
 			return err
 		}
 		fmt.Printf("Created profile %q (%s)\n", name, scope)
-		fmt.Printf("  activate: cvm use %s\n", name)
+		fmt.Printf("  activate: %s\n", useCommand(name, scope))
 		return nil
 	},
 }
@@ -71,11 +71,12 @@ Examples:
 // parseURL normalizes any GitHub URL format into ("user/repo", "path/inside/repo").
 //
 // Supported formats:
-//   chichex/cvm/profiles/chiche
-//   github.com/chichex/cvm/profiles/chiche
-//   https://github.com/chichex/cvm/profiles/chiche
-//   git@github.com:chichex/cvm.git/profiles/chiche
-//   git@github.com:chichex/cvm/profiles/chiche
+//
+//	chichex/cvm/profiles/chiche
+//	github.com/chichex/cvm/profiles/chiche
+//	https://github.com/chichex/cvm/profiles/chiche
+//	git@github.com:chichex/cvm.git/profiles/chiche
+//	git@github.com:chichex/cvm/profiles/chiche
 func parseURL(url string) (repo, repoPath string) {
 	// Handle git@github.com:user/repo[.git][/path]
 	if strings.HasPrefix(url, "git@") {
@@ -112,4 +113,11 @@ func parseURL(url string) (repo, repoPath string) {
 func init() {
 	addCmd.Flags().Bool("local", false, "Create as local profile (default: global)")
 	addCmd.Flags().String("from", "", "Copy from existing profile")
+}
+
+func useCommand(name string, scope config.Scope) string {
+	if scope == config.ScopeLocal {
+		return fmt.Sprintf("cvm use %s --local", name)
+	}
+	return fmt.Sprintf("cvm use %s", name)
 }

@@ -19,10 +19,19 @@ La KB es la memoria persistente entre sesiones. Usarla siempre.
 - Buscar contexto relevante: `cvm kb search "<query>"` y `cvm kb search "<query>" --local`
 - Si hay entries relevantes, leerlas y aplicarlas
 
-**Despues de actuar:**
-- Si se descubrio algo no obvio: `/learn`
-- Si se tomo una decision de diseno: `/decide`
-- Si se encontro una trampa: `/gotcha`
+**On-the-fly learning (automatico):**
+El hook `UserPromptSubmit` inyecta el protocolo de learning. Cuando identifiques algo no-obvio:
+1. Verificar duplicados: `cvm kb search "<terminos>"`
+2. Guardar: `cvm kb put "<key>" --body "<desc con el POR QUE>" --tag "<tipo>,<area>" [--local]`
+3. Reportar: `[learned] key — descripcion`
+
+No forzar. Solo guardar si es genuinamente util para futuras sesiones. Calidad > cantidad.
+
+**Skills manuales (cuando se necesita mas control):**
+- `/learn` — guardar un learning con mas detalle y confirmacion
+- `/decide` — registrar una decision de diseno con alternativas y trade-offs
+- `/gotcha` — registrar una trampa con contexto completo
+- `/retro` — revision completa de toda la sesion al final
 
 **Comandos disponibles:**
 - `cvm kb put <key> --body "..." --tag "a,b"` — guardar entry global
@@ -113,7 +122,18 @@ Las reglas en `rules/` se aplican automaticamente segun el contexto:
 
 - Al iniciar sesion se ejecuta `cvm lifecycle start` automaticamente (hook)
 - Al cerrar sesion se ejecuta `cvm lifecycle end` automaticamente (hook)
-- Para persistir learnings al final de una sesion, usar `/retro` manualmente
+- `cvm lifecycle end` lanza `retro --auto` en background si hay transcript y `claude` disponible
+- Mantenimiento (`maintain`) y evolucion (`evolve`) se disparan por umbrales, se encolan como candidatos persistentes en `~/.cvm/automation/` y luego se ejecutan automaticamente en background
+- Los candidatos se materializan en briefs Markdown y se inspeccionan con `cvm automation status|ls|show <id>`
+- Cada corrida queda auditada con `cvm automation history` y `cvm automation show-run <id>`
+- **On-the-fly learning**: el hook `UserPromptSubmit` inyecta protocolo de learning automatico — guardar directo con `cvm kb put`, sin headless
+- Para revision manual completa de sesion, usar `/retro`
+
+### Presupuesto de latencia
+
+- `UserPromptSubmit` debe seguir siendo ultra-liviano
+- Trabajo pesado solo en `SessionEnd` o background
+- La statusline puede mostrar candidatos pendientes como `[auto:N]`
 
 ## Hard Blocks
 

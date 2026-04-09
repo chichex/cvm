@@ -1,6 +1,11 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CVM_MAINTAIN_MIN_ENTRIES": "8",
+    "CVM_MAINTAIN_STALE_THRESHOLD": "3",
+    "CVM_MAINTAIN_SESSION_THRESHOLD": "5",
+    "CVM_EVOLVE_TAG_THRESHOLD": "6",
+    "CVM_EVOLVE_SESSION_THRESHOLD": "3"
   },
   "permissions": {
     "allow": [
@@ -26,13 +31,24 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/learning-decorator.sh"
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "cvm retro --auto & cvm lifecycle end"
+            "command": "cvm lifecycle end"
           }
         ]
       }

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/chichex/cvm/internal/config"
@@ -15,6 +16,15 @@ type ProfileInfo struct {
 	Name   string
 	Active bool
 	Items  int
+}
+
+type Inventory struct {
+	Name   string
+	Scope  config.Scope
+	Path   string
+	Exists bool
+	Files  []string
+	Dirs   map[string][]string
 }
 
 func profilesDir(scope config.Scope) string {
@@ -54,7 +64,11 @@ func Init(scope config.Scope, name string, from string, projectPath string) erro
 	} else {
 		tgt := targetDir(scope, projectPath)
 		if _, err := os.Stat(tgt); err == nil {
-			CopyManagedItems(tgt, dir)
+			if err := CopyManagedItems(tgt, dir); err != nil {
+				return fmt.Errorf("copying managed items: %w", err)
+			}
+		} else if !os.IsNotExist(err) {
+			return err
 		}
 	}
 	return nil
@@ -72,7 +86,9 @@ func Use(scope config.Scope, name string, projectPath string) error {
 	}
 
 	// Ensure vanilla backup exists
-	EnsureVanilla(scope, projectPath)
+	if err := EnsureVanilla(scope, projectPath); err != nil {
+		return fmt.Errorf("ensuring vanilla backup: %w", err)
+	}
 
 	// Save current state to active profile
 	var currentActive string
@@ -82,13 +98,19 @@ func Use(scope config.Scope, name string, projectPath string) error {
 		currentActive = st.GetLocal(projectPath)
 	}
 	if currentActive != "" {
-		Save(scope, currentActive, projectPath)
+		if err := Save(scope, currentActive, projectPath); err != nil {
+			return fmt.Errorf("saving current active profile %q: %w", currentActive, err)
+		}
 	}
 
 	// Clean and apply
 	tgt := targetDir(scope, projectPath)
-	CleanManagedItems(tgt)
-	os.MkdirAll(tgt, 0755)
+	if err := CleanManagedItems(tgt); err != nil {
+		return fmt.Errorf("cleaning target: %w", err)
+	}
+	if err := os.MkdirAll(tgt, 0755); err != nil {
+		return err
+	}
 	if err := CopyDir(dir, tgt); err != nil {
 		return fmt.Errorf("applying profile: %w", err)
 	}
@@ -115,12 +137,18 @@ func UseNone(scope config.Scope, projectPath string) error {
 		currentActive = st.GetLocal(projectPath)
 	}
 	if currentActive != "" {
-		Save(scope, currentActive, projectPath)
+		if err := Save(scope, currentActive, projectPath); err != nil {
+			return fmt.Errorf("saving current active profile %q: %w", currentActive, err)
+		}
 	}
 
 	tgt := targetDir(scope, projectPath)
-	CleanManagedItems(tgt)
-	RestoreVanilla(scope, projectPath)
+	if err := CleanManagedItems(tgt); err != nil {
+		return fmt.Errorf("cleaning target: %w", err)
+	}
+	if err := RestoreVanilla(scope, projectPath); err != nil {
+		return fmt.Errorf("restoring vanilla backup: %w", err)
+	}
 
 	if scope == config.ScopeGlobal {
 		st.SetGlobal("")
@@ -178,18 +206,66 @@ func Current(scope config.Scope, projectPath string) (string, error) {
 	return st.GetLocal(projectPath), nil
 }
 
+func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
+	dir := ProfileDir(scope, name)
+	info := &Inventory{
+		Name:  name,
+		Scope: scope,
+		Path:  dir,
+		Dirs:  make(map[string][]string),
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return info, nil
+		}
+		return nil, err
+	}
+
+	info.Exists = true
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() {
+			children, err := os.ReadDir(filepath.Join(dir, name))
+			if err != nil {
+				return nil, err
+			}
+			for _, child := range children {
+				info.Dirs[name] = append(info.Dirs[name], child.Name())
+			}
+			sort.Strings(info.Dirs[name])
+			continue
+		}
+		info.Files = append(info.Files, name)
+	}
+
+	sort.Strings(info.Files)
+	return info, nil
+}
+
 func Save(scope config.Scope, name string, projectPath string) error {
 	dir := ProfileDir(scope, name)
 	tgt := targetDir(scope, projectPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		os.RemoveAll(filepath.Join(dir, e.Name()))
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
 	}
-	CopyManagedItems(tgt, dir)
-	return nil
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(tgt); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return CopyManagedItems(tgt, dir)
 }
 
 func Remove(scope config.Scope, name string, projectPath string) error {
@@ -234,8 +310,7 @@ func EnsureVanilla(scope config.Scope, projectPath string) error {
 	if _, err := os.Stat(src); os.IsNotExist(err) {
 		return nil
 	}
-	CopyManagedItems(src, vdir)
-	return nil
+	return CopyManagedItems(src, vdir)
 }
 
 func RestoreVanilla(scope config.Scope, projectPath string) error {
@@ -244,7 +319,9 @@ func RestoreVanilla(scope config.Scope, projectPath string) error {
 		return nil
 	}
 	dst := targetDir(scope, projectPath)
-	os.MkdirAll(dst, 0755)
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
 	return CopyDir(vdir, dst)
 }
 
@@ -266,24 +343,38 @@ func Nuke(scope config.Scope, projectPath string) error {
 
 // --- File operations ---
 
-func CleanManagedItems(dir string) {
+func CleanManagedItems(dir string) error {
 	for _, item := range config.ManagedItems {
-		os.RemoveAll(filepath.Join(dir, item))
+		if err := os.RemoveAll(filepath.Join(dir, item)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("removing %s: %w", item, err)
+		}
 	}
+	return nil
 }
 
-func CopyManagedItems(src, dst string) {
+func CopyManagedItems(src, dst string) error {
 	for _, item := range config.ManagedItems {
 		srcPath := filepath.Join(src, item)
-		if info, err := os.Stat(srcPath); err == nil {
-			dstPath := filepath.Join(dst, item)
-			if info.IsDir() {
-				CopyDir(srcPath, dstPath)
-			} else {
-				CopyFile(srcPath, dstPath)
+		info, err := os.Stat(srcPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+
+		dstPath := filepath.Join(dst, item)
+		if info.IsDir() {
+			if err := CopyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := CopyFile(srcPath, dstPath); err != nil {
+				return err
 			}
 		}
 	}
+	return nil
 }
 
 func countItems(dir string) int {
@@ -315,7 +406,9 @@ func CopyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	os.MkdirAll(filepath.Dir(dst), 0755)
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
 	info, err := os.Stat(src)
 	if err != nil {
 		return os.WriteFile(dst, data, 0644)

@@ -34,16 +34,22 @@ Examples:
 		local, _ := cmd.Flags().GetBool("local")
 
 		scope := config.ScopeGlobal
+		projectPath := ""
 		if local {
 			scope = config.ScopeLocal
+			var err error
+			projectPath, err = getProjectPath()
+			if err != nil {
+				return err
+			}
 		}
 
-		if err := remote.Add(name, repo, path, branch, scope); err != nil {
+		if err := remote.Add(name, repo, path, branch, scope, projectPath); err != nil {
 			return err
 		}
 
 		fmt.Printf("Linked profile %q to %s (path: %s)\n", name, repo, path)
-		fmt.Printf("Use: cvm global use %s\n", name)
+		fmt.Printf("Use: %s\n", useCommand(name, scope))
 		fmt.Printf("Update: cvm pull %s\n", name)
 		return nil
 	},

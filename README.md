@@ -107,6 +107,9 @@ cvm kb put my-key --body "..." --local
 ```bash
 cvm status    # show active profiles (global + local)
 cvm health    # full system diagnostics
+cvm profile   # inspect active profile contents (skills, agents, hooks, rules)
+cvm bypass on # enable bypass permissions on active profile(s)
+cvm bypass off
 ```
 
 ### Clean up
@@ -126,8 +129,14 @@ cvm restore --local     # only local
 
 ```bash
 cvm lifecycle start    # session start: load context, detect tools
-cvm lifecycle end      # session end: cleanup
+cvm lifecycle end      # session end: cleanup + queue background retro + auto-run automation
 cvm lifecycle status   # show current session info
+cvm automation status  # queued candidates summary
+cvm automation ls      # list candidate briefs
+cvm automation show <id>  # inspect a materialized brief
+cvm automation run     # process pending candidates now
+cvm automation history # recent automation runs
+cvm automation show-run <id> # inspect a recorded run
 ```
 
 ### Remote management
@@ -182,8 +191,11 @@ cvm ships with a built-in profile called **chiche** — a self-improving Claude 
 - **3 agents**: researcher (haiku), implementer (sonnet), reviewer (opus)
 - **3 hooks**: tool detection, config protection, slop checking
 - **Auto-KB**: learns from your sessions and persists insights between conversations
+- **Low-latency automation loop**: prompt path stays light; retro runs in background on session end
 - **Adversarial debugging**: launches competing agents to investigate bugs
-- **Auto-skill generation**: detects repeated patterns and proposes new skills
+- **Thresholded evolution**: maintain/evolve candidates are queued only when KB/session signals justify it
+- **Automatic maintenance**: stale/duplicate KB entries are normalized and suppressed automatically
+- **Automatic skill generation**: repeated KB patterns can install auto-generated skills into `.claude/skills/`
 
 ```bash
 cvm add chiche git@github.com:chichex/cvm.git
