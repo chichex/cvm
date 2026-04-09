@@ -25,7 +25,16 @@ if git_branch=$(GIT_OPTIONAL_LOCKS=0 git -C "$cwd" symbolic-ref --short HEAD 2>/
   else
     dirty=""
   fi
-  git_info=" ${BLUE}(${RED}${git_branch}${BLUE})${RESET}${dirty}"
+  # Lines added/deleted (unstaged + staged)
+  diff_stats=$(GIT_OPTIONAL_LOCKS=0 git -C "$cwd" diff --numstat 2>/dev/null; GIT_OPTIONAL_LOCKS=0 git -C "$cwd" diff --cached --numstat 2>/dev/null)
+  if [ -n "$diff_stats" ]; then
+    added=$(echo "$diff_stats" | awk '{s+=$1} END {printf "%d", s+0}')
+    deleted=$(echo "$diff_stats" | awk '{s+=$2} END {printf "%d", s+0}')
+    diff_info=" ${GREEN}+${added}${RESET} ${RED}-${deleted}${RESET}"
+  else
+    diff_info=""
+  fi
+  git_info=" ${BLUE}(${RED}${git_branch}${BLUE})${RESET}${dirty}${diff_info}"
 fi
 
 # Context usage with color based on percentage
