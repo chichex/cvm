@@ -96,6 +96,7 @@ cvm kb search <query>                        # search entries
 cvm kb enable <key>                          # include in Claude context
 cvm kb disable <key>                         # exclude without deleting
 cvm kb rm <key>                              # delete entry
+cvm kb clean [--force]                       # remove all entries
 
 # All kb commands accept --local (default: global)
 cvm kb ls --local
