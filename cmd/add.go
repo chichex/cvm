@@ -68,12 +68,34 @@ Examples:
 	},
 }
 
-// parseURL splits "github.com/user/repo/path/to/profile" into ("user/repo", "path/to/profile").
+// parseURL normalizes any GitHub URL format into ("user/repo", "path/inside/repo").
+//
+// Supported formats:
+//   chichex/cvm/profiles/chiche
+//   github.com/chichex/cvm/profiles/chiche
+//   https://github.com/chichex/cvm/profiles/chiche
+//   git@github.com:chichex/cvm.git/profiles/chiche
+//   git@github.com:chichex/cvm/profiles/chiche
 func parseURL(url string) (repo, repoPath string) {
+	// Handle git@github.com:user/repo[.git][/path]
+	if strings.HasPrefix(url, "git@") {
+		// git@github.com:chichex/cvm.git/profiles/chiche
+		url = strings.TrimPrefix(url, "git@")
+		if idx := strings.Index(url, ":"); idx >= 0 {
+			url = url[idx+1:] // strip host:
+		}
+	}
+
+	// Strip common prefixes/suffixes
 	url = strings.TrimPrefix(url, "https://")
 	url = strings.TrimPrefix(url, "http://")
+	url = strings.TrimPrefix(url, "ssh://")
 	url = strings.TrimPrefix(url, "github.com/")
 	url = strings.TrimSuffix(url, "/")
+
+	// Remove .git from the repo segment (could be mid-path: user/repo.git/path)
+	url = strings.Replace(url, ".git/", "/", 1)
+	url = strings.TrimSuffix(url, ".git")
 
 	parts := strings.SplitN(url, "/", 3)
 	if len(parts) < 2 {
@@ -83,7 +105,7 @@ func parseURL(url string) (repo, repoPath string) {
 	if len(parts) == 3 {
 		repoPath = parts[2]
 	}
-	_ = path.Base // keep import for potential future use
+	_ = path.Base
 	return
 }
 
