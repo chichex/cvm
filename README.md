@@ -16,11 +16,11 @@ You've built the perfect Claude Code setup: custom skills, hooks, agents, rules,
 ## Install
 
 ```bash
-# One-liner (no brew needed)
-curl -sL https://raw.githubusercontent.com/chichex/cvm/main/install.sh | sh
-
 # Homebrew (one command)
 brew install chichex/tap/cvm
+
+# One-liner (no brew needed)
+curl -sL https://raw.githubusercontent.com/chichex/cvm/main/install.sh | sh
 
 # From source
 git clone https://github.com/chichex/cvm.git
@@ -30,74 +30,60 @@ cd cvm && make install
 ## Quick start
 
 ```bash
-# Create a profile from your current ~/.claude/ config
-cvm global init work
+# Install the "chiche" profile (18 skills, auto-KB, adversarial debugging)
+cvm add chiche git@github.com:chichex/cvm.git
+cvm use chiche
 
-# You're done. Edit the profile anytime:
-cvm global edit work
+# That's it. Update anytime:
+cvm pull
 
-# Switch profiles
-cvm global use work        # apply "work" profile
-cvm global use --none      # back to vanilla
+# Go back to vanilla:
+cvm use --none
 
-# See what's active
-cvm status
+# Nuke everything:
+cvm nuke -f
 ```
-
-## Concepts
-
-### Two scopes
-
-| Scope | What it manages | Storage |
-|-------|----------------|---------|
-| **global** | `~/.claude/` (applies to all projects) | `~/.cvm/global/profiles/` |
-| **local** | `.claude/` in the current project | `~/.cvm/local/profiles/` |
-
-### What cvm manages
-
-These are the config files that cvm copies between profiles and `~/.claude/`:
-
-| Item | Description |
-|------|-------------|
-| `CLAUDE.md` | Global instructions |
-| `settings.json` | Permissions, hooks config, MCP servers |
-| `settings.local.json` | Local overrides |
-| `keybindings.json` | Keyboard shortcuts |
-| `skills/` | Custom slash commands |
-| `agents/` | Subagent definitions |
-| `commands/` | Legacy commands |
-| `hooks/` | Hook scripts |
-| `rules/` | Path-scoped rules |
-| `output-styles/` | Response format templates |
-| `teams/` | Agent team definitions |
-| `statusline-command.sh` | Status bar script |
-
-### What cvm never touches
-
-Runtime data stays untouched: `sessions/`, `cache/`, `history.jsonl`, `transcripts/`, `projects/` (auto-memory), `plugins/`.
 
 ## Commands
 
-### Profiles
+### Add profiles
 
 ```bash
-# Global profiles (~/.claude/)
-cvm global init <name>              # create profile (copies current config)
-cvm global init <name> --from other # create from existing profile
-cvm global use <name>               # switch to profile
-cvm global use --none               # switch to vanilla
-cvm global ls                       # list profiles (* = active)
-cvm global current                  # show active profile name
-cvm global save                     # save current ~/.claude/ to active profile
-cvm global edit [name]              # open profile in $EDITOR
-cvm global rm <name>                # delete profile
+cvm add work                                   # create empty profile
+cvm add work --from chiche                     # copy from existing profile
+cvm add work --local                           # create for current project only
+cvm add chiche git@github.com:chichex/cvm.git  # add from GitHub repo
+cvm add chiche chichex/cvm/profiles/chiche     # shorthand (any URL format works)
+```
 
-# Local profiles (.claude/ in current project)
-cvm local init [name]               # create (default name: directory name)
-cvm local init --from backend       # create from existing
-cvm local use <name>                # switch
-cvm local use --none                # vanilla
-cvm local ls / current / save / rm  # same as global
+When adding from a repo without a path, cvm auto-discovers the profile:
+1. Looks for `profiles/<name>/`
+2. Looks for `<name>/` at root
+3. If the repo root is a profile, uses that
+4. If multiple profiles found, lists them for you to pick
+
+### Switch profiles
+
+```bash
+cvm use work            # activate globally (~/.claude/)
+cvm use work --local    # activate for current project (.claude/)
+cvm use --none          # back to vanilla
+```
+
+### List and remove
+
+```bash
+cvm ls                  # list all profiles (global + local, shows remote source)
+cvm rm work             # remove a profile
+cvm rm work --local     # remove a local profile
+```
+
+### Update and upgrade
+
+```bash
+cvm pull                # pull latest for all remote-linked profiles
+cvm pull chiche         # pull a specific profile
+cvm upgrade             # upgrade cvm itself to the latest version
 ```
 
 ### Knowledge Base
@@ -116,33 +102,6 @@ cvm kb ls --local
 cvm kb put my-key --body "..." --local
 ```
 
-### Remote profiles
-
-```bash
-# Link a profile to a GitHub repo
-cvm remote add chiche chichex/cvm profiles/chiche
-
-# Pull latest updates (all linked profiles)
-cvm pull
-
-# Pull a specific profile
-cvm pull chiche
-
-# List linked profiles
-cvm remote ls
-
-# Unlink (keeps local copy)
-cvm remote rm chiche
-```
-
-### Lifecycle (used by hooks)
-
-```bash
-cvm lifecycle start    # session start: load context, detect tools
-cvm lifecycle end      # session end: cleanup
-cvm lifecycle status   # show current session info
-```
-
 ### Diagnostics
 
 ```bash
@@ -150,7 +109,7 @@ cvm status    # show active profiles (global + local)
 cvm health    # full system diagnostics
 ```
 
-### Nuclear options
+### Clean up
 
 ```bash
 cvm nuke                # remove ALL managed config (global + local)
@@ -163,9 +122,50 @@ cvm restore --global    # only global
 cvm restore --local     # only local
 ```
 
+### Lifecycle (used by hooks)
+
+```bash
+cvm lifecycle start    # session start: load context, detect tools
+cvm lifecycle end      # session end: cleanup
+cvm lifecycle status   # show current session info
+```
+
+### Remote management
+
+```bash
+cvm remote ls          # list remote-linked profiles
+cvm remote rm chiche   # unlink from remote (keeps local copy)
+```
+
+## Two scopes
+
+| Scope | What it manages | Flag |
+|-------|----------------|------|
+| **global** (default) | `~/.claude/` — applies to all projects | (none) |
+| **local** | `.claude/` in current project | `--local` |
+
+## What cvm manages
+
+| Item | Description |
+|------|-------------|
+| `CLAUDE.md` | Global instructions |
+| `settings.json` | Permissions, hooks config, MCP servers |
+| `settings.local.json` | Local overrides |
+| `keybindings.json` | Keyboard shortcuts |
+| `skills/` | Custom slash commands |
+| `agents/` | Subagent definitions |
+| `commands/` | Legacy commands |
+| `hooks/` | Hook scripts |
+| `rules/` | Path-scoped rules |
+| `output-styles/` | Response format templates |
+| `teams/` | Agent team definitions |
+| `statusline-command.sh` | Status bar script |
+
+Runtime data is **never** touched: `sessions/`, `cache/`, `history.jsonl`, `transcripts/`, `projects/` (auto-memory), `plugins/`.
+
 ## How switching works
 
-When you run `cvm global use work`:
+When you run `cvm use work`:
 
 1. Backs up your original `~/.claude/` state (first time only, as "vanilla")
 2. Saves current `~/.claude/` config to the previously active profile
@@ -173,65 +173,21 @@ When you run `cvm global use work`:
 4. Copies the "work" profile into `~/.claude/`
 5. Updates `~/.cvm/state.json`
 
-Runtime files are **never** touched. Sessions, history, cache all stay intact.
+## The "chiche" profile
 
-## Storage layout
+cvm ships with a built-in profile called **chiche** — a self-improving Claude Code configuration with:
 
-```
-~/.cvm/
-  ├── global/
-  │   ├── profiles/
-  │   │   ├── work/           # full ~/.claude/ config snapshot
-  │   │   ├── personal/
-  │   │   └── minimal/
-  │   └── vanilla/            # original pre-cvm state
-  ├── local/
-  │   ├── profiles/
-  │   │   ├── backend/
-  │   │   └── frontend/
-  │   └── vanilla/
-  │       └── <project-hash>/ # per-project vanilla backup
-  ├── state.json              # active profiles tracker
-  └── session.json            # current session info (transient)
-```
+- **18 skills**: learn, decide, gotcha, recall, retro, evolve, maintain, validate, orchestrate, checkpoint, quality-gate, spec, execute, fix, ux, higiene, skill-create, headless
+- **5 rules**: model selection, context hygiene, cost awareness, scope guard, KB awareness
+- **3 agents**: researcher (haiku), implementer (sonnet), reviewer (opus)
+- **3 hooks**: tool detection, config protection, slop checking
+- **Auto-KB**: learns from your sessions and persists insights between conversations
+- **Adversarial debugging**: launches competing agents to investigate bugs
+- **Auto-skill generation**: detects repeated patterns and proposes new skills
 
-## Profile contents
-
-A profile is just a directory that mirrors the managed parts of `~/.claude/`:
-
-```
-~/.cvm/global/profiles/work/
-  ├── CLAUDE.md
-  ├── settings.json
-  ├── skills/
-  │   ├── deploy/SKILL.md
-  │   └── review/SKILL.md
-  ├── hooks/
-  │   └── slop-check.sh
-  ├── rules/
-  │   └── coding-standards.md
-  └── agents/
-      └── researcher/AGENT.md
-```
-
-## Homebrew distribution
-
-To publish via Homebrew:
-
-1. Create a GitHub repo `chichex/homebrew-tap`
-2. Install [GoReleaser](https://goreleaser.com/): `brew install goreleaser`
-3. Tag a release: `git tag v0.1.0 && git push --tags`
-4. Run: `goreleaser release --clean`
-
-GoReleaser will:
-- Cross-compile for macOS/Linux (amd64 + arm64)
-- Create GitHub release with binaries
-- Auto-update the Homebrew formula in your tap
-
-Users install with:
 ```bash
-brew tap chichex/tap
-brew install cvm
+cvm add chiche git@github.com:chichex/cvm.git
+cvm use chiche
 ```
 
 ## License
