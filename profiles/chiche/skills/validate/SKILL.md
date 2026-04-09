@@ -27,7 +27,7 @@ Agente 1 (Claude subagent):
 
 Agente 2 (codex):
 ```bash
-codex -q "Investigar este bug: [descripcion]. Encontrar root cause. NO hacer cambios, solo reportar hallazgos con archivos y lineas especificas."
+codex exec -s read-only "Investigar este bug: [descripcion]. Encontrar root cause. NO hacer cambios, solo reportar hallazgos con archivos y lineas especificas."
 ```
 
 **Si codex NO esta disponible — usar 2 Claude agents con hipotesis distintas:**

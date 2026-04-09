@@ -136,6 +136,31 @@ Las reglas en `rules/` se aplican automaticamente segun el contexto:
 - Trabajo pesado solo en `SessionEnd` o background
 - La statusline puede mostrar candidatos pendientes como `[auto:N]`
 
+## Overrides de Usuario
+
+El usuario puede agregar customizaciones al profile que sobreviven a `cvm pull`.
+Los overrides se guardan en `~/.cvm/global/overrides/<profile>/` y se aplican
+automaticamente encima del profile base al hacer `cvm use` o `cvm pull`.
+
+**Comandos:**
+- `cvm override add <tipo> <nombre>` — crear un skill, hook, agent, rule, o command custom
+- `cvm override set <archivo>` — capturar settings.json, CLAUDE.md, keybindings.json, etc. como override
+- `cvm override ls` — ver overrides activos
+- `cvm override rm <tipo> <nombre>` — eliminar un override
+- `cvm override edit` — abrir el directorio de overrides en el editor
+- `cvm override show` — inventario detallado
+- `cvm override apply` — forzar re-aplicacion del profile + overrides
+
+**Merge:**
+- Directorios (skills, hooks, agents, rules): union merge — se agregan o reemplazan por nombre
+- JSON (settings.json, keybindings.json): deep merge — override keys ganan
+- CLAUDE.md: se appenda al final del base
+- Otros archivos: override reemplaza
+
+**Cuando el usuario pida agregar un skill, hook, rule, o cualquier customizacion al profile, usar `cvm override add` para que persista entre pulls.**
+
+Agregar flag `--local` para overrides de profiles locales.
+
 ## Hard Blocks
 
 - Nunca usar `as any`, `@ts-ignore`, o `eslint-disable` sin justificacion explicita
