@@ -264,19 +264,11 @@ func Pull(profileName string) ([]string, error) {
 		}
 		if active == name {
 			fmt.Printf("  re-applying active profile %q...\n", name)
-			tgt := config.ClaudeHome()
-			if scope == config.ScopeLocal {
-				if r.ProjectPath == "" {
-					fmt.Printf("  warning: cannot re-apply local profile %q without a project path\n", name)
-					continue
-				}
-				tgt = config.ProjectClaudeDir(r.ProjectPath)
-			}
-			if err := profile.CleanManagedItems(scope, tgt, r.ProjectPath); err != nil {
-				fmt.Printf("  warning: cleanup failed for active profile %s: %v\n", name, err)
+			if scope == config.ScopeLocal && r.ProjectPath == "" {
+				fmt.Printf("  warning: cannot re-apply local profile %q without a project path\n", name)
 				continue
 			}
-			if err := profile.CopyManagedItems(scope, profileDir, tgt, r.ProjectPath); err != nil {
+			if err := profile.Reapply(scope, name, r.ProjectPath); err != nil {
 				fmt.Printf("  warning: re-apply failed for active profile %s: %v\n", name, err)
 			}
 		}

@@ -105,6 +105,24 @@ func LocalKBDir(projectPath string) string {
 	return filepath.Join(CvmHome(), "local", "kb", hashPath(projectPath))
 }
 
+// GlobalOverridesDir returns ~/.cvm/global/overrides
+func GlobalOverridesDir() string {
+	return filepath.Join(CvmHome(), "global", "overrides")
+}
+
+// LocalOverridesDir returns ~/.cvm/local/overrides/<project-hash>
+func LocalOverridesDir(projectPath string) string {
+	return filepath.Join(CvmHome(), "local", "overrides", hashPath(projectPath))
+}
+
+// OverrideDir returns the override directory for a given scope and profile name
+func OverrideDir(scope Scope, name string, projectPath string) string {
+	if scope == ScopeGlobal {
+		return filepath.Join(GlobalOverridesDir(), name)
+	}
+	return filepath.Join(LocalOverridesDir(projectPath), name)
+}
+
 // StatePath returns ~/.cvm/state.json
 func StatePath() string {
 	return filepath.Join(CvmHome(), "state.json")

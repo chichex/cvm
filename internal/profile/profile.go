@@ -112,6 +112,9 @@ func Use(scope config.Scope, name string, projectPath string) error {
 	if err := CopyManagedItems(scope, dir, tgt, projectPath); err != nil {
 		return fmt.Errorf("applying profile: %w", err)
 	}
+	if err := ApplyOverrides(scope, name, tgt, projectPath); err != nil {
+		return fmt.Errorf("applying overrides: %w", err)
+	}
 
 	// Update state
 	if scope == config.ScopeGlobal {
@@ -264,6 +267,14 @@ func Save(scope config.Scope, name string, projectPath string) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
+	// Strip overrides from live dir before capturing to prevent
+	// baking them into the base profile
+	if err := StripOverrides(scope, name, tgt, projectPath); err != nil {
+		return fmt.Errorf("stripping overrides before save: %w", err)
+	}
+	// Always re-apply overrides to live dir, even if capture fails
+	defer ApplyOverrides(scope, name, tgt, projectPath) //nolint:errcheck
+
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -589,4 +600,350 @@ func CopyFile(src, dst string) error {
 		return os.WriteFile(dst, data, 0644)
 	}
 	return os.WriteFile(dst, data, info.Mode())
+}
+
+// OverrideDir returns the override directory for the given scope and profile name.
+func OverrideDir(scope config.Scope, name string, projectPath string) string {
+	return config.OverrideDir(scope, name, projectPath)
+}
+
+// ApplyOverrides merges the user's override layer on top of the already-applied
+// profile in the live directory. This is called after CopyManagedItems.
+func ApplyOverrides(scope config.Scope, name string, liveDir string, projectPath string) error {
+	overDir := OverrideDir(scope, name, projectPath)
+	if _, err := os.Stat(overDir); os.IsNotExist(err) {
+		return nil // no overrides — nothing to do
+	}
+
+	for _, item := range managedPaths(scope, liveDir, projectPath) {
+		overSrc := filepath.Join(overDir, item.ProfilePath)
+		if _, err := os.Stat(overSrc); os.IsNotExist(err) {
+			continue
+		}
+
+		switch {
+		// Directories: union merge (override files added or replace base by name)
+		case isDirectory(overSrc):
+			if err := mergeDirectories(overSrc, item.LivePath); err != nil {
+				return fmt.Errorf("merging override dir %s: %w", item.ProfilePath, err)
+			}
+
+		// CLAUDE.md: append override content
+		case item.ProfilePath == "CLAUDE.md":
+			if err := appendFile(overSrc, item.LivePath); err != nil {
+				return fmt.Errorf("appending override CLAUDE.md: %w", err)
+			}
+
+		// MCP config: sub-key merge for mcpServers (additive), top-level for others
+		case item.ProfilePath == ".claude.json" || item.ProfilePath == ".mcp.json":
+			override, err := readJSONFile(overSrc)
+			if err != nil {
+				return fmt.Errorf("reading override %s: %w", item.ProfilePath, err)
+			}
+			live, err := readJSONFile(item.LivePath)
+			if err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("reading live %s: %w", item.ProfilePath, err)
+			}
+			if live == nil {
+				live = map[string]any{}
+			}
+			// Merge mcpServers at sub-key level (additive)
+			if overServers, ok := override["mcpServers"].(map[string]any); ok {
+				liveServers, _ := live["mcpServers"].(map[string]any)
+				if liveServers == nil {
+					liveServers = map[string]any{}
+				}
+				for sname, v := range overServers {
+					liveServers[sname] = v
+				}
+				live["mcpServers"] = liveServers
+			}
+			// Merge other top-level keys normally
+			for k, v := range override {
+				if k == "mcpServers" {
+					continue
+				}
+				live[k] = v
+			}
+			if err := writeJSONFile(item.LivePath, live); err != nil {
+				return fmt.Errorf("writing merged %s: %w", item.ProfilePath, err)
+			}
+
+		// JSON files: top-level merge (override keys win)
+		case isJSONFile(item.ProfilePath):
+			if err := mergeJSONFiles(overSrc, item.LivePath); err != nil {
+				return fmt.Errorf("merging override %s: %w", item.ProfilePath, err)
+			}
+
+		// Everything else (statusline-command.sh, etc.): override replaces
+		default:
+			if err := CopyFile(overSrc, item.LivePath); err != nil {
+				return fmt.Errorf("copying override %s: %w", item.ProfilePath, err)
+			}
+		}
+	}
+	return nil
+}
+
+// mergeDirectories copies all files from overrideDir into targetDir,
+// overwriting existing files by name (union merge).
+func mergeDirectories(overrideDir, targetDir string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return err
+	}
+	return filepath.WalkDir(overrideDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(overrideDir, path)
+		target := filepath.Join(targetDir, rel)
+
+		// Handle type conflicts: remove existing target if it's a different type
+		if info, statErr := os.Lstat(target); statErr == nil {
+			if d.IsDir() != info.IsDir() {
+				if err := os.RemoveAll(target); err != nil {
+					return err
+				}
+			}
+		}
+
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		return CopyFile(path, target)
+	})
+}
+
+// mergeJSONFiles reads both files as JSON objects, merges top-level keys
+// (override wins on conflict), and writes the result to targetPath.
+func mergeJSONFiles(overridePath, targetPath string) error {
+	base, err := readJSONFile(targetPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if base == nil {
+		base = map[string]any{}
+	}
+
+	override, err := readJSONFile(overridePath)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range override {
+		base[k] = v
+	}
+
+	return writeJSONFile(targetPath, base)
+}
+
+// appendFile appends the content of overridePath to targetPath with a separator.
+func appendFile(overridePath, targetPath string) error {
+	overrideData, err := os.ReadFile(overridePath)
+	if err != nil {
+		return err
+	}
+	if len(overrideData) == 0 {
+		return nil
+	}
+
+	existing, err := os.ReadFile(targetPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	if len(existing) == 0 {
+		return os.WriteFile(targetPath, overrideData, 0644)
+	}
+
+	separator := []byte("\n\n# --- User Overrides ---\n\n")
+	combined := append(existing, separator...)
+	combined = append(combined, overrideData...)
+	return os.WriteFile(targetPath, combined, 0644)
+}
+
+// isDirectory checks if the given path is a directory.
+func isDirectory(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+// isJSONFile checks if the filename has a .json extension.
+func isJSONFile(name string) bool {
+	return strings.HasSuffix(name, ".json")
+}
+
+// StripOverrides removes override contributions from the live directory so that
+// Save() captures only the base profile state. This prevents overrides from being
+// permanently baked into the base profile on profile switch.
+func StripOverrides(scope config.Scope, name string, liveDir string, projectPath string) error {
+	overDir := OverrideDir(scope, name, projectPath)
+	if _, err := os.Stat(overDir); os.IsNotExist(err) {
+		return nil
+	}
+
+	profileDir := ProfileDir(scope, name)
+
+	for _, item := range managedPaths(scope, liveDir, projectPath) {
+		overSrc := filepath.Join(overDir, item.ProfilePath)
+		if _, err := os.Stat(overSrc); os.IsNotExist(err) {
+			continue
+		}
+
+		switch {
+		// Directories: remove override files, restore base versions if they existed
+		case isDirectory(overSrc):
+			if err := filepath.WalkDir(overSrc, func(path string, d fs.DirEntry, walkErr error) error {
+				if walkErr != nil || d.IsDir() {
+					return walkErr
+				}
+				rel, _ := filepath.Rel(overSrc, path)
+				target := filepath.Join(item.LivePath, rel)
+				if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+				// Restore from base profile if this file existed there too
+				basePath := filepath.Join(profileDir, item.ProfilePath, rel)
+				if _, err := os.Stat(basePath); err == nil {
+					if err := CopyFile(basePath, target); err != nil {
+						return err
+					}
+				} else {
+					// Clean up empty ancestor directories up to the item root
+					for parent := filepath.Dir(target); parent != item.LivePath; parent = filepath.Dir(parent) {
+						entries, err := os.ReadDir(parent)
+						if err != nil || len(entries) > 0 {
+							break
+						}
+						os.Remove(parent)
+					}
+				}
+				return nil
+			}); err != nil {
+				return fmt.Errorf("stripping override dir %s: %w", item.ProfilePath, err)
+			}
+
+		// CLAUDE.md: truncate at the override separator
+		case item.ProfilePath == "CLAUDE.md":
+			data, err := os.ReadFile(item.LivePath)
+			if err != nil {
+				continue
+			}
+			separator := "\n\n# --- User Overrides ---\n\n"
+			if idx := strings.Index(string(data), separator); idx >= 0 {
+				if err := os.WriteFile(item.LivePath, data[:idx], 0644); err != nil {
+					return fmt.Errorf("stripping override from CLAUDE.md: %w", err)
+				}
+			}
+
+		// MCP config: strip at sub-key level for mcpServers, top-level for others
+		case item.ProfilePath == ".claude.json" || item.ProfilePath == ".mcp.json":
+			override, err := readJSONFile(overSrc)
+			if err != nil {
+				continue
+			}
+			live, err := readJSONFile(item.LivePath)
+			if err != nil {
+				continue
+			}
+			baseSrc := filepath.Join(profileDir, item.ProfilePath)
+			base, _ := readJSONFile(baseSrc)
+			if base == nil {
+				base = map[string]any{}
+			}
+
+			// Handle mcpServers at sub-key level to preserve user-added servers
+			if overServers, ok := override["mcpServers"].(map[string]any); ok {
+				if liveServers, ok := live["mcpServers"].(map[string]any); ok {
+					baseServers, _ := base["mcpServers"].(map[string]any)
+					for name := range overServers {
+						delete(liveServers, name)
+						// Restore base version of this server if it existed
+						if baseServers != nil {
+							if v, ok := baseServers[name]; ok {
+								liveServers[name] = v
+							}
+						}
+					}
+					if len(liveServers) == 0 {
+						delete(live, "mcpServers")
+					}
+				}
+			}
+
+			// Handle other top-level keys normally
+			for k := range override {
+				if k == "mcpServers" {
+					continue
+				}
+				delete(live, k)
+				if v, ok := base[k]; ok {
+					live[k] = v
+				}
+			}
+
+			if len(live) == 0 {
+				if err := os.Remove(item.LivePath); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("removing empty %s: %w", item.ProfilePath, err)
+				}
+			} else {
+				if err := writeJSONFile(item.LivePath, live); err != nil {
+					return fmt.Errorf("stripping override from %s: %w", item.ProfilePath, err)
+				}
+			}
+
+		// Other files (JSON, scripts, etc.): restore from base profile
+		default:
+			baseSrc := filepath.Join(profileDir, item.ProfilePath)
+			if baseInfo, err := os.Stat(baseSrc); err == nil {
+				if baseInfo.IsDir() {
+					if err := os.RemoveAll(item.LivePath); err != nil {
+						return fmt.Errorf("removing overridden %s: %w", item.ProfilePath, err)
+					}
+					if err := CopyDir(baseSrc, item.LivePath); err != nil {
+						return fmt.Errorf("restoring base %s: %w", item.ProfilePath, err)
+					}
+				} else {
+					if err := CopyFile(baseSrc, item.LivePath); err != nil {
+						return fmt.Errorf("restoring base %s: %w", item.ProfilePath, err)
+					}
+				}
+			} else {
+				if err := os.RemoveAll(item.LivePath); err != nil {
+					return fmt.Errorf("removing override-only %s: %w", item.ProfilePath, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// Reapply re-applies the active profile and its overrides to the live directory
+// without saving the current state first. Used by "cvm override apply".
+func Reapply(scope config.Scope, name string, projectPath string) error {
+	dir := ProfileDir(scope, name)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return fmt.Errorf("profile %q not found", name)
+	}
+	tgt := targetDir(scope, projectPath)
+	// Strip current overrides to clean stale keys before fresh re-apply
+	if err := StripOverrides(scope, name, tgt, projectPath); err != nil {
+		return fmt.Errorf("stripping overrides: %w", err)
+	}
+	if err := CleanManagedItems(scope, tgt, projectPath); err != nil {
+		return fmt.Errorf("cleaning target: %w", err)
+	}
+	if err := os.MkdirAll(tgt, 0755); err != nil {
+		return err
+	}
+	if err := CopyManagedItems(scope, dir, tgt, projectPath); err != nil {
+		return fmt.Errorf("applying profile: %w", err)
+	}
+	if err := ApplyOverrides(scope, name, tgt, projectPath); err != nil {
+		return fmt.Errorf("applying overrides: %w", err)
+	}
+	return nil
 }
