@@ -34,4 +34,6 @@ func init() {
 	rootCmd.AddCommand(healthCmd)
 	rootCmd.AddCommand(kbCmd)
 	rootCmd.AddCommand(lifecycleCmd)
+	rootCmd.AddCommand(remoteCmd)
+	rootCmd.AddCommand(pullCmd)
 }

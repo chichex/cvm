@@ -8,10 +8,20 @@ import (
 	"github.com/chichex/cvm/internal/config"
 )
 
+// Remote tracks a profile's git source.
+type Remote struct {
+	Repo    string `json:"repo"`    // e.g. "github.com/chichex/cvm"
+	Path    string `json:"path"`    // subdirectory in repo, e.g. "profiles/chiche"
+	Branch  string `json:"branch"`  // e.g. "main"
+	Scope   string `json:"scope"`   // "global" or "local"
+	Profile string `json:"profile"` // profile name
+}
+
 // State tracks which profiles are active globally and per-project.
 type State struct {
-	Global GlobalState            `json:"global"`
-	Local  map[string]LocalState  `json:"local"`
+	Global  GlobalState            `json:"global"`
+	Local   map[string]LocalState  `json:"local"`
+	Remotes map[string]Remote      `json:"remotes,omitempty"` // key = profile name
 }
 
 type GlobalState struct {
@@ -42,6 +52,9 @@ func Load() (*State, error) {
 
 	if s.Local == nil {
 		s.Local = make(map[string]LocalState)
+	}
+	if s.Remotes == nil {
+		s.Remotes = make(map[string]Remote)
 	}
 
 	return s, nil
