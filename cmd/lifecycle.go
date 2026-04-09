@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/ayrtonmarini/cvm/internal/lifecycle"
+	"github.com/chichex/cvm/internal/lifecycle"
 	"github.com/spf13/cobra"
 )
 

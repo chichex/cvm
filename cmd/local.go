@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ayrtonmarini/cvm/internal/config"
-	"github.com/ayrtonmarini/cvm/internal/profile"
+	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/profile"
 	"github.com/spf13/cobra"
 )
 

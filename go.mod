@@ -1,4 +1,4 @@
-module github.com/ayrtonmarini/cvm
+module github.com/chichex/cvm
 
 go 1.24.2
 

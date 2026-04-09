@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ayrtonmarini/cvm/internal/config"
+	"github.com/chichex/cvm/internal/config"
 )
 
 // State tracks which profiles are active globally and per-project.

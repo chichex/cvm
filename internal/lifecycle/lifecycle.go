@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ayrtonmarini/cvm/internal/config"
-	"github.com/ayrtonmarini/cvm/internal/kb"
-	"github.com/ayrtonmarini/cvm/internal/state"
+	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/kb"
+	"github.com/chichex/cvm/internal/state"
 )
 
 type SessionInfo struct {

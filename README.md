@@ -17,11 +17,11 @@ You've built the perfect Claude Code setup: custom skills, hooks, agents, rules,
 
 ```bash
 # From source
-git clone https://github.com/ayrtonmarini/cvm.git
+git clone https://github.com/chichex/cvm.git
 cd cvm && make install
 
 # Homebrew (once published)
-brew tap ayrtonmarini/tap
+brew tap chichex/tap
 brew install cvm
 ```
 
@@ -197,7 +197,7 @@ A profile is just a directory that mirrors the managed parts of `~/.claude/`:
 
 To publish via Homebrew:
 
-1. Create a GitHub repo `ayrtonmarini/homebrew-tap`
+1. Create a GitHub repo `chichex/homebrew-tap`
 2. Install [GoReleaser](https://goreleaser.com/): `brew install goreleaser`
 3. Tag a release: `git tag v0.1.0 && git push --tags`
 4. Run: `goreleaser release --clean`
@@ -209,7 +209,7 @@ GoReleaser will:
 
 Users install with:
 ```bash
-brew tap ayrtonmarini/tap
+brew tap chichex/tap
 brew install cvm
 ```
 

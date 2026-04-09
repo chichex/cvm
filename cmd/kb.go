@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ayrtonmarini/cvm/internal/config"
-	"github.com/ayrtonmarini/cvm/internal/kb"
+	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/kb"
 	"github.com/spf13/cobra"
 )
 

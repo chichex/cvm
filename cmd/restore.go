@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ayrtonmarini/cvm/internal/config"
-	"github.com/ayrtonmarini/cvm/internal/profile"
-	"github.com/ayrtonmarini/cvm/internal/state"
+	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/profile"
+	"github.com/chichex/cvm/internal/state"
 	"github.com/spf13/cobra"
 )
 

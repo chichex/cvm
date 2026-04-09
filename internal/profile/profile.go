@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ayrtonmarini/cvm/internal/config"
-	"github.com/ayrtonmarini/cvm/internal/state"
+	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/state"
 )
 
 type ProfileInfo struct {

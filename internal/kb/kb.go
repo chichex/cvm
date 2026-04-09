@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ayrtonmarini/cvm/internal/config"
+	"github.com/chichex/cvm/internal/config"
 )
 
 type Entry struct {

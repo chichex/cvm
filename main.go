@@ -1,6 +1,6 @@
 package main
 
-import "github.com/ayrtonmarini/cvm/cmd"
+import "github.com/chichex/cvm/cmd"
 
 func main() {
 	cmd.Execute()
