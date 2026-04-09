@@ -85,6 +85,13 @@ Estos skills se invocan con `/nombre`:
 | `/orchestrate` | Analizar task y decidir: directo, subagent, o team |
 | `/checkpoint` | Crear save point antes de cambios grandes |
 | `/quality-gate` | Validacion post-implementacion: lint, tests, slop |
+| `/spec` | Planificar implementacion completa con preflight y propuesta de teams |
+| `/execute` | Ejecutar un issue planificado con /spec de punta a punta |
+| `/fix` | Diagnosticar y resolver un bug con rigor |
+| `/ux` | Analizar screenshots de UI/UX y generar propuestas de mejora |
+| `/higiene` | Auditoria de higiene del entorno Claude Code y del proyecto |
+| `/skill-create` | Generar un nuevo skill custom para Claude Code |
+| `/headless` | Ejecutar una tarea en Claude Code headless (claude -p) |
 
 ## Agentes Disponibles
 

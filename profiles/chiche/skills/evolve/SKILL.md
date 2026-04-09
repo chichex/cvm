@@ -43,11 +43,13 @@ Descripcion: [una linea]
 Incluir el contenido completo del SKILL.md propuesto.
 
 ### Paso 5: Crear (si aprobado)
-Guardar en `~/.claude/skills/[nombre]/SKILL.md`
+Determinar donde guardar:
+- Si el skill es **especifico del proyecto**: guardar en `.claude/skills/[nombre]/SKILL.md`
+- Si el skill es **global** (aplica a cualquier proyecto): guardar en `~/.claude/skills/[nombre]/SKILL.md`
 
 Registrar la creacion en KB:
 ```bash
-cvm kb put "skill-created-[nombre]" --body "Skill /[nombre] creado. Proposito: [descripcion]. Patron origen: [de donde salio]" --tag "evolve,skill"
+cvm kb put "skill-created-[nombre]" --body "Skill /[nombre] creado. Proposito: [descripcion]. Patron origen: [de donde salio]" --tag "evolve,skill" [--local]
 ```
 
 ## MUST DO

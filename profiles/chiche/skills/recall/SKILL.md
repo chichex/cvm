@@ -10,7 +10,7 @@ cvm kb search "<query>"
 cvm kb search "<query>" --local
 ```
 
-3. Si hay resultados, leer las entries relevantes con `cvm kb show <key>` [--local].
+3. Si hay resultados, leer las entries relevantes. Probar ambos scopes si no es claro de donde viene: `cvm kb show <key>` y `cvm kb show <key> --local`.
 
 4. Presentar un resumen de lo encontrado:
 ```

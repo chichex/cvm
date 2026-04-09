@@ -10,7 +10,8 @@ Parsear $ARGUMENTS y formular:
 
 ### Paso 2: Detectar herramientas disponibles
 ```bash
-which codex 2>/dev/null && echo "codex disponible" || echo "codex no disponible"
+# Preferir el cache de tools si existe, sino detectar directamente
+cat ~/.cvm/available-tools.json 2>/dev/null || (which codex 2>/dev/null && echo "codex disponible" || echo "codex no disponible")
 ```
 
 ### Paso 3: Lanzar investigadores
@@ -31,13 +32,19 @@ codex -q "Investigar este bug: [descripcion]. Encontrar root cause. NO hacer cam
 
 **Si codex NO esta disponible — usar 2 Claude agents con hipotesis distintas:**
 
-Agente 1:
-- **TASK**: Investigar el bug asumiendo que es un problema de DATOS/ESTADO (input incorrecto, estado corrupto, race condition).
-- [misma estructura EXPECTED OUTCOME / MUST DO / MUST NOT DO]
+Agente 1 (hipotesis: DATOS/ESTADO):
+- **TASK**: Investigar el bug asumiendo que es un problema de datos o estado (input incorrecto, estado corrupto, race condition, datos stale).
+- **EXPECTED OUTCOME**: Root cause con archivo(s), linea(s), y explicacion de POR QUE ocurre.
+- **MUST DO**: Seguir el flujo de datos desde el input. Verificar estado en cada paso. Buscar race conditions o mutaciones inesperadas.
+- **MUST NOT DO**: Proponer fixes. Editar archivos. Asumir que la logica esta mal.
+- **CONTEXT**: [problema, archivos conocidos]
 
-Agente 2:
-- **TASK**: Investigar el bug asumiendo que es un problema de LOGICA/CONTROL FLOW (condicion incorrecta, edge case, error en algoritmo).
-- [misma estructura EXPECTED OUTCOME / MUST DO / MUST NOT DO]
+Agente 2 (hipotesis: LOGICA/CONTROL FLOW):
+- **TASK**: Investigar el bug asumiendo que es un problema de logica o control flow (condicion incorrecta, edge case no manejado, error en algoritmo, off-by-one).
+- **EXPECTED OUTCOME**: Root cause con archivo(s), linea(s), y explicacion de POR QUE ocurre.
+- **MUST DO**: Trazar el control flow paso a paso. Verificar condiciones y branches. Buscar edge cases no cubiertos.
+- **MUST NOT DO**: Proponer fixes. Editar archivos. Asumir que los datos estan mal.
+- **CONTEXT**: [problema, archivos conocidos]
 
 ### Paso 4: Consolidar
 Comparar los hallazgos de ambos agentes:

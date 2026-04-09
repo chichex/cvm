@@ -6,6 +6,7 @@ Validacion post-implementacion: lint, tests, slop check, imports no usados. Corr
 ```bash
 git diff --name-only HEAD
 git diff --name-only --cached
+git ls-files --others --exclude-standard  # archivos nuevos no trackeados
 ```
 
 Si no hay cambios en git, pedir al usuario que indique que archivos validar.

@@ -26,9 +26,12 @@ git stash push -m "checkpoint: $ARGUMENTS o descripcion generada"
 
 **Opcion B — WIP commit:**
 ```bash
-git add -A
+git status --short  # revisar que se va a commitear
+git add <archivos relevantes>  # NO usar git add -A, agregar archivos especificos
 git commit -m "WIP: checkpoint — $ARGUMENTS o descripcion generada"
 ```
+
+Nota: invocar /checkpoint es permiso explicito del usuario para crear un commit WIP.
 
 ### Paso 4: Confirmar
 Reportar:

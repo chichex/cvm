@@ -25,7 +25,7 @@ cvm kb put "<key>" --body "DECISION: <que>. ALTERNATIVAS: <descartadas>. TRADE-O
 ## MUST DO
 - Incluir alternativas descartadas — sin eso la decision pierde valor
 - Incluir trade-offs aceptados
-- Verificar duplicados: `cvm kb search "<terminos clave>"`
+- Verificar duplicados: `cvm kb search "<terminos clave>"` y `cvm kb search "<terminos clave>" --local`
 
 ## MUST NOT DO
 - No registrar decisiones triviales (nombres de variables, formatting)

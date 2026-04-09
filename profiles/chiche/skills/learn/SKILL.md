@@ -27,7 +27,7 @@ cvm kb put "<key>" --body "<descripcion clara y concisa del learning>" --tag "le
 ## MUST DO
 - La descripcion debe ser autocontenida — entendible sin contexto de la conversacion
 - Incluir el POR QUE, no solo el QUE
-- Verificar que no existe un entry duplicado: `cvm kb search "<terminos clave>"`
+- Verificar que no existe un entry duplicado: `cvm kb search "<terminos clave>"` y `cvm kb search "<terminos clave>" --local`
 
 ## MUST NOT DO
 - No guardar info efimera o derivable del codigo

@@ -24,7 +24,7 @@ cvm kb put "<key>" --body "GOTCHA: <sintoma>. REALIDAD: <que pasa>. SOLUCION: <c
 ## MUST DO
 - Incluir el sintoma Y la realidad — el gotcha es la diferencia entre ambos
 - Incluir solucion o workaround si se conoce
-- Verificar duplicados: `cvm kb search "<terminos clave>"`
+- Verificar duplicados: `cvm kb search "<terminos clave>"` y `cvm kb search "<terminos clave>" --local`
 
 ## MUST NOT DO
 - No registrar bugs obvios que se van a arreglar — eso es un fix, no un gotcha
