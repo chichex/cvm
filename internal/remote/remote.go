@@ -143,7 +143,7 @@ func Add(profileName, repo, path, branch string, scope config.Scope) error {
 	// Copy to profile
 	profileDir := profile.ProfileDir(scope, profileName)
 	if _, err := os.Stat(profileDir); err == nil {
-		// Profile exists, overwrite with remote contents
+		fmt.Printf("  profile %q already exists, updating...\n", profileName)
 		entries, _ := os.ReadDir(profileDir)
 		for _, e := range entries {
 			os.RemoveAll(filepath.Join(profileDir, e.Name()))
