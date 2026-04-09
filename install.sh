@@ -2,7 +2,7 @@
 set -e
 
 REPO="chichex/cvm"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${HOME}/.local/bin"
 
 # Detect OS and arch
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -29,12 +29,20 @@ trap "rm -rf $TMP" EXIT
 curl -sL "$URL" -o "$TMP/cvm.tar.gz"
 tar -xzf "$TMP/cvm.tar.gz" -C "$TMP"
 
-if [ -w "$INSTALL_DIR" ]; then
-  cp "$TMP/cvm" "$INSTALL_DIR/cvm"
-else
-  echo "Need sudo to install to $INSTALL_DIR"
-  sudo cp "$TMP/cvm" "$INSTALL_DIR/cvm"
-fi
-
+mkdir -p "$INSTALL_DIR"
+cp "$TMP/cvm" "$INSTALL_DIR/cvm"
 chmod +x "$INSTALL_DIR/cvm"
+
 echo "Installed cvm v${VERSION} to $INSTALL_DIR/cvm"
+
+# Check if INSTALL_DIR is in PATH
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*) ;;
+  *)
+    echo ""
+    echo "Add ~/.local/bin to your PATH by adding this to your shell profile:"
+    echo ""
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo ""
+    ;;
+esac
