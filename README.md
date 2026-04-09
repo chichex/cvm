@@ -130,7 +130,7 @@ cvm restore --local     # only local
 
 ```bash
 cvm lifecycle start    # session start: load context, detect tools
-cvm lifecycle end      # session end: cleanup + queue background retro + auto-run automation
+cvm lifecycle end      # session end: cleanup + auto-run automation
 cvm lifecycle status   # show current session info
 cvm automation status  # queued candidates summary
 cvm automation ls      # list candidate briefs
@@ -192,7 +192,7 @@ cvm ships with a built-in profile called **chiche** — a self-improving Claude 
 - **3 agents**: researcher (haiku), implementer (sonnet), reviewer (opus)
 - **3 hooks**: tool detection, config protection, slop checking
 - **Auto-KB**: learns from your sessions and persists insights between conversations
-- **Low-latency automation loop**: prompt path stays light; retro runs in background on session end
+- **Low-latency automation loop**: prompt path stays light; no hidden headless Claude calls on session end
 - **Adversarial debugging**: launches competing agents to investigate bugs
 - **Thresholded evolution**: maintain/evolve candidates are queued only when KB/session signals justify it
 - **Automatic maintenance**: stale/duplicate KB entries are normalized and suppressed automatically

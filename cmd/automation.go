@@ -24,9 +24,6 @@ var automationStatusCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Pending candidates: %d\n", state.PendingCount())
-		if !state.LastRetroQueuedAt.IsZero() {
-			fmt.Printf("Last retro queued: %s\n", state.LastRetroQueuedAt.Format("2006-01-02 15:04:05"))
-		}
 		if !state.LastAutomationRunAt.IsZero() {
 			fmt.Printf("Last automation run: %s\n", state.LastAutomationRunAt.Format("2006-01-02 15:04:05"))
 		}

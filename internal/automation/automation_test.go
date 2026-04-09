@@ -26,12 +26,9 @@ func TestRecordSessionEndQueuesCandidatesByThresholds(t *testing.T) {
 	global := Snapshot{Scope: config.ScopeGlobal, Total: 5, Stale: 2, Tagged: 3}
 	local := Snapshot{Scope: config.ScopeLocal, ProjectPath: "/tmp/project", Total: 1, Stale: 0, Tagged: 0}
 
-	queued := state.RecordSessionEnd(global, local, true)
+	queued := state.RecordSessionEnd(global, local)
 	if len(queued) != 2 {
 		t.Fatalf("expected maintain and evolve candidates, got %d", len(queued))
-	}
-	if state.LastRetroQueuedAt.IsZero() {
-		t.Fatal("expected retro timestamp to be recorded")
 	}
 }
 

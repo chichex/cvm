@@ -122,7 +122,6 @@ Las reglas en `rules/` se aplican automaticamente segun el contexto:
 
 - Al iniciar sesion se ejecuta `cvm lifecycle start` automaticamente (hook)
 - Al cerrar sesion se ejecuta `cvm lifecycle end` automaticamente (hook)
-- `cvm lifecycle end` lanza `retro --auto` en background si hay transcript y `claude` disponible
 - Mantenimiento (`maintain`) y evolucion (`evolve`) se disparan por umbrales, se encolan como candidatos persistentes en `~/.cvm/automation/` y luego se ejecutan automaticamente en background
 - Los candidatos se materializan en briefs Markdown y se inspeccionan con `cvm automation status|ls|show <id>`
 - Cada corrida queda auditada con `cvm automation history` y `cvm automation show-run <id>`

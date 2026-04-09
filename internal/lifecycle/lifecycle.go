@@ -12,7 +12,6 @@ import (
 	"github.com/chichex/cvm/internal/automation"
 	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/kb"
-	"github.com/chichex/cvm/internal/retro"
 	"github.com/chichex/cvm/internal/state"
 )
 
@@ -94,7 +93,6 @@ func End(projectPath string) error {
 		return err
 	}
 
-	retroQueued, retroErr := queueAutoRetro(projectPath)
 	queued := autoState.RecordSessionEnd(
 		automation.Snapshot{
 			Scope:  config.ScopeGlobal,
@@ -109,7 +107,6 @@ func End(projectPath string) error {
 			Stale:       localStale,
 			Tagged:      taggedEntryCount(config.ScopeLocal, projectPath),
 		},
-		retroQueued,
 	)
 	if err := automation.MaterializePending(autoState); err != nil {
 		return err
@@ -120,11 +117,6 @@ func End(projectPath string) error {
 
 	_ = os.Remove(sessionPath())
 	fmt.Println("cvm session ended")
-	if retroQueued {
-		fmt.Println("  automation: queued retro in background")
-	} else if retroErr != nil {
-		fmt.Printf("  automation: retro skipped (%v)\n", retroErr)
-	}
 	if len(queued) > 0 {
 		fmt.Printf("  automation: %d candidate(s) queued\n", len(queued))
 	}
@@ -179,9 +171,6 @@ func Status() error {
 				fmt.Printf("  - %s [%s] %s\n", candidate.Kind, scope, candidate.Reason)
 			}
 		}
-		if !autoState.LastRetroQueuedAt.IsZero() {
-			fmt.Printf("Last retro queued: %s\n", autoState.LastRetroQueuedAt.Format(time.RFC3339))
-		}
 	}
 	return nil
 }
@@ -200,43 +189,6 @@ func displayProfile(name string) string {
 		return "(vanilla)"
 	}
 	return name
-}
-
-func queueAutoRetro(projectPath string) (bool, error) {
-	if _, err := exec.LookPath("claude"); err != nil {
-		return false, fmt.Errorf("claude not installed")
-	}
-	if _, err := retro.FindLatestTranscript(projectPath); err != nil {
-		return false, err
-	}
-
-	binPath, err := os.Executable()
-	if err != nil {
-		return false, err
-	}
-
-	logDir := filepath.Join(config.CvmHome(), "logs")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return false, err
-	}
-
-	stamp := time.Now().Format("20060102-150405")
-	logFile, err := os.OpenFile(filepath.Join(logDir, "retro-"+stamp+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return false, err
-	}
-
-	cmd := exec.Command(binPath, "retro", "--auto")
-	cmd.Dir = projectPath
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-
-	if err := cmd.Start(); err != nil {
-		_ = logFile.Close()
-		return false, err
-	}
-
-	return true, logFile.Close()
 }
 
 func queueAutomationRunner() (bool, error) {

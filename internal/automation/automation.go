@@ -63,7 +63,6 @@ type State struct {
 	SessionsSinceMaintain int         `json:"sessions_since_maintain"`
 	SessionsSinceEvolve   int         `json:"sessions_since_evolve"`
 	LastSessionEnd        time.Time   `json:"last_session_end,omitempty"`
-	LastRetroQueuedAt     time.Time   `json:"last_retro_queued_at,omitempty"`
 	LastAutomationRunAt   time.Time   `json:"last_automation_run_at,omitempty"`
 	Pending               []Candidate `json:"pending,omitempty"`
 	Runs                  []Run       `json:"runs,omitempty"`
@@ -119,14 +118,11 @@ func (s *State) Save() error {
 	return os.WriteFile(statePath(), data, 0644)
 }
 
-func (s *State) RecordSessionEnd(global, local Snapshot, retroQueued bool) []Candidate {
+func (s *State) RecordSessionEnd(global, local Snapshot) []Candidate {
 	s.TotalSessions++
 	s.SessionsSinceMaintain++
 	s.SessionsSinceEvolve++
 	s.LastSessionEnd = time.Now()
-	if retroQueued {
-		s.LastRetroQueuedAt = s.LastSessionEnd
-	}
 
 	var queued []Candidate
 	for _, snapshot := range []Snapshot{global, local} {
