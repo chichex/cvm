@@ -26,14 +26,23 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(globalCmd)
-	rootCmd.AddCommand(localCmd)
+	// Primary commands
+	rootCmd.AddCommand(addCmd)
+	rootCmd.AddCommand(useCmd)
+	rootCmd.AddCommand(lsCmd)
+	rootCmd.AddCommand(rmCmd)
+	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(healthCmd)
 	rootCmd.AddCommand(nukeCmd)
 	rootCmd.AddCommand(restoreCmd)
-	rootCmd.AddCommand(healthCmd)
+
+	// Subsystems
 	rootCmd.AddCommand(kbCmd)
 	rootCmd.AddCommand(lifecycleCmd)
 	rootCmd.AddCommand(remoteCmd)
-	rootCmd.AddCommand(pullCmd)
+
+	// Legacy (still work, but simplified API is preferred)
+	rootCmd.AddCommand(globalCmd)
+	rootCmd.AddCommand(localCmd)
 }
