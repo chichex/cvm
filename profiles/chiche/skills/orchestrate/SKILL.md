@@ -1,0 +1,74 @@
+Analizar una tarea y decidir la ruta de ejecucion: directo, subagent, o team. $ARGUMENTS es la descripcion de la tarea.
+
+## Proceso
+
+### Paso 1: Analizar la tarea
+Evaluar $ARGUMENTS en estas dimensiones:
+
+| Dimension | Valor |
+|-----------|-------|
+| Archivos involucrados | 1-2 / 3-10 / 10+ |
+| Areas independientes | 1 / 2-3 / 4+ |
+| Complejidad | lookup / implementacion / arquitectura |
+| Paralelizable | si / no |
+| Riesgo | bajo / medio / alto |
+
+### Paso 2: Decidir ruta
+
+**Directo** — ejecutar en el thread principal:
+- Lookup simple, respuesta a pregunta, confirmacion
+- 1-2 archivos, 1 area, complejidad baja
+- Tiempo estimado: <30 segundos
+
+**Subagent** — delegar a un agente especializado:
+- Tarea enfocada en un area especifica
+- 3-10 archivos, 1-2 areas, complejidad media
+- No paralelizable o solo necesita 1 agente
+- Elegir agente: researcher (explorar), implementer (codear), reviewer (revisar)
+
+**Team** — lanzar multiples agentes en paralelo:
+- Multiples areas independientes que se pueden paralelizar
+- 10+ archivos, 3+ areas, complejidad alta
+- El trabajo de un area no bloquea al otro
+- Ejemplos: frontend + backend + tests, security + performance + correctness
+
+### Paso 3: Proponer estructura
+
+**Si directo:**
+```
+Ruta: directo
+Razon: [por que es simple]
+Accion: [que voy a hacer]
+```
+
+**Si subagent:**
+```
+Ruta: subagent
+Agente: [researcher/implementer/reviewer]
+Modelo sugerido: [haiku/sonnet/opus]
+TASK: [descripcion]
+EXPECTED OUTCOME: [que se espera]
+```
+
+**Si team:**
+```
+Ruta: team
+Teammates:
+- [nombre] ([modelo]): [responsabilidad]. Tasks: [lista]
+- [nombre] ([modelo]): [responsabilidad]. Tasks: [lista]
+Coordinacion: [dependencias entre teammates, si las hay]
+```
+
+### Paso 4: Ejecutar
+Implementar la ruta elegida. Si es team, crear la estructura de team y lanzar.
+
+## MUST DO
+- Evaluar ANTES de actuar — no empezar y despues decidir delegar
+- Elegir la ruta mas simple que resuelva el problema
+- Si hay duda entre subagent y team, elegir subagent
+
+## MUST NOT DO
+- No usar team para tareas secuenciales (un teammate espera al otro)
+- No usar team para ediciones en el mismo archivo
+- No usar directo para tareas de 10+ archivos
+- No sobre-ingeniar la estructura del team
