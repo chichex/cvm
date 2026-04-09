@@ -113,7 +113,7 @@ Las reglas en `rules/` se aplican automaticamente segun el contexto:
 
 - Al iniciar sesion se ejecuta `cvm lifecycle start` automaticamente (hook)
 - Al cerrar sesion se ejecuta `cvm lifecycle end` automaticamente (hook)
-- Antes de cerrar, se pide persistir learnings si los hay (hook)
+- Para persistir learnings al final de una sesion, usar `/retro` manualmente
 
 ## Hard Blocks
 

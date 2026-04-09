@@ -26,24 +26,13 @@
         ]
       }
     ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "La sesion esta por terminar. Si durante esta sesion descubriste algo no obvio (un gotcha, un learning, una decision de diseno), persistilo ahora usando los comandos `cvm kb put`. Revisar brevemente la conversacion y extraer lo que valga la pena guardar. Si no hay nada relevante, continuar sin hacer nada."
-          }
-        ]
-      }
-    ],
     "SessionEnd": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "cvm lifecycle end"
+            "command": "cvm retro --auto & cvm lifecycle end"
           }
         ]
       }
