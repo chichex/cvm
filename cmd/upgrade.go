@@ -37,17 +37,14 @@ var upgradeCmd = &cobra.Command{
 
 		// Check if installed via brew
 		if isBrewInstall() {
-			fmt.Println("Detected brew install, updating tap and reinstalling...")
-			// Force tap update to get latest formula
-			c := exec.Command("brew", "tap", "--force", "chichex/tap")
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			c.Run() // ignore error, tap might already be current
-
-			c = exec.Command("brew", "reinstall", "chichex/tap/cvm")
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			return c.Run()
+			fmt.Println("Detected brew install, upgrading...")
+			// Uninstall first so we can re-clone the tap
+			run("brew", "uninstall", "cvm")
+			run("brew", "untap", "chichex/tap")
+			if err := run("brew", "install", "chichex/tap/cvm"); err != nil {
+				return fmt.Errorf("brew install failed: %w", err)
+			}
+			return nil
 		}
 
 		// Direct binary upgrade
@@ -141,6 +138,13 @@ func getLatestRelease() (version, downloadURL string, err error) {
 	}
 
 	return version, downloadURL, nil
+}
+
+func run(name string, args ...string) error {
+	c := exec.Command(name, args...)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
 }
 
 func isBrewInstall() bool {
