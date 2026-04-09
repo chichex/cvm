@@ -16,13 +16,15 @@ You've built the perfect Claude Code setup: custom skills, hooks, agents, rules,
 ## Install
 
 ```bash
+# One-liner (no brew needed)
+curl -sL https://raw.githubusercontent.com/chichex/cvm/main/install.sh | sh
+
+# Homebrew (one command)
+brew install chichex/tap/cvm
+
 # From source
 git clone https://github.com/chichex/cvm.git
 cd cvm && make install
-
-# Homebrew (once published)
-brew tap chichex/tap
-brew install cvm
 ```
 
 ## Quick start
@@ -112,6 +114,25 @@ cvm kb rm <key>                              # delete entry
 # All kb commands accept --local (default: global)
 cvm kb ls --local
 cvm kb put my-key --body "..." --local
+```
+
+### Remote profiles
+
+```bash
+# Link a profile to a GitHub repo
+cvm remote add chiche chichex/cvm profiles/chiche
+
+# Pull latest updates (all linked profiles)
+cvm pull
+
+# Pull a specific profile
+cvm pull chiche
+
+# List linked profiles
+cvm remote ls
+
+# Unlink (keeps local copy)
+cvm remote rm chiche
 ```
 
 ### Lifecycle (used by hooks)
