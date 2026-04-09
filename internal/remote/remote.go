@@ -233,17 +233,23 @@ func Pull(profileName string) ([]string, error) {
 
 		updated = append(updated, name)
 
-		// If this profile is currently active, re-apply it
+		// If this profile is currently active, re-apply directly
+		// (don't use profile.Use() because it saves ~/.claude/ back to
+		// the profile dir first, which would overwrite what we just pulled)
 		var active string
 		if scope == config.ScopeGlobal {
 			active = st.Global.Active
 		} else {
-			// For local, we'd need project path context
 			active = ""
 		}
 		if active == name {
 			fmt.Printf("  re-applying active profile %q...\n", name)
-			profile.Use(scope, name, "")
+			tgt := config.ClaudeHome()
+			if scope == config.ScopeLocal {
+				tgt = config.ProjectClaudeDir("")
+			}
+			profile.CleanManagedItems(tgt)
+			profile.CopyDir(profileDir, tgt)
 		}
 	}
 
