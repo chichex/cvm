@@ -295,6 +295,29 @@ func extractSnippet(content, query string) string {
 	return strings.TrimSpace(snippet)
 }
 
+func Clean(scope config.Scope, projectPath string) (int, error) {
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return 0, err
+	}
+	count := len(idx.Entries)
+	if count == 0 {
+		return 0, nil
+	}
+
+	// Remove all entry files
+	for _, e := range idx.Entries {
+		os.Remove(entryPath(scope, projectPath, e.Key))
+	}
+
+	// Reset index
+	idx.Entries = nil
+	if err := saveIndex(scope, projectPath, idx); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func Stats(scope config.Scope, projectPath string) (total, enabled, stale int, err error) {
 	idx, err := loadIndex(scope, projectPath)
 	if err != nil {

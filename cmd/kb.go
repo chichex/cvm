@@ -158,13 +158,49 @@ var kbSearchCmd = &cobra.Command{
 	},
 }
 
+var kbCleanCmd = &cobra.Command{
+	Use:   "clean",
+	Short: "Remove all KB entries",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		scope, projectPath := kbScope(cmd)
+		force, _ := cmd.Flags().GetBool("force")
+
+		entries, err := kb.List(scope, projectPath, "")
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			fmt.Println("KB is already empty")
+			return nil
+		}
+
+		if !force {
+			fmt.Printf("This will remove all %d entries from %s KB. Continue? [y/N] ", len(entries), scope)
+			var answer string
+			fmt.Scanln(&answer)
+			if answer != "y" && answer != "Y" {
+				fmt.Println("Aborted")
+				return nil
+			}
+		}
+
+		removed, err := kb.Clean(scope, projectPath)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Removed %d entries from %s KB\n", removed, scope)
+		return nil
+	},
+}
+
 func init() {
-	for _, c := range []*cobra.Command{kbPutCmd, kbLsCmd, kbRmCmd, kbShowCmd, kbEnableCmd, kbDisableCmd, kbSearchCmd} {
+	for _, c := range []*cobra.Command{kbPutCmd, kbLsCmd, kbRmCmd, kbShowCmd, kbEnableCmd, kbDisableCmd, kbSearchCmd, kbCleanCmd} {
 		c.Flags().Bool("local", false, "Use local KB (default: global)")
 	}
 	kbPutCmd.Flags().String("body", "", "Entry body content")
 	kbPutCmd.Flags().String("tag", "", "Comma-separated tags")
 	kbLsCmd.Flags().String("tag", "", "Filter by tag")
+	kbCleanCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 
 	kbCmd.AddCommand(kbPutCmd)
 	kbCmd.AddCommand(kbLsCmd)
@@ -173,4 +209,5 @@ func init() {
 	kbCmd.AddCommand(kbEnableCmd)
 	kbCmd.AddCommand(kbDisableCmd)
 	kbCmd.AddCommand(kbSearchCmd)
+	kbCmd.AddCommand(kbCleanCmd)
 }

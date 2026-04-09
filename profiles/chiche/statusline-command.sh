@@ -51,6 +51,40 @@ if [ -n "$used" ]; then
   ctx_info=" ${ctx_color}[ctx:${pct}%]${RESET}"
 fi
 
+# Session token usage (input/output)
+tok_info=""
+in_tok=$(echo "$input" | jq -r '.context_window.total_input_tokens // empty')
+out_tok=$(echo "$input" | jq -r '.context_window.total_output_tokens // empty')
+if [ -n "$in_tok" ] && [ -n "$out_tok" ]; then
+  # Format as K or M
+  fmt_tok() {
+    local t=$1
+    if [ "$t" -ge 1000000 ]; then
+      printf "%.1fM" "$(echo "$t / 1000000" | bc -l)"
+    elif [ "$t" -ge 1000 ]; then
+      printf "%.0fK" "$(echo "$t / 1000" | bc -l)"
+    else
+      printf "%d" "$t"
+    fi
+  }
+  tok_info=" ${DIM}[in:$(fmt_tok "$in_tok") out:$(fmt_tok "$out_tok")]${RESET}"
+fi
+
+# Rate limit usage (5h window)
+rate_info=""
+rate_5h=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
+if [ -n "$rate_5h" ]; then
+  rate_pct=$(echo "$rate_5h" | awk '{printf "%d", $1+0.5}')
+  if [ "$rate_pct" -ge 75 ]; then
+    rate_color="$RED"
+  elif [ "$rate_pct" -ge 50 ]; then
+    rate_color="$YELLOW"
+  else
+    rate_color="$DIM"
+  fi
+  rate_info=" ${rate_color}[quota:${rate_pct}%]${RESET}"
+fi
+
 # CVM active profile
 cvm_info=""
 if command -v cvm &>/dev/null; then
@@ -69,4 +103,4 @@ if [ -f "$auto_state" ]; then
   fi
 fi
 
-printf '%b' "${GREEN}>${RESET} ${CYAN}${short_cwd}${RESET}${git_info}${cvm_info}${auto_info}${ctx_info}\n"
+printf '%b' "${GREEN}>${RESET} ${CYAN}${short_cwd}${RESET}${git_info}${cvm_info}${auto_info}${tok_info}${rate_info}${ctx_info}\n"
