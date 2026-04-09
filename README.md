@@ -159,8 +159,10 @@ cvm remote rm chiche   # unlink from remote (keeps local copy)
 | Item | Description |
 |------|-------------|
 | `CLAUDE.md` | Global instructions |
-| `settings.json` | Permissions, hooks config, MCP servers |
+| `settings.json` | Permissions, hooks config, plugins |
 | `settings.local.json` | Local overrides |
+| `.claude.json` | User-scoped MCP servers (managed as the `mcpServers` section only) |
+| `.mcp.json` | Project-scoped MCP servers |
 | `keybindings.json` | Keyboard shortcuts |
 | `skills/` | Custom slash commands |
 | `agents/` | Subagent definitions |
@@ -178,7 +180,7 @@ Runtime data is **never** touched: `sessions/`, `cache/`, `history.jsonl`, `tran
 When you run `cvm use work`:
 
 1. Backs up your original `~/.claude/` state (first time only, as "vanilla")
-2. Saves current `~/.claude/` config to the previously active profile
+2. Saves current `~/.claude/`, `~/.claude.json`, and project MCP config to the previously active profile
 3. Cleans all managed items from `~/.claude/`
 4. Copies the "work" profile into `~/.claude/`
 5. Updates `~/.cvm/state.json`

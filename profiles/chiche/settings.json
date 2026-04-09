@@ -1,14 +1,4 @@
 {
-  "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"]
-    },
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp@latest"]
-    }
-  },
   "env": {
     "CVM_MAINTAIN_MIN_ENTRIES": "8",
     "CVM_MAINTAIN_STALE_THRESHOLD": "3",

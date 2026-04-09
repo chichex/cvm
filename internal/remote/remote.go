@@ -31,7 +31,7 @@ func normalizeRepo(repo string) string {
 
 // looksLikeProfile checks if a directory contains Claude Code config files.
 func looksLikeProfile(dir string) bool {
-	for _, item := range config.ManagedItems {
+	for _, item := range config.ProfileDiscoveryItems() {
 		if _, err := os.Stat(filepath.Join(dir, item)); err == nil {
 			return true
 		}
@@ -272,11 +272,11 @@ func Pull(profileName string) ([]string, error) {
 				}
 				tgt = config.ProjectClaudeDir(r.ProjectPath)
 			}
-			if err := profile.CleanManagedItems(tgt); err != nil {
+			if err := profile.CleanManagedItems(scope, tgt, r.ProjectPath); err != nil {
 				fmt.Printf("  warning: cleanup failed for active profile %s: %v\n", name, err)
 				continue
 			}
-			if err := profile.CopyDir(profileDir, tgt); err != nil {
+			if err := profile.CopyManagedItems(scope, profileDir, tgt, r.ProjectPath); err != nil {
 				fmt.Printf("  warning: re-apply failed for active profile %s: %v\n", name, err)
 			}
 		}

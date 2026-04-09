@@ -717,6 +717,46 @@ func TestProfileContentIsolation(t *testing.T) {
 	}
 }
 
+func TestUseAppliesChicheMCPServersToClaudeUserConfig(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+	if err := os.WriteFile(filepath.Join(e.home, ".claude.json"), []byte(`{
+  "theme": "dark",
+  "oauthAccount": {
+    "emailAddress": "user@example.com"
+  }
+}
+`), 0644); err != nil {
+		t.Fatalf("write live user config: %v", err)
+	}
+
+	e.mustRun("global", "init", "chiche")
+
+	profileUserConfig := filepath.Join(e.home, ".cvm", "global", "profiles", "chiche", ".claude.json")
+	if err := os.WriteFile(profileUserConfig, []byte(`{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    }
+  }
+}
+`), 0644); err != nil {
+		t.Fatalf("write profile user config: %v", err)
+	}
+
+	e.mustRun("use", "chiche")
+
+	claudeUserConfig := filepath.Join(e.home, ".claude.json")
+	assertMCPServerExists(t, claudeUserConfig, "playwright")
+	assertMCPServerExists(t, claudeUserConfig, "context7")
+	assertJSONKeyExists(t, claudeUserConfig, "oauthAccount")
+}
+
 func TestLifecycleEndSavesAddedMCPServersToActiveProfile(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
@@ -724,7 +764,7 @@ func TestLifecycleEndSavesAddedMCPServersToActiveProfile(t *testing.T) {
 	e.mustRun("global", "init", "chiche")
 	e.mustRun("use", "chiche")
 
-	activeSettings := filepath.Join(e.home, ".claude", "settings.json")
+	activeSettings := filepath.Join(e.home, ".claude.json")
 	data, err := os.ReadFile(activeSettings)
 	if os.IsNotExist(err) {
 		data = []byte("{}")
@@ -758,7 +798,7 @@ func TestLifecycleEndSavesAddedMCPServersToActiveProfile(t *testing.T) {
 
 	e.mustRun("lifecycle", "end")
 
-	profileSettings := filepath.Join(e.home, ".cvm", "global", "profiles", "chiche", "settings.json")
+	profileSettings := filepath.Join(e.home, ".cvm", "global", "profiles", "chiche", ".claude.json")
 	assertMCPServerExists(t, activeSettings, "sequential-thinking")
 	assertMCPServerExists(t, profileSettings, "sequential-thinking")
 }
@@ -924,5 +964,22 @@ func assertMCPServerExists(t *testing.T, path, want string) {
 	}
 	if _, ok := cfg.MCPServers[want]; !ok {
 		t.Fatalf("settings %s missing mcp server %q", path, want)
+	}
+}
+
+func assertJSONKeyExists(t *testing.T, path, want string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read json %s: %v", path, err)
+	}
+
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal json %s: %v", path, err)
+	}
+	if _, ok := cfg[want]; !ok {
+		t.Fatalf("json %s missing key %q", path, want)
 	}
 }

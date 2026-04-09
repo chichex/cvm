@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -63,12 +64,8 @@ func Init(scope config.Scope, name string, from string, projectPath string) erro
 		}
 	} else {
 		tgt := targetDir(scope, projectPath)
-		if _, err := os.Stat(tgt); err == nil {
-			if err := CopyManagedItems(tgt, dir); err != nil {
-				return fmt.Errorf("copying managed items: %w", err)
-			}
-		} else if !os.IsNotExist(err) {
-			return err
+		if err := captureManagedItems(scope, tgt, dir, projectPath); err != nil {
+			return fmt.Errorf("copying managed items: %w", err)
 		}
 	}
 	return nil
@@ -105,13 +102,13 @@ func Use(scope config.Scope, name string, projectPath string) error {
 
 	// Clean and apply
 	tgt := targetDir(scope, projectPath)
-	if err := CleanManagedItems(tgt); err != nil {
+	if err := CleanManagedItems(scope, tgt, projectPath); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
 	if err := os.MkdirAll(tgt, 0755); err != nil {
 		return err
 	}
-	if err := CopyDir(dir, tgt); err != nil {
+	if err := CopyManagedItems(scope, dir, tgt, projectPath); err != nil {
 		return fmt.Errorf("applying profile: %w", err)
 	}
 
@@ -143,7 +140,7 @@ func UseNone(scope config.Scope, projectPath string) error {
 	}
 
 	tgt := targetDir(scope, projectPath)
-	if err := CleanManagedItems(tgt); err != nil {
+	if err := CleanManagedItems(scope, tgt, projectPath); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
 	if err := RestoreVanilla(scope, projectPath); err != nil {
@@ -185,7 +182,7 @@ func List(scope config.Scope, projectPath string) ([]ProfileInfo, error) {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		items := countItems(filepath.Join(dir, e.Name()))
+		items := countItems(scope, filepath.Join(dir, e.Name()))
 		profiles = append(profiles, ProfileInfo{
 			Name:   e.Name(),
 			Active: e.Name() == active,
@@ -265,7 +262,7 @@ func Save(scope config.Scope, name string, projectPath string) error {
 		}
 		return err
 	}
-	return CopyManagedItems(tgt, dir)
+	return captureManagedItems(scope, tgt, dir, projectPath)
 }
 
 func Remove(scope config.Scope, name string, projectPath string) error {
@@ -307,10 +304,7 @@ func EnsureVanilla(scope config.Scope, projectPath string) error {
 		return err
 	}
 	src := targetDir(scope, projectPath)
-	if _, err := os.Stat(src); os.IsNotExist(err) {
-		return nil
-	}
-	return CopyManagedItems(src, vdir)
+	return captureManagedItems(scope, src, vdir, projectPath)
 }
 
 func RestoreVanilla(scope config.Scope, projectPath string) error {
@@ -322,7 +316,7 @@ func RestoreVanilla(scope config.Scope, projectPath string) error {
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
-	return CopyDir(vdir, dst)
+	return CopyManagedItems(scope, vdir, dst, projectPath)
 }
 
 func HasVanilla(scope config.Scope, projectPath string) bool {
@@ -332,29 +326,40 @@ func HasVanilla(scope config.Scope, projectPath string) bool {
 
 func Nuke(scope config.Scope, projectPath string) error {
 	dst := targetDir(scope, projectPath)
-	for _, item := range config.ManagedItems {
-		path := filepath.Join(dst, item)
-		if err := os.RemoveAll(path); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("removing %s: %w", item, err)
-		}
-	}
-	return nil
+	return CleanManagedItems(scope, dst, projectPath)
 }
 
 // --- File operations ---
 
-func CleanManagedItems(dir string) error {
-	for _, item := range config.ManagedItems {
-		if err := os.RemoveAll(filepath.Join(dir, item)); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("removing %s: %w", item, err)
+type managedPath struct {
+	ProfilePath string
+	LivePath    string
+}
+
+func CleanManagedItems(scope config.Scope, liveDir, projectPath string) error {
+	for _, item := range managedPaths(scope, liveDir, projectPath) {
+		if item.ProfilePath == ".claude.json" {
+			if err := removeUserMCPServers(item.LivePath); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.RemoveAll(item.LivePath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("removing %s: %w", item.LivePath, err)
 		}
 	}
 	return nil
 }
 
-func CopyManagedItems(src, dst string) error {
-	for _, item := range config.ManagedItems {
-		srcPath := filepath.Join(src, item)
+func CopyManagedItems(scope config.Scope, srcProfileDir, dstLiveDir, projectPath string) error {
+	for _, item := range managedPaths(scope, dstLiveDir, projectPath) {
+		srcPath := filepath.Join(srcProfileDir, item.ProfilePath)
+		if item.ProfilePath == ".claude.json" {
+			if err := applyUserMCPServers(srcPath, item.LivePath); err != nil {
+				return err
+			}
+			continue
+		}
 		info, err := os.Stat(srcPath)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -363,7 +368,7 @@ func CopyManagedItems(src, dst string) error {
 			return err
 		}
 
-		dstPath := filepath.Join(dst, item)
+		dstPath := item.LivePath
 		if info.IsDir() {
 			if err := CopyDir(srcPath, dstPath); err != nil {
 				return err
@@ -377,14 +382,167 @@ func CopyManagedItems(src, dst string) error {
 	return nil
 }
 
-func countItems(dir string) int {
+func captureManagedItems(scope config.Scope, srcLiveDir, dstProfileDir, projectPath string) error {
+	for _, item := range managedPaths(scope, srcLiveDir, projectPath) {
+		srcPath := item.LivePath
+		if item.ProfilePath == ".claude.json" {
+			if err := captureUserMCPServers(srcPath, filepath.Join(dstProfileDir, item.ProfilePath)); err != nil {
+				return err
+			}
+			continue
+		}
+		info, err := os.Stat(srcPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+
+		dstPath := filepath.Join(dstProfileDir, item.ProfilePath)
+		if info.IsDir() {
+			if err := CopyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := CopyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func countItems(scope config.Scope, dir string) int {
 	count := 0
-	for _, item := range config.ManagedItems {
+	for _, item := range config.ManagedProfileItems(scope) {
 		if _, err := os.Stat(filepath.Join(dir, item)); err == nil {
 			count++
 		}
 	}
 	return count
+}
+
+func managedPaths(scope config.Scope, liveDir, projectPath string) []managedPath {
+	paths := make([]managedPath, 0, len(config.ManagedProfileItems(scope)))
+	for _, item := range config.ManagedClaudeDirItems {
+		paths = append(paths, managedPath{
+			ProfilePath: item,
+			LivePath:    filepath.Join(liveDir, item),
+		})
+	}
+
+	switch scope {
+	case config.ScopeGlobal:
+		paths = append(paths, managedPath{
+			ProfilePath: ".claude.json",
+			LivePath:    config.ClaudeUserConfigPath(),
+		})
+	case config.ScopeLocal:
+		paths = append(paths, managedPath{
+			ProfilePath: ".mcp.json",
+			LivePath:    config.ProjectMCPConfigPath(projectPath),
+		})
+	}
+
+	return paths
+}
+
+func applyUserMCPServers(srcProfilePath, dstLivePath string) error {
+	cfg, err := readJSONFile(srcProfilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	mcpServers, ok := cfg["mcpServers"]
+	if !ok {
+		return nil
+	}
+
+	live, err := readJSONFile(dstLivePath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if live == nil {
+		live = map[string]any{}
+	}
+	live["mcpServers"] = mcpServers
+
+	return writeJSONFile(dstLivePath, live)
+}
+
+func captureUserMCPServers(srcLivePath, dstProfilePath string) error {
+	live, err := readJSONFile(srcLivePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	mcpServers, ok := live["mcpServers"]
+	if !ok {
+		return nil
+	}
+
+	return writeJSONFile(dstProfilePath, map[string]any{
+		"mcpServers": mcpServers,
+	})
+}
+
+func removeUserMCPServers(path string) error {
+	cfg, err := readJSONFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if _, ok := cfg["mcpServers"]; !ok {
+		return nil
+	}
+	delete(cfg, "mcpServers")
+
+	if len(cfg) == 0 {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+
+	return writeJSONFile(path, cfg)
+}
+
+func readJSONFile(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := map[string]any{}
+	if len(data) == 0 {
+		return cfg, nil
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func writeJSONFile(path string, cfg map[string]any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0644)
 }
 
 func CopyDir(src, dst string) error {

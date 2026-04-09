@@ -10,7 +10,7 @@ Auditoria de higiene del entorno Claude Code y del proyecto actual. Correr sin a
 
 ### 1b. MCPs y Plugins
 - Leer `~/.claude/settings.json` -> `enabledPlugins`
-- Buscar `.mcp.json` en el proyecto actual y en `~/.claude/`
+- Leer `~/.claude.json` y buscar `.mcp.json` en el proyecto actual
 - Para cada MCP/plugin habilitado: verificar que se este usando realmente (buscar invocaciones en skills, hooks, o historial reciente)
 - Detectar MCPs configurados pero que nunca se usan
 
