@@ -20,12 +20,13 @@ type ProfileInfo struct {
 }
 
 type Inventory struct {
-	Name   string
-	Scope  config.Scope
-	Path   string
-	Exists bool
-	Files  []string
-	Dirs   map[string][]string
+	Name       string
+	Scope      config.Scope
+	Path       string
+	Exists     bool
+	Files      []string
+	Dirs       map[string][]string
+	MCPServers []string
 }
 
 func profilesDir(scope config.Scope) string {
@@ -238,6 +239,22 @@ func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
 	}
 
 	sort.Strings(info.Files)
+
+	// Extract MCP server names from the config file
+	mcpFile := ".claude.json"
+	if scope == config.ScopeLocal {
+		mcpFile = ".mcp.json"
+	}
+	mcpPath := filepath.Join(dir, mcpFile)
+	if cfg, err := readJSONFile(mcpPath); err == nil {
+		if servers, ok := cfg["mcpServers"].(map[string]any); ok {
+			for name := range servers {
+				info.MCPServers = append(info.MCPServers, name)
+			}
+			sort.Strings(info.MCPServers)
+		}
+	}
+
 	return info, nil
 }
 

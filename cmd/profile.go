@@ -116,6 +116,10 @@ func printInventory(scope config.Scope, name, projectPath string) error {
 		fmt.Printf("%s (%d): %s\n", titleWord(key), len(children), strings.Join(children, ", "))
 	}
 
+	if len(inv.MCPServers) > 0 {
+		fmt.Printf("MCP servers (%d): %s\n", len(inv.MCPServers), strings.Join(inv.MCPServers, ", "))
+	}
+
 	return nil
 }
 
