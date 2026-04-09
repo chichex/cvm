@@ -28,6 +28,79 @@ func normalizeRepo(repo string) string {
 	return "https://github.com/" + repo
 }
 
+// looksLikeProfile checks if a directory contains Claude Code config files.
+func looksLikeProfile(dir string) bool {
+	for _, item := range config.ManagedItems {
+		if _, err := os.Stat(filepath.Join(dir, item)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// discoverProfilePath tries to find a profile inside a cloned repo.
+// Returns the path relative to the repo root, or error with suggestions.
+func discoverProfilePath(cacheDir, profileName string) (string, error) {
+	// 1. profiles/<name>/
+	candidate := filepath.Join(cacheDir, "profiles", profileName)
+	if looksLikeProfile(candidate) {
+		fmt.Printf("  found profile at profiles/%s/\n", profileName)
+		return "profiles/" + profileName, nil
+	}
+
+	// 2. <name>/ at root
+	candidate = filepath.Join(cacheDir, profileName)
+	if looksLikeProfile(candidate) {
+		fmt.Printf("  found profile at %s/\n", profileName)
+		return profileName, nil
+	}
+
+	// 3. Repo root itself is a profile
+	if looksLikeProfile(cacheDir) {
+		fmt.Println("  repo root is a profile")
+		return "", nil
+	}
+
+	// 4. Scan for any directories that look like profiles
+	var found []string
+
+	// Check profiles/*/
+	profilesDir := filepath.Join(cacheDir, "profiles")
+	if entries, err := os.ReadDir(profilesDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && looksLikeProfile(filepath.Join(profilesDir, e.Name())) {
+				found = append(found, "profiles/"+e.Name())
+			}
+		}
+	}
+
+	// Check root-level dirs
+	if entries, err := os.ReadDir(cacheDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && e.Name() != "profiles" {
+				if looksLikeProfile(filepath.Join(cacheDir, e.Name())) {
+					found = append(found, e.Name())
+				}
+			}
+		}
+	}
+
+	if len(found) == 1 {
+		fmt.Printf("  found profile at %s/\n", found[0])
+		return found[0], nil
+	}
+
+	if len(found) > 1 {
+		msg := fmt.Sprintf("multiple profiles found in repo, specify which one:\n")
+		for _, p := range found {
+			msg += fmt.Sprintf("  cvm add %s <url>/%s\n", profileName, p)
+		}
+		return "", fmt.Errorf(msg)
+	}
+
+	return "", fmt.Errorf("no profile found in repo. Make sure it contains CLAUDE.md, skills/, or other Claude Code config")
+}
+
 // Add registers a remote profile source and clones it.
 func Add(profileName, repo, path, branch string, scope config.Scope) error {
 	if branch == "" {
@@ -48,10 +121,23 @@ func Add(profileName, repo, path, branch string, scope config.Scope) error {
 		}
 	}
 
+	// Auto-discover profile path if not provided
+	if path == "" {
+		discovered, err := discoverProfilePath(cacheDir, profileName)
+		if err != nil {
+			return err
+		}
+		path = discovered
+	}
+
 	// Verify the path exists in the repo
 	srcDir := filepath.Join(cacheDir, path)
 	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
 		return fmt.Errorf("path %q not found in repo", path)
+	}
+
+	if !looksLikeProfile(srcDir) {
+		return fmt.Errorf("path %q exists but doesn't look like a Claude Code profile (no CLAUDE.md, skills/, etc.)", path)
 	}
 
 	// Copy to profile
