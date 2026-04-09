@@ -1,0 +1,39 @@
+version: 2
+
+builds:
+  - main: .
+    binary: cvm
+    ldflags:
+      - -s -w -X github.com/ayrtonmarini/cvm/cmd.Version={{.Version}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+
+brews:
+  - repository:
+      owner: ayrtonmarini
+      name: homebrew-tap
+    directory: Formula
+    homepage: https://github.com/ayrtonmarini/cvm
+    description: "Claude Version Manager - profile manager for Claude Code"
+    license: MIT
+    install: |
+      bin.install "cvm"
+    test: |
+      system "#{bin}/cvm", "--version"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
