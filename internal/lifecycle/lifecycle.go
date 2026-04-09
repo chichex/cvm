@@ -12,6 +12,7 @@ import (
 	"github.com/chichex/cvm/internal/automation"
 	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/kb"
+	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/state"
 )
 
@@ -83,6 +84,10 @@ func Start(projectPath string) error {
 }
 
 func End(projectPath string) error {
+	if err := saveActiveProfiles(projectPath); err != nil {
+		return err
+	}
+
 	_ = os.Remove(filepath.Join(config.CvmHome(), "learning-pulse"))
 
 	globalTotal, _, globalStale, _ := kb.Stats(config.ScopeGlobal, projectPath)
@@ -127,6 +132,28 @@ func End(projectPath string) error {
 			fmt.Printf("  automation: runner skipped (%v)\n", err)
 		}
 	}
+	return nil
+}
+
+func saveActiveProfiles(projectPath string) error {
+	st, err := state.Load()
+	if err != nil {
+		return err
+	}
+
+	if st.Global.Active != "" {
+		if err := profile.Save(config.ScopeGlobal, st.Global.Active, ""); err != nil {
+			return fmt.Errorf("saving active global profile %q: %w", st.Global.Active, err)
+		}
+	}
+
+	localProfile := st.GetLocal(projectPath)
+	if localProfile != "" {
+		if err := profile.Save(config.ScopeLocal, localProfile, projectPath); err != nil {
+			return fmt.Errorf("saving active local profile %q: %w", localProfile, err)
+		}
+	}
+
 	return nil
 }
 

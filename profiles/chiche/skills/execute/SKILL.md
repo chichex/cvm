@@ -63,15 +63,17 @@ Preflight re-check:
 2. Crear branch desde main/master: `git checkout -b [nombre-de-branch-del-issue]`
    - Si la branch ya existe, mostrar warning y preguntar si hacer checkout a la existente o crear una nueva con sufijo
 3. **Evaluar uso de Teams:**
-   - Si el issue propone Teams (Mediano/Grande), o si hay 2+ waves con tareas independientes entre si -> **intentar crear el Team**
+   - Primero verificar si Claude Teams esta realmente soportado en la sesion actual. No asumir soporte por configuracion del profile o env vars.
+   - Si el issue propone Teams (Mediano/Grande), o si hay 2+ waves con tareas independientes entre si, y el soporte real esta confirmado -> **intentar crear el Team**
    - Mostrar al usuario la estructura de Team propuesta antes de crearlo
-   - Si el issue NO propone Teams pero la clasificacion es Mediano o Grande -> sugerir proactivamente usar Teams y esperar confirmacion
+   - Si el issue NO propone Teams pero la clasificacion es Mediano o Grande y el soporte real esta confirmado -> sugerir proactivamente usar Teams y esperar confirmacion
+   - Si el soporte no esta confirmado -> continuar sin Teams, sin insistir
 
 ## Paso 5: Ejecutar waves
 
 ### Ruta A: Con Teams (preferida para issues Mediano/Grande)
 
-**Intentar crear el Team ANTES de ejecutar waves.** Usar la tool `TeamCreate` con la estructura del issue.
+**Intentar crear el Team ANTES de ejecutar waves solo si el soporte real esta confirmado.** Usar la tool `TeamCreate` con la estructura del issue.
 
 Si el Team se crea exitosamente:
 1. Asignar tasks a teammates segun el plan del issue
@@ -156,6 +158,7 @@ Validacion:
 - Validar entre cada wave antes de avanzar
 - Usar los comandos exactos del preflight para validar
 - Reportar progreso wave por wave
+- Si no hay soporte real confirmado para Teams, ejecutar sin Teams sin intentar forzarlo
 
 ## MUST NOT DO
 - NO ejecutar sin validar la estructura del issue primero
@@ -165,3 +168,4 @@ Validacion:
 - NO hacer commit sin haber pasado la validacion final (Paso 6)
 - NO agregar features o cambios fuera del scope del issue
 - NO inventar tareas que no estan en el plan
+- NO asumir soporte de Teams por configuracion experimental del profile

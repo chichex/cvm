@@ -5,9 +5,11 @@
 El thread principal es un orquestador, no un ejecutor. Delegar siempre que sea posible.
 
 Orden de preferencia:
-1. **Teams** — cuando hay 2+ areas independientes que se pueden paralelizar
+1. **Teams** — solo si Claude expone soporte real para Teams en esta sesion y hay 2+ areas independientes que se pueden paralelizar
 2. **Subagent** — cuando el task es acotado y enfocado (investigacion, implementacion de un modulo)
 3. **Directo** — solo para respuestas simples, confirmaciones, o tareas de <30 segundos
+
+No asumir soporte de Teams solo porque el profile tenga flags o env vars. Si no hay evidencia clara de soporte real en la sesion actual, caer a subagents o ejecucion directa.
 
 Antes de actuar, correr mentalmente `/orchestrate` para decidir la ruta.
 
@@ -91,10 +93,10 @@ Estos skills se invocan con `/nombre`:
 | `/evolve` | Detectar patrones repetidos y generar nuevos skills |
 | `/maintain` | Higiene de KB: dedup, prune, consolidar |
 | `/validate` | Debugging adversarial con multiples agentes |
-| `/orchestrate` | Analizar task y decidir: directo, subagent, o team |
+| `/orchestrate` | Analizar task y decidir: directo, subagent, o team (solo si hay soporte real) |
 | `/checkpoint` | Crear save point antes de cambios grandes |
 | `/quality-gate` | Validacion post-implementacion: lint, tests, slop |
-| `/spec` | Planificar implementacion completa con preflight y propuesta de teams |
+| `/spec` | Planificar implementacion completa con preflight y propuesta de teams solo si estan soportados |
 | `/execute` | Ejecutar un issue planificado con /spec de punta a punta |
 | `/fix` | Diagnosticar y resolver un bug con rigor |
 | `/ux` | Analizar screenshots de UI/UX y generar propuestas de mejora |

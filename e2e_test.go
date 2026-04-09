@@ -717,6 +717,52 @@ func TestProfileContentIsolation(t *testing.T) {
 	}
 }
 
+func TestLifecycleEndSavesAddedMCPServersToActiveProfile(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+
+	e.mustRun("global", "init", "chiche")
+	e.mustRun("use", "chiche")
+
+	activeSettings := filepath.Join(e.home, ".claude", "settings.json")
+	data, err := os.ReadFile(activeSettings)
+	if os.IsNotExist(err) {
+		data = []byte("{}")
+	} else if err != nil {
+		t.Fatalf("read active settings: %v", err)
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal active settings: %v", err)
+	}
+
+	mcpServers, _ := cfg["mcpServers"].(map[string]any)
+	if mcpServers == nil {
+		mcpServers = map[string]any{}
+	}
+	mcpServers["sequential-thinking"] = map[string]any{
+		"command": "npx",
+		"args":    []any{"-y", "@modelcontextprotocol/server-sequential-thinking"},
+	}
+	cfg["mcpServers"] = mcpServers
+
+	updated, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal updated settings: %v", err)
+	}
+	updated = append(updated, '\n')
+	if err := os.WriteFile(activeSettings, updated, 0644); err != nil {
+		t.Fatalf("write active settings: %v", err)
+	}
+
+	e.mustRun("lifecycle", "end")
+
+	profileSettings := filepath.Join(e.home, ".cvm", "global", "profiles", "chiche", "settings.json")
+	assertMCPServerExists(t, activeSettings, "sequential-thinking")
+	assertMCPServerExists(t, profileSettings, "sequential-thinking")
+}
+
 // ---------------------------------------------------------------------------
 // KB update existing entry
 // ---------------------------------------------------------------------------
@@ -859,5 +905,24 @@ func assertSettingsMode(t *testing.T, path, want string) {
 	}
 	if cfg.Permissions.DefaultMode != want {
 		t.Fatalf("settings %s defaultMode = %q, want %q", path, cfg.Permissions.DefaultMode, want)
+	}
+}
+
+func assertMCPServerExists(t *testing.T, path, want string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read settings %s: %v", path, err)
+	}
+
+	var cfg struct {
+		MCPServers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal settings %s: %v", path, err)
+	}
+	if _, ok := cfg.MCPServers[want]; !ok {
+		t.Fatalf("settings %s missing mcp server %q", path, want)
 	}
 }

@@ -44,6 +44,10 @@ Antes de planificar nada, verificar que se tiene todo lo necesario para validar 
 8. **Si es produccion**: Confirmar explicitamente con el usuario. Identificar que datos usar (cuentas de test, feature flags, sandbox mode). Documentar como revertir o limpiar cualquier efecto secundario. Si no hay forma segura de probar en prod, reportar y frenar.
 9. **Convenciones de test**: Entender donde van los tests, que framework usan, como se nombran, si hay helpers existentes.
 
+**3c. Soporte de Teams**
+10. Verificar si Claude Teams esta realmente soportado en la sesion actual. No asumir soporte por configuracion del profile o env vars.
+11. Si no hay evidencia clara de soporte real, marcar Teams como no disponible y planificar sin Teams.
+
 Reportar los hallazgos al usuario:
 ```
 Preflight check:
@@ -74,11 +78,11 @@ Asignar una categoria:
 - Sin Teams
 
 **Mediano** (2-3 modulos, 10-30 archivos, riesgo moderado):
-- Proponer Claude Teams con 2-3 teammates, tasks acotados, coordinacion simple
+- Proponer Claude Teams con 2-3 teammates solo si el soporte real esta confirmado; si no, plan secuencial con subagents puntuales
 - Sugerir worktree si hay trabajo en progreso en la branch actual
 
 **Grande** (3+ modulos, 30+ archivos, alto riesgo, paralelizable):
-- Proponer Claude Teams con 3-5 teammates, tasks mas complejos, puntos de sincronizacion
+- Proponer Claude Teams con 3-5 teammates solo si el soporte real esta confirmado; si no, descomponer en waves secuenciales o subagents acotados
 - Worktree recomendado para aislar el laburo
 
 ## Paso 5: Armar el plan de ejecucion
@@ -111,7 +115,7 @@ Cada wave debe tener:
 - Output esperado antes de avanzar a la siguiente wave
 - Los comandos exactos de validacion descubiertos en el preflight
 
-## Paso 6: Proponer estructura de Teams (solo si es Mediano o Grande)
+## Paso 6: Proponer estructura de Teams (solo si es Mediano o Grande Y Teams esta soportado de verdad)
 
 ```markdown
 ## Team propuesto: [nombre]
@@ -133,10 +137,29 @@ Si hay trabajo en progreso en la branch actual O la clasificacion es Mediano/Gra
 - Explicar por que conviene aislar
 
 ## Paso 8: Presentar al usuario
-Mostrar el plan completo incluyendo los resultados del preflight y pedir confirmacion antes de crear el issue.
+Mostrar el plan completo incluyendo los resultados del preflight.
 
-## Paso 9: Crear GitHub issue
-Una vez aprobado, crear el issue con `gh issue create` usando esta estructura:
+Cerrar con una recomendacion de siguiente paso segun el contexto:
+- Ejecutar directo si el scope ya esta claro y no hace falta artefacto extra
+- Dejar el plan en la conversacion si alcanza como handoff
+- Guardarlo en un documento local/PRD si conviene persistirlo fuera del chat
+- Crear un issue solo si el usuario lo pide o si realmente aporta trazabilidad/coordinacion
+
+No empujar GitHub issue como opcion por defecto.
+No empujar Teams como opcion si el soporte no quedo confirmado en el preflight.
+
+## Paso 9: Handoff opcional
+Si hace falta materializar el plan fuera de la conversacion, proponer el formato mas adecuado al contexto:
+- Markdown local en el repo
+- PRD/spec/RFC
+- GitHub issue
+
+Elegir GitHub issue solo cuando tenga sentido operativo claro, por ejemplo:
+- Hace falta trazabilidad en backlog
+- Hay coordinacion entre varias personas
+- El equipo ya trabaja con issues como fuente de verdad
+
+Si el usuario pide un issue, usar esta estructura:
 
 ```markdown
 ## Contexto
@@ -175,10 +198,13 @@ Una vez aprobado, crear el issue con `gh issue create` usando esta estructura:
 
 ## MUST NOT DO
 - NO implementar nada — este skill solo planifica
-- NO crear el issue sin aprobacion del usuario
+- NO crear un issue sin pedido o aprobacion explicita del usuario
 - NO inventar requisitos que no esten en los documentos
 - NO ignorar restricciones mencionadas en los docs
 - NO proponer Teams si el task es Chico
+- NO proponer Teams si el soporte real no esta confirmado
 - NO proponer worktree si no hay justificacion real
 - NO avanzar a planificar si el preflight tiene fallos sin resolver
 - NO asumir el entorno de pruebas — verificarlo explicitamente
+- NO asumir que GitHub issue es el mejor formato de handoff
+- NO asumir soporte de Teams por una env var o config experimental
