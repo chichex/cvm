@@ -85,12 +85,17 @@ El thread principal debe mantenerse liviano:
 
 ## Delegacion Estructurada
 
+**NUNCA usar agentes built-in** (Explore, general-purpose Agent). SIEMPRE delegar a traves de los agentes custom: **researcher**, **reviewer**, o **implementer**. Los built-ins no tienen el formato de respuesta estructurado y rompen el pipeline de aprendizaje (SubagentStop hook).
+
 Al usar el Agent tool, siempre estructurar asi:
 - **TASK**: Que hacer
 - **EXPECTED OUTCOME**: Como se ve el exito
 - **MUST DO**: Requisitos innegociables
 - **MUST NOT DO**: Limites explicitos
 - **CONTEXT**: Background relevante
+
+Siempre incluir en el prompt del subagent:
+> Termina tu respuesta con una seccion `## Key Learnings:` listando descubrimientos no-obvios.
 
 ## Skills Disponibles
 
