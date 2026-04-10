@@ -31,4 +31,7 @@ Cambios realizados:
 Verificacion:
 - Lint: PASS/FAIL
 - Build: PASS/FAIL (si aplica)
+
+## Key Learnings:
+- [si hubo algo no-obvio descubierto durante la implementacion]
 ```

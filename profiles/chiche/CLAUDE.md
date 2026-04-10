@@ -22,12 +22,25 @@ La KB es la memoria persistente entre sesiones. Usarla siempre.
 - Si hay entries relevantes, leerlas y aplicarlas
 
 **On-the-fly learning (automatico):**
-El hook `UserPromptSubmit` inyecta el protocolo de learning. Cuando identifiques algo no-obvio:
-1. Verificar duplicados: `cvm kb search "<terminos>"`
-2. Guardar: `cvm kb put "<key>" --body "<desc con el POR QUE>" --tag "<tipo>,<area>" [--local]`
-3. Reportar: `[learned] key — descripcion`
+El hook `UserPromptSubmit` inyecta el protocolo de learning con self-check obligatorio.
 
-No forzar. Solo guardar si es genuinamente util para futuras sesiones. Calidad > cantidad.
+Self-check despues de cada interaccion significativa:
+- ¿Tome una decision de diseno? → `cvm kb put` con tag `decision`
+- ¿Resolvi un bug o encontre la causa? → `cvm kb put` con tag `learning`
+- ¿Algo no funciono como esperaba? → `cvm kb put` con tag `gotcha`
+- ¿El usuario confirmo o rechazo un approach? → `cvm kb put` con tag `decision`
+
+Si la respuesta a cualquiera es SI → guardar AHORA, no despues. Calidad > cantidad.
+
+**Captura pasiva de subagents:**
+El hook `SubagentStop` captura automaticamente secciones `## Key Learnings:` del output de subagents y las persiste en KB. Los agentes deben incluir esta seccion en su formato de respuesta.
+
+**Session summary (obligatorio):**
+Antes de cerrar la sesion (cuando el usuario dice listo/done/chau/exit), DEBES persistir un resumen:
+```
+cvm kb put "session-summary-YYYYMMDD" --body "Goal: ... | Accomplished: ... | Discoveries: ... | Next: ..." --tag "session,summary"
+```
+Esto NO es opcional. Si lo salteas, la proxima sesion arranca ciega.
 
 **Skills manuales (cuando se necesita mas control):**
 - `/learn` — guardar un learning con mas detalle y confirmacion
@@ -42,18 +55,18 @@ No forzar. Solo guardar si es genuinamente util para futuras sesiones. Calidad >
 - `cvm kb search <query> --local` — buscar en KB local
 - `cvm kb ls` / `cvm kb ls --local` — listar entries
 
-## Seleccion de Modelo
+## Seleccion de Modelo y Agente
 
 Usar el modelo apropiado para cada tarea. No desperdiciar tokens de opus en lookups.
 
-| Tarea | Modelo | Justificacion |
-|-------|--------|---------------|
-| Buscar archivos, leer codigo, lookups | haiku | Rapido y barato |
-| Implementacion, refactoring, tests | sonnet | Balance costo/calidad |
-| Arquitectura, review, decisiones criticas | opus | Maxima calidad de razonamiento |
-| Debugging adversarial (`/validate`) | opus x2 o opus+codex | Hipotesis competitivas |
+| Verbo de la tarea | Agente | Modelo | Justificacion |
+|-------------------|--------|--------|---------------|
+| buscar, encontrar, listar, leer, localizar | **researcher** | haiku | Mecanico, rapido y barato |
+| analizar, investigar, entender, revisar, comparar, evaluar | **reviewer** | opus | Requiere razonamiento |
+| implementar, escribir, refactorear, testear, arreglar | **implementer** | sonnet | Balance costo/calidad |
+| debugging adversarial (`/validate`) | multiples | opus x2 o opus+codex | Hipotesis competitivas |
 
-Cuando se delega a un subagent, especificar el modelo en el prompt si es relevante.
+**Regla de desambiguacion**: ¿la tarea requiere razonamiento o solo lectura? Razonamiento → reviewer (opus). Solo lectura → researcher (haiku).
 
 ## Higiene de Contexto
 
@@ -107,9 +120,9 @@ Estos skills se invocan con `/nombre`:
 ## Agentes Disponibles
 
 Definidos en `agents/`:
-- **researcher** — Exploracion y busqueda, usa haiku. Tools: Read, Grep, Glob, Bash
-- **implementer** — Escritura de codigo, usa sonnet. Tools: todos
-- **reviewer** — Review y analisis, usa opus. Tools: Read, Grep, Glob
+- **researcher** — Busqueda mecanica (buscar, listar, leer), usa haiku. Tools: Read, Grep, Glob, Bash
+- **implementer** — Escritura de codigo (implementar, refactorear, testear), usa sonnet. Tools: todos
+- **reviewer** — Analisis profundo (analizar, investigar, revisar, evaluar), usa opus. Tools: Read, Grep, Glob, Bash
 
 ## Reglas
 
@@ -127,7 +140,10 @@ Las reglas en `rules/` se aplican automaticamente segun el contexto:
 - Mantenimiento (`maintain`) y evolucion (`evolve`) se disparan por umbrales, se encolan como candidatos persistentes en `~/.cvm/automation/` y luego se ejecutan automaticamente en background
 - Los candidatos se materializan en briefs Markdown y se inspeccionan con `cvm automation status|ls|show <id>`
 - Cada corrida queda auditada con `cvm automation history` y `cvm automation show-run <id>`
-- **On-the-fly learning**: el hook `UserPromptSubmit` inyecta protocolo de learning automatico — guardar directo con `cvm kb put`, sin headless
+- **On-the-fly learning**: el hook `UserPromptSubmit` inyecta protocolo de learning con self-check obligatorio
+- **Captura pasiva**: el hook `SubagentStop` captura `## Key Learnings:` del output de subagents automaticamente
+- **Post-compaction**: el hook `SessionStart` (matcher: compact) re-inyecta el protocolo despues de compactar contexto
+- **Session summary**: obligatorio antes de cerrar — persistir resumen con `cvm kb put`
 - Para revision manual completa de sesion, usar `/retro`
 
 ### Presupuesto de latencia

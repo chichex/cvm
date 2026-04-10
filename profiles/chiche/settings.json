@@ -28,6 +28,15 @@
             "command": "bash ~/.claude/hooks/check-tools.sh"
           }
         ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/post-compaction.sh"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -37,6 +46,18 @@
           {
             "type": "command",
             "command": "bash ~/.claude/hooks/learning-decorator.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/subagent-stop.sh",
+            "timeout": 10000
           }
         ]
       }

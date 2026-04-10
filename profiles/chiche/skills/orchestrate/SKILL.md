@@ -26,7 +26,15 @@ Evaluar $ARGUMENTS en estas dimensiones:
 - Tarea enfocada en un area especifica
 - 3-10 archivos, 1-2 areas, complejidad media
 - No paralelizable o solo necesita 1 agente
-- Elegir agente: researcher (explorar), implementer (codear), reviewer (revisar)
+- Elegir agente segun el VERBO de la tarea:
+
+| Verbo | Agente | Modelo |
+|-------|--------|--------|
+| buscar, encontrar, listar, leer, localizar | **researcher** | haiku |
+| analizar, investigar, entender, revisar, comparar, evaluar | **reviewer** | opus |
+| implementar, escribir, refactorear, testear, arreglar | **implementer** | sonnet |
+
+Si el verbo es ambiguo: ¿requiere razonamiento o solo lectura? Razonamiento → reviewer. Solo lectura → researcher.
 
 **Team** — lanzar multiples agentes en paralelo, solo si Claude Teams esta realmente soportado:
 - Multiples areas independientes que se pueden paralelizar
