@@ -55,12 +55,12 @@ Esto NO es opcional. Si lo salteas, la proxima sesion arranca ciega.
 - `cvm kb search <query> --local` — buscar en KB local
 - `cvm kb ls` / `cvm kb ls --local` — listar entries
 
-## Seleccion de Modelo y Agente
+## Seleccion de Modelo y Rol
 
 Usar el modelo apropiado para cada tarea. No desperdiciar tokens de opus en lookups.
 
-| Verbo de la tarea | Agente | Modelo | Justificacion |
-|-------------------|--------|--------|---------------|
+| Verbo de la tarea | Rol | Modelo | Justificacion |
+|-------------------|-----|--------|---------------|
 | buscar, encontrar, listar, leer, localizar | **researcher** | haiku | Mecanico, rapido y barato |
 | analizar, investigar, entender, revisar, comparar, evaluar | **reviewer** | opus | Requiere razonamiento |
 | implementar, escribir, refactorear, testear, arreglar | **implementer** | sonnet | Balance costo/calidad |
@@ -71,10 +71,10 @@ Usar el modelo apropiado para cada tarea. No desperdiciar tokens de opus en look
 ## Higiene de Contexto
 
 El thread principal debe mantenerse liviano:
-- NO leer archivos grandes en el thread principal — delegar a un subagent researcher
+- NO leer archivos grandes en el thread principal — delegar a un subagent con rol researcher
 - NO hacer grep extensivos en el thread principal — delegar
 - NO acumular mas de 3-4 tool calls consecutivas sin delegar
-- Cuando se necesita explorar codigo, lanzar un subagent con scope acotado y que reporte hallazgos
+- Cuando se necesita explorar codigo, lanzar un subagent con scope acotado que reporte hallazgos
 
 ## Disciplina de Scope
 
@@ -85,7 +85,17 @@ El thread principal debe mantenerse liviano:
 
 ## Delegacion Estructurada
 
-**NUNCA usar agentes built-in** (Explore, general-purpose Agent). SIEMPRE delegar a traves de los agentes custom: **researcher**, **reviewer**, o **implementer**. Los built-ins no tienen el formato de respuesta estructurado y rompen el pipeline de aprendizaje (SubagentStop hook).
+Delegar usando `Agent(subagent_type: "general-purpose", model: "<model>")` con el modelo apropiado segun el rol:
+
+| Rol | model | Cuando |
+|-----|-------|--------|
+| **researcher** | `haiku` | buscar, encontrar, listar, leer, localizar |
+| **implementer** | `sonnet` | implementar, escribir, refactorear, testear, arreglar |
+| **reviewer** | `opus` | analizar, investigar, entender, revisar, evaluar |
+
+Incluir en el prompt del agente el rol y formato de respuesta (definidos en `agents/<rol>/AGENT.md`).
+
+SIEMPRE usar `subagent_type: "general-purpose"` para delegar. Claude Code no descubre agent types custom definidos en `agents/`; por eso los roles se simulan con general-purpose + model + prompt.
 
 Al usar el Agent tool, siempre estructurar asi:
 - **TASK**: Que hacer
@@ -122,12 +132,12 @@ Estos skills se invocan con `/nombre`:
 | `/skill-create` | Generar un nuevo skill custom para Claude Code |
 | `/headless` | Ejecutar una tarea en Claude Code headless (claude -p) |
 
-## Agentes Disponibles
+## Roles de Delegacion
 
-Definidos en `agents/`:
-- **researcher** — Busqueda mecanica (buscar, listar, leer), usa haiku. Tools: Read, Grep, Glob, Bash
-- **implementer** — Escritura de codigo (implementar, refactorear, testear), usa sonnet. Tools: todos
-- **reviewer** — Analisis profundo (analizar, investigar, revisar, evaluar), usa opus. Tools: Read, Grep, Glob, Bash
+Prompt templates en `agents/<rol>/AGENT.md`. Se invocan via `Agent(subagent_type: "general-purpose", model: "<model>")` embebiendo las instrucciones del template en el prompt:
+- **researcher** (`model: haiku`) — Busqueda mecanica (buscar, listar, leer)
+- **implementer** (`model: sonnet`) — Escritura de codigo (implementar, refactorear, testear)
+- **reviewer** (`model: opus`) — Analisis profundo (analizar, investigar, revisar, evaluar)
 
 ## Reglas
 

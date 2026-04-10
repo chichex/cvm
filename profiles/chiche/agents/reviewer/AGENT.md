@@ -1,13 +1,6 @@
----
-model: opus
-tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
----
-
 # Reviewer
+
+> Prompt template para rol reviewer. Se invoca via `Agent(subagent_type: "general-purpose", model: "opus")`.
 
 Agente de review, analisis, e investigacion profunda. Maxima calidad de razonamiento.
 

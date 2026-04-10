@@ -22,19 +22,19 @@ Evaluar $ARGUMENTS en estas dimensiones:
 - 1-2 archivos, 1 area, complejidad baja
 - Tiempo estimado: <30 segundos
 
-**Subagent** — delegar a un agente especializado:
+**Subagent** — delegar a un subagent con rol especializado:
 - Tarea enfocada en un area especifica
 - 3-10 archivos, 1-2 areas, complejidad media
-- No paralelizable o solo necesita 1 agente
-- Elegir agente segun el VERBO de la tarea:
+- No paralelizable o solo necesita 1 subagent
+- Elegir rol segun el VERBO de la tarea (invocar con `Agent(subagent_type: "general-purpose", model: "<model>")`):
 
-| Verbo | Agente | Modelo |
-|-------|--------|--------|
-| buscar, encontrar, listar, leer, localizar | **researcher** | haiku |
-| analizar, investigar, entender, revisar, comparar, evaluar | **reviewer** | opus |
-| implementar, escribir, refactorear, testear, arreglar | **implementer** | sonnet |
+| Verbo | Rol | model |
+|-------|-----|-------|
+| buscar, encontrar, listar, leer, localizar | **researcher** | `haiku` |
+| analizar, investigar, entender, revisar, comparar, evaluar | **reviewer** | `opus` |
+| implementar, escribir, refactorear, testear, arreglar | **implementer** | `sonnet` |
 
-Si el verbo es ambiguo: ¿requiere razonamiento o solo lectura? Razonamiento → reviewer. Solo lectura → researcher.
+Si el verbo es ambiguo: ¿requiere razonamiento o solo lectura? Razonamiento → reviewer (opus). Solo lectura → researcher (haiku).
 
 **Team** — lanzar multiples agentes en paralelo, solo si Claude Teams esta realmente soportado:
 - Multiples areas independientes que se pueden paralelizar
@@ -54,8 +54,9 @@ Accion: [que voy a hacer]
 **Si subagent:**
 ```
 Ruta: subagent
-Agente: [researcher/implementer/reviewer]
-Modelo sugerido: [haiku/sonnet/opus]
+Invocacion: Agent(subagent_type: "general-purpose", model: "[haiku/sonnet/opus]")
+Rol: [researcher/implementer/reviewer]
+Prompt: embeber instrucciones de agents/<rol>/AGENT.md + terminar con ## Key Learnings:
 TASK: [descripcion]
 EXPECTED OUTCOME: [que se espera]
 ```

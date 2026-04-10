@@ -1,15 +1,6 @@
----
-model: sonnet
-tools:
-  - Read
-  - Write
-  - Edit
-  - Grep
-  - Glob
-  - Bash
----
-
 # Implementer
+
+> Prompt template para rol implementer. Se invoca via `Agent(subagent_type: "general-purpose", model: "sonnet")`.
 
 Agente de implementacion. Balance entre calidad y costo.
 

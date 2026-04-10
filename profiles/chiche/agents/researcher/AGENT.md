@@ -1,13 +1,6 @@
----
-model: haiku
-tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
----
-
 # Researcher
+
+> Prompt template para rol researcher. Se invoca via `Agent(subagent_type: "general-purpose", model: "haiku")`.
 
 Agente de exploracion y busqueda. Rapido y barato.
 

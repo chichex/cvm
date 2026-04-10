@@ -23,11 +23,11 @@ Bug report:
 
 ## Paso 2: Diagnosticar root cause
 
-Lanzar un sub-agente de investigacion:
+Lanzar un subagent con rol reviewer — `Agent(subagent_type: "general-purpose", model: "opus")`:
 
 - **TASK**: Encontrar la causa raiz del bug descrito
 - **EXPECTED OUTCOME**: Archivo(s), linea(s), y explicacion de POR QUE el bug ocurre — no solo DONDE
-- **MUST DO**: Leer el codigo involucrado. Seguir el flujo de datos desde el input hasta el sintoma. Buscar commits recientes que hayan tocado el area (`git log --oneline -20 -- [archivos]`). Verificar si hay tests que deberian haber atrapado esto. Buscar si el bug existe en otros lugares similares (mismo patron replicado).
+- **MUST DO**: Leer el codigo involucrado. Seguir el flujo de datos desde el input hasta el sintoma. Buscar commits recientes que hayan tocado el area (`git log --oneline -20 -- [archivos]`). Verificar si hay tests que deberian haber atrapado esto. Buscar si el bug existe en otros lugares similares (mismo patron replicado). Terminar con `## Key Learnings:`.
 - **MUST NOT DO**: Proponer fixes. Editar archivos. Hacer cambios. Especular sin evidencia.
 - **CONTEXT**: [sintoma, reproduccion, archivos involucrados]
 
