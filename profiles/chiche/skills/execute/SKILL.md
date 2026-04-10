@@ -59,7 +59,7 @@ Preflight re-check:
 
 ## Paso 4: Setup
 
-1. **Siempre usar worktree:** Crear un worktree con `EnterWorktree` para trabajar en una copia aislada del repo. Esto es obligatorio, no opcional.
+1. **Siempre usar worktree:** Crear un worktree con el tool `EnterWorktree` (buscarlo con `ToolSearch` si no esta cargado) para trabajar en una copia aislada del repo. Esto es obligatorio, no opcional.
 2. Crear branch desde main/master: `git checkout -b [nombre-de-branch-del-issue]`
    - Si la branch ya existe, mostrar warning y preguntar si hacer checkout a la existente o crear una nueva con sufijo
 3. **Evaluar uso de Teams:**
@@ -73,7 +73,9 @@ Preflight re-check:
 
 ### Ruta A: Con Teams (preferida para issues Mediano/Grande)
 
-**Intentar crear el Team ANTES de ejecutar waves solo si el soporte real esta confirmado.** Usar la tool `TeamCreate` con la estructura del issue.
+**Intentar crear el Team ANTES de ejecutar waves solo si el soporte real esta confirmado.**
+- Si el tool `TeamCreate` esta disponible en la sesion: usarlo con la estructura del issue.
+- Si `TeamCreate` no esta disponible: lanzar subagents en paralelo con `Agent(subagent_type: "general-purpose", model: "sonnet")`, uno por wave o area independiente.
 
 Si el Team se crea exitosamente:
 1. Asignar tasks a teammates segun el plan del issue
@@ -127,6 +129,7 @@ Validacion:
 
 ## Paso 7: Cerrar el loop
 
+<!-- Nota: el usuario autoriza commit/push/PR al invocar /execute -->
 1. Hacer commit(s) siguiendo convenciones del proyecto (stage solo archivos relevantes, NO usar `git add -A`)
 2. Push de la branch al remote: `git push -u origin [nombre-de-branch]`
 3. Crear PR automaticamente con `gh pr create` referenciando el issue (`Closes #N`)

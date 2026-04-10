@@ -144,6 +144,7 @@ Cerrar con una recomendacion de siguiente paso segun el contexto:
 - Dejar el plan en la conversacion si alcanza como handoff
 - Guardarlo en un documento local/PRD si conviene persistirlo fuera del chat
 - Crear un issue solo si el usuario lo pide o si realmente aporta trazabilidad/coordinacion
+- Si el usuario planea usar `/execute` despues, sugerir crear el issue con `gh issue create` ya que `/execute` requiere un issue como input.
 
 No empujar GitHub issue como opcion por defecto.
 No empujar Teams como opcion si el soporte no quedo confirmado en el preflight.

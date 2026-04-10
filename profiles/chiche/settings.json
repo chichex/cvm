@@ -9,8 +9,14 @@
   "permissions": {
     "allow": [
       "Bash(cvm *)",
-      "Bash(chmod +x:*)",
-      "Bash(which *)"
+      "Bash(chmod +x *)",
+      "Bash(which *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(npm *)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(codex *)"
     ],
     "defaultMode": "default"
   },

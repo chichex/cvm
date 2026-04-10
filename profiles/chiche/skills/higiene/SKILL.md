@@ -3,7 +3,7 @@ Auditoria de higiene del entorno Claude Code y del proyecto actual. Correr sin a
 ## Paso 1: Auditoria del entorno Claude
 
 ### 1a. Skills
-- Listar todos los skills disponibles (en el profile activo y en `~/.claude/commands/` si existen)
+- Listar todos los skills disponibles (en el profile activo y en `~/.claude/skills/` si existen)
 - Verificar que cada skill tenga una descripcion clara en la primera linea
 - Detectar skills duplicados o con funcionalidad solapada
 - Reportar cantidad total

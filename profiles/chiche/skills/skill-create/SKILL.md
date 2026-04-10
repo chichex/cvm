@@ -48,7 +48,8 @@ NO guardar nada hasta que el usuario confirme.
 
 ### Paso 5: Guardar
 Una vez aprobado:
-1. Crear el directorio del skill en `skills/[nombre]/` dentro del profile activo
-2. Guardar el contenido en `skills/[nombre]/SKILL.md`
-3. Actualizar el CLAUDE.md del profile para listar el nuevo skill en la tabla de skills
-4. Confirmar que el skill quedo registrado mostrando el comando: `/[nombre]`
+1. Usar `cvm override add skill [nombre]` para crear el skill como override (sobrevive a `cvm pull`)
+   - El comando crea la estructura del skill y abre el editor para pegar el contenido
+   - Agregar flag `--local` si el skill es especifico del proyecto
+2. Actualizar el CLAUDE.md del profile para listar el nuevo skill en la tabla de skills
+3. Confirmar que el skill quedo registrado mostrando el comando: `/[nombre]`

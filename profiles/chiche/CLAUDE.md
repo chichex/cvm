@@ -11,7 +11,7 @@ Orden de preferencia:
 
 No asumir soporte de Teams solo porque el profile tenga flags o env vars. Si no hay evidencia clara de soporte real en la sesion actual, caer a subagents o ejecucion directa.
 
-Antes de actuar, correr mentalmente `/orchestrate` para decidir la ruta.
+Antes de actuar, aplicar la logica de routing (ver Delegacion Estructurada) para decidir la ruta.
 
 ## Knowledge Base (KB)
 
@@ -54,34 +54,8 @@ Esto NO es opcional. Si lo salteas, la proxima sesion arranca ciega.
 - `cvm kb search <query>` — buscar en KB global
 - `cvm kb search <query> --local` — buscar en KB local
 - `cvm kb ls` / `cvm kb ls --local` — listar entries
-
-## Seleccion de Modelo y Rol
-
-Usar el modelo apropiado para cada tarea. No desperdiciar tokens de opus en lookups.
-
-| Verbo de la tarea | Rol | Modelo | Justificacion |
-|-------------------|-----|--------|---------------|
-| buscar, encontrar, listar, leer, localizar | **researcher** | haiku | Mecanico, rapido y barato |
-| analizar, investigar, entender, revisar, comparar, evaluar | **reviewer** | opus | Requiere razonamiento |
-| implementar, escribir, refactorear, testear, arreglar | **implementer** | sonnet | Balance costo/calidad |
-| debugging adversarial (`/validate`) | multiples | opus x2 o opus+codex | Hipotesis competitivas |
-
-**Regla de desambiguacion**: ¿la tarea requiere razonamiento o solo lectura? Razonamiento → reviewer (opus). Solo lectura → researcher (haiku).
-
-## Higiene de Contexto
-
-El thread principal debe mantenerse liviano:
-- NO leer archivos grandes en el thread principal — delegar a un subagent con rol researcher
-- NO hacer grep extensivos en el thread principal — delegar
-- NO acumular mas de 3-4 tool calls consecutivas sin delegar
-- Cuando se necesita explorar codigo, lanzar un subagent con scope acotado que reporte hallazgos
-
-## Disciplina de Scope
-
-- Hacer SOLO lo que se pidio
-- Si se detecta algo mejorable pero fuera de scope: guardarlo con `/learn` o `/gotcha`, NO implementar
-- Sugerencias se dan en UNA linea. Si el usuario quiere mas detalle, lo pide.
-- No agregar error handling especulativo, no mejorar codigo que funciona, no refactorear de paso
+- `cvm kb show <key>` / `cvm kb show <key> --local` — ver detalle de una entry
+- `cvm kb rm <key>` / `cvm kb rm <key> --local` — eliminar una entry
 
 ## Delegacion Estructurada
 
@@ -141,7 +115,8 @@ Prompt templates en `agents/<rol>/AGENT.md`. Se invocan via `Agent(subagent_type
 
 ## Reglas
 
-Las reglas en `rules/` se aplican automaticamente segun el contexto:
+Las reglas en `rules/` se aplican automaticamente:
+- **agent-routing** — Routing de delegacion via general-purpose + model
 - **model-selection** — Guia de seleccion de modelo por tipo de tarea
 - **context-hygiene** — Mantener el thread principal minimo
 - **cost-awareness** — No desperdiciar tokens
@@ -152,13 +127,12 @@ Las reglas en `rules/` se aplican automaticamente segun el contexto:
 
 - Al iniciar sesion se ejecuta `cvm lifecycle start` automaticamente (hook)
 - Al cerrar sesion se ejecuta `cvm lifecycle end` automaticamente (hook)
-- Mantenimiento (`maintain`) y evolucion (`evolve`) se disparan por umbrales, se encolan como candidatos persistentes en `~/.cvm/automation/` y luego se ejecutan automaticamente en background
+- Mantenimiento (`maintain`) y evolucion (`evolve`) pueden dispararse manualmente con `/maintain` y `/evolve`, o se encolan como candidatos en `~/.cvm/automation/` cuando `cvm lifecycle` los detecta
 - Los candidatos se materializan en briefs Markdown y se inspeccionan con `cvm automation status|ls|show <id>`
 - Cada corrida queda auditada con `cvm automation history` y `cvm automation show-run <id>`
 - **On-the-fly learning**: el hook `UserPromptSubmit` inyecta protocolo de learning con self-check obligatorio
 - **Captura pasiva**: el hook `SubagentStop` captura `## Key Learnings:` del output de subagents automaticamente
 - **Post-compaction**: el hook `SessionStart` (matcher: compact) re-inyecta el protocolo despues de compactar contexto
-- **Session summary**: obligatorio antes de cerrar — persistir resumen con `cvm kb put`
 - Para revision manual completa de sesion, usar `/retro`
 
 ### Presupuesto de latencia
@@ -197,7 +171,7 @@ Agregar flag `--local` para overrides de profiles locales.
 - Nunca usar `as any`, `@ts-ignore`, o `eslint-disable` sin justificacion explicita
 - Nunca dejar catch blocks vacios
 - Nunca borrar o skipear tests para que pasen
-- Nunca commitear sin que el usuario lo pida
+- Nunca commitear sin que el usuario lo pida (excepcion: `/execute` y `/checkpoint` incluyen commit como parte del flujo autorizado)
 - Nunca especular sobre codigo sin leerlo — usar tools para verificar
 - Nunca hacer shotgun debugging
 

@@ -44,8 +44,8 @@ Incluir el contenido completo del SKILL.md propuesto.
 
 ### Paso 5: Crear (si aprobado)
 Determinar donde guardar:
-- Si el skill es **especifico del proyecto**: guardar en `.claude/skills/[nombre]/SKILL.md`
-- Si el skill es **global** (aplica a cualquier proyecto): guardar en `~/.claude/skills/[nombre]/SKILL.md`
+- Si el skill es **especifico del proyecto**: `cvm override add skill [nombre] --local`
+- Si el skill es **global** (aplica a cualquier proyecto): `cvm override add skill [nombre]`
 
 Registrar la creacion en KB:
 ```bash

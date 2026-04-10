@@ -38,9 +38,9 @@ while IFS= read -r line; do
   # Generate a key from first few words
   KEY=$(echo "$BODY" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{for(i=1;i<=4&&i<=NF;i++) printf "%s-",$i; print ""}' | sed 's/-$//' | head -c 50)
 
-  # Check for duplicates silently (cvm kb search prints "No matches" when empty)
+  # Check for duplicates silently
   SEARCH_OUT=$(cvm kb search "$KEY" 2>/dev/null)
-  if echo "$SEARCH_OUT" | grep -qv "No matches"; then
+  if [ -n "$SEARCH_OUT" ] && ! echo "$SEARCH_OUT" | grep -qiE '(no matches|no results|0 results)'; then
     continue
   fi
 
