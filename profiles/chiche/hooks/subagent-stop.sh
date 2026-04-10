@@ -18,8 +18,8 @@ if ! echo "$STDOUT" | grep -q "## Key Learnings:"; then
   exit 0
 fi
 
-# Extract lines after "## Key Learnings:" that start with "- "
-LEARNINGS=$(echo "$STDOUT" | sed -n '/## Key Learnings:/,/^##\|^$/{ /^- /p }')
+# Extract lines after "## Key Learnings:" that start with "- " (macOS-compatible)
+LEARNINGS=$(echo "$STDOUT" | perl -ne 'if (/^## Key Learnings:/..$found_end) { $found_end=1 if /^(##[^#]|$)/ and !/^## Key Learnings:/; print if /^- / and !$found_end }')
 
 if [ -z "$LEARNINGS" ]; then
   exit 0
@@ -38,9 +38,9 @@ while IFS= read -r line; do
   # Generate a key from first few words
   KEY=$(echo "$BODY" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{for(i=1;i<=4&&i<=NF;i++) printf "%s-",$i; print ""}' | sed 's/-$//' | head -c 50)
 
-  # Check for duplicates silently
-  DUPES=$(cvm kb search "$KEY" 2>/dev/null | grep -c "^")
-  if [ "$DUPES" -gt 0 ]; then
+  # Check for duplicates silently (cvm kb search prints "No matches" when empty)
+  SEARCH_OUT=$(cvm kb search "$KEY" 2>/dev/null)
+  if echo "$SEARCH_OUT" | grep -qv "No matches"; then
     continue
   fi
 
