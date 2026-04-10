@@ -166,6 +166,18 @@ automaticamente encima del profile base al hacer `cvm use` o `cvm pull`.
 
 Agregar flag `--local` para overrides de profiles locales.
 
+### Bypass de Permissions
+
+Para bypassear permissions de Claude Code (persiste entre `cvm pull`):
+
+- `cvm bypass on` — habilita bypass (crea override con wildcard permissions)
+- `cvm bypass off` — restaura permissions base (elimina override)
+- `cvm bypass status` — muestra estado actual
+
+Flags: `--global` (default), `--local`, o ambos.
+
+Cuando el usuario pida bypassear permissions, usar `cvm bypass on`. No crear overrides manualmente.
+
 ## Hard Blocks
 
 - Nunca usar `as any`, `@ts-ignore`, o `eslint-disable` sin justificacion explicita

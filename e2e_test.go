@@ -414,15 +414,20 @@ func TestBypassCommand(t *testing.T) {
 	out = e.mustRun("bypass", "on")
 	assertContains(t, out, "bypassPermissions")
 
-	globalProfileSettings := filepath.Join(e.home, ".cvm", "global", "profiles", "bypass-global", "settings.json")
+	overrideSettings := filepath.Join(e.home, ".cvm", "global", "overrides", "bypass-global", "settings.json")
 	activeSettings := filepath.Join(e.home, ".claude", "settings.json")
-	assertSettingsMode(t, globalProfileSettings, "bypassPermissions")
+	assertSettingsMode(t, overrideSettings, "bypassPermissions")
 	assertSettingsMode(t, activeSettings, "bypassPermissions")
 
 	out = e.mustRun("bypass", "off")
 	assertContains(t, out, "default")
-	assertSettingsMode(t, globalProfileSettings, "default")
-	assertSettingsMode(t, activeSettings, "default")
+	if _, err := os.Stat(overrideSettings); !os.IsNotExist(err) {
+		t.Fatalf("expected override settings.json to be removed after bypass off")
+	}
+	// Active settings.json should not have bypassPermissions (may not exist if base profile had none)
+	if _, err := os.Stat(activeSettings); err == nil {
+		assertSettingsNotMode(t, activeSettings, "bypassPermissions")
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -945,6 +950,27 @@ func assertSettingsMode(t *testing.T, path, want string) {
 	}
 	if cfg.Permissions.DefaultMode != want {
 		t.Fatalf("settings %s defaultMode = %q, want %q", path, cfg.Permissions.DefaultMode, want)
+	}
+}
+
+func assertSettingsNotMode(t *testing.T, path, notWant string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read settings %s: %v", path, err)
+	}
+
+	var cfg struct {
+		Permissions struct {
+			DefaultMode string `json:"defaultMode"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal settings %s: %v", path, err)
+	}
+	if cfg.Permissions.DefaultMode == notWant {
+		t.Fatalf("settings %s defaultMode = %q, expected it NOT to be %q", path, cfg.Permissions.DefaultMode, notWant)
 	}
 }
 

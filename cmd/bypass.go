@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/chichex/cvm/internal/config"
@@ -13,6 +14,7 @@ import (
 var bypassCmd = &cobra.Command{
 	Use:   "bypass [on|off|status]",
 	Short: "Inspect or change bypass permissions for active profiles",
+	Long:  `Bypass permissions are persisted as overrides, so they survive 'cvm pull'.`,
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mode := "status"
@@ -24,9 +26,9 @@ var bypassCmd = &cobra.Command{
 		case "status":
 			return showBypassStatus(cmd)
 		case "on":
-			return setBypassMode(cmd, settings.BypassPermissionsMode)
+			return enableBypass(cmd)
 		case "off":
-			return setBypassMode(cmd, settings.DefaultMode)
+			return disableBypass(cmd)
 		default:
 			return fmt.Errorf("use 'on', 'off', or 'status'")
 		}
@@ -36,6 +38,13 @@ var bypassCmd = &cobra.Command{
 func init() {
 	bypassCmd.Flags().Bool("global", false, "Affect the active global profile")
 	bypassCmd.Flags().Bool("local", false, "Affect the active local profile")
+}
+
+type bypassTarget struct {
+	scope       config.Scope
+	profileName string
+	overrideDir string
+	projectPath string
 }
 
 func showBypassStatus(cmd *cobra.Command) error {
@@ -49,19 +58,20 @@ func showBypassStatus(cmd *cobra.Command) error {
 	}
 
 	for _, target := range targets {
-		mode, err := settings.GetPermissionsMode(filepath.Join(target.targetDir, "settings.json"))
+		overrideSettings := filepath.Join(target.overrideDir, "settings.json")
+		mode, err := settings.GetPermissionsMode(overrideSettings)
 		if err != nil {
-			return err
+			mode = ""
 		}
 		if mode == "" {
-			mode = "(unset)"
+			mode = "(default)"
 		}
 		fmt.Printf("%s profile %q: %s\n", target.scope, target.profileName, mode)
 	}
 	return nil
 }
 
-func setBypassMode(cmd *cobra.Command, mode string) error {
+func enableBypass(cmd *cobra.Command) error {
 	targets, err := activeBypassTargets(cmd)
 	if err != nil {
 		return err
@@ -71,25 +81,66 @@ func setBypassMode(cmd *cobra.Command, mode string) error {
 	}
 
 	for _, target := range targets {
-		profileSettings := filepath.Join(target.profileDir, "settings.json")
-		targetSettings := filepath.Join(target.targetDir, "settings.json")
-		if err := settings.SetPermissionsMode(profileSettings, mode); err != nil {
+		overrideSettings := filepath.Join(target.overrideDir, "settings.json")
+
+		cfg, err := settings.Read(overrideSettings)
+		if err != nil {
 			return err
 		}
-		if err := settings.SetPermissionsMode(targetSettings, mode); err != nil {
+
+		bypassCfg := settings.BypassConfig()
+		for k, v := range bypassCfg {
+			cfg[k] = v
+		}
+
+		if err := os.MkdirAll(target.overrideDir, 0755); err != nil {
 			return err
 		}
-		fmt.Printf("%s profile %q: %s\n", target.scope, target.profileName, mode)
+		if err := settings.Write(overrideSettings, cfg); err != nil {
+			return err
+		}
+
+		if err := profile.Reapply(target.scope, target.profileName, target.projectPath); err != nil {
+			return err
+		}
+		fmt.Printf("%s profile %q: bypassPermissions\n", target.scope, target.profileName)
 	}
 
 	return nil
 }
 
-type bypassTarget struct {
-	scope       config.Scope
-	profileName string
-	profileDir  string
-	targetDir   string
+func disableBypass(cmd *cobra.Command) error {
+	targets, err := activeBypassTargets(cmd)
+	if err != nil {
+		return err
+	}
+	if len(targets) == 0 {
+		return fmt.Errorf("no active profiles")
+	}
+
+	for _, target := range targets {
+		overrideSettings := filepath.Join(target.overrideDir, "settings.json")
+
+		cfg, err := settings.Read(overrideSettings)
+		if err != nil {
+			return err
+		}
+
+		if settings.RemovePermissions(cfg) {
+			os.Remove(overrideSettings)
+		} else {
+			if err := settings.Write(overrideSettings, cfg); err != nil {
+				return err
+			}
+		}
+
+		if err := profile.Reapply(target.scope, target.profileName, target.projectPath); err != nil {
+			return err
+		}
+		fmt.Printf("%s profile %q: default\n", target.scope, target.profileName)
+	}
+
+	return nil
 }
 
 func activeBypassTargets(cmd *cobra.Command) ([]bypassTarget, error) {
@@ -147,17 +198,10 @@ func activeBypassTargets(cmd *cobra.Command) ([]bypassTarget, error) {
 		targets = append(targets, bypassTarget{
 			scope:       selection.scope,
 			profileName: name,
-			profileDir:  profile.ProfileDir(selection.scope, name),
-			targetDir:   targetDirForScope(selection.scope, selection.projectPath),
+			overrideDir: profile.OverrideDir(selection.scope, name, selection.projectPath),
+			projectPath: selection.projectPath,
 		})
 	}
 
 	return targets, nil
-}
-
-func targetDirForScope(scope config.Scope, projectPath string) string {
-	if scope == config.ScopeGlobal {
-		return config.ClaudeHome()
-	}
-	return config.ProjectClaudeDir(projectPath)
 }

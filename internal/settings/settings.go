@@ -67,3 +67,22 @@ func GetPermissionsMode(path string) (string, error) {
 	mode, _ := permissions["defaultMode"].(string)
 	return mode, nil
 }
+
+func BypassConfig() map[string]any {
+	return map[string]any{
+		"permissions": map[string]any{
+			"defaultMode": BypassPermissionsMode,
+			"allow": []any{
+				"Bash(*)", "Edit(*)", "Write(*)", "Read(*)",
+				"Glob(*)", "Grep(*)", "Agent(*)",
+				"WebFetch(*)", "WebSearch(*)", "NotebookEdit(*)",
+				"mcp__*",
+			},
+		},
+	}
+}
+
+func RemovePermissions(cfg map[string]any) bool {
+	delete(cfg, "permissions")
+	return len(cfg) == 0
+}
