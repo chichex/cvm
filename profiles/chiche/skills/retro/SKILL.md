@@ -1,4 +1,6 @@
-Fin de sesion: revisar la conversacion actual y extraer learnings, gotchas, y decisiones para persistir en la KB.
+Fin de sesion: revisar la conversacion actual, extraer learnings, gotchas, y decisiones, y persistirlos en KB automaticamente.
+
+Este skill es completamente autonomo: escanea, filtra, deduplica, y persiste sin pedir input al usuario.
 
 ## Proceso
 
@@ -26,42 +28,42 @@ Descartar:
 - Info efimera o derivable del codigo/git
 - Cosas ya guardadas en KB (verificar con `cvm kb search`)
 - Info sensible
+- Cosas triviales o que no aportan a futuras sesiones
 
-### Paso 3: Presentar al usuario
-Listar cada item con su clasificacion y key propuesta:
-```
-Retro de sesion:
-
-Learnings:
-1. [key-propuesta] — descripcion
-
-Gotchas:
-1. [key-propuesta] — descripcion
-
-Decisiones:
-1. [key-propuesta] — descripcion
-
-Descartar:
-- item — razon
-```
-
-Pedir confirmacion antes de persistir.
+### Paso 3: Deduplicar
+Para cada item candidato, buscar en KB con `cvm kb search "<terminos>"`.
+Si ya existe una entry equivalente, descartarlo o actualizar la existente si aporta info nueva.
 
 ### Paso 4: Persistir
-Para cada item aprobado, ejecutar el comando correspondiente:
+Para cada item, ejecutar directamente:
 ```bash
 cvm kb put "<key>" --body "<body>" --tag "<tipo>,<area>" [--local]
 ```
+NO pedir confirmacion. Persistir todo lo que pase el filtro de calidad.
 
-### Paso 5: Resumen
-Reportar que se guardo y donde.
+### Paso 5: Session summary
+Siempre persistir un resumen de sesion:
+```bash
+cvm kb put "session-summary-YYYYMMDD" --body "Goal: ... | Accomplished: ... | Discoveries: ... | Next: ..." --tag "session,summary"
+```
+
+### Paso 6: Reporte
+Mostrar un resumen breve de lo que se guardo:
+```
+Retro completada:
+- N learnings, N gotchas, N decisiones persistidas
+- [keys guardadas]
+- N items descartados (duplicados o triviales)
+```
 
 ## MUST DO
 - Revisar TODA la conversacion, no solo los ultimos mensajes
 - Verificar duplicados en KB antes de guardar
-- Pedir confirmacion antes de persistir
+- Persistir automaticamente sin pedir confirmacion
+- Incluir siempre el session summary
 
 ## MUST NOT DO
-- No persistir sin aprobacion del usuario
+- No pedir confirmacion ni input al usuario
 - No guardar info sensible
 - No guardar cosas triviales o derivables del codigo
+- No mostrar listas largas de items — solo el reporte final
