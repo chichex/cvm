@@ -212,7 +212,7 @@ A **Spec-Driven Development** profile that enforces a spec-first workflow: every
 
 - **21 skills**: all chiche skills + derive-tests, spec-status, verify
 - **8 rules**: chiche rules + spec-first, no-spec-drift, traceability
-- **5 agents**: researcher (haiku), implementer (sonnet), reviewer (opus), specifier (sonnet), verifier (sonnet)
+- **5 agents**: researcher (haiku), implementer (sonnet), reviewer (opus), specifier (sonnet), verifier (opus)
 - **MCP servers**: playwright, context7
 - **Spec lifecycle**: specs live in `specs/`, are tracked with frontmatter status, and drive test derivation
 - **Traceability**: every code change links back to a spec section
