@@ -301,6 +301,7 @@ automaticamente encima del profile base al hacer `cvm use` o `cvm pull`.
 - **Nunca implementar un feature nuevo sin spec** (excepto trivial; si el usuario pide opt-out, usar SDD-lite como minimo)
 - **Nunca cambiar behavior sin actualizar la spec primero** (excepcion: hotfix urgente con spec post-facto)
 - **Nunca ignorar el resultado de la verificacion** (dual si Codex disponible, single si no)
+- **Nunca pasar contenido de archivos inline en prompts de Codex** — Codex tiene acceso al filesystem y a `gh`. Darle paths para que lea, o comandos como `gh pr diff`. Si hay un PR abierto, usarlo. Si no, escribir un manifiesto con paths en `/tmp/` y referenciarlo. Esto aplica a specs, implementaciones, diffs, y cualquier otro contenido.
 
 ## Entorno
 

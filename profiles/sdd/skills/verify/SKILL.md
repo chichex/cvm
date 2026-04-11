@@ -32,24 +32,31 @@ Lanzar un agente Opus con estas instrucciones:
 Verificar disponibilidad de Codex: `codex exec "echo ok" 2>/dev/null` (con timeout de 10s).
 Si falla o no responde: Codex no disponible para esta sesion.
 
-**Si disponible**, lanzar en paralelo con Opus:
+**Si disponible**, preparar contexto para Codex de forma eficiente (NUNCA pasar contenido inline en el prompt):
+
+**Estrategia de contexto (en orden de preferencia):**
+
+1. **PR abierto**: verificar con `gh pr view --json number 2>/dev/null`
+   - Si hay PR: Codex puede leer el diff con `gh pr diff <number>`
+2. **Sin PR**: escribir un archivo manifiesto temporal con los paths:
+   ```bash
+   # Escribir manifiesto en /tmp/cvm-verify-manifest.txt
+   echo "SPEC: specs/<nombre>.spec.md" > /tmp/cvm-verify-manifest.txt
+   echo "FILES:" >> /tmp/cvm-verify-manifest.txt
+   # listar los archivos de implementacion, uno por linea
+   ```
+
+**Lanzar Codex con referencia a archivos, no contenido inline:**
 
 ```bash
-codex exec "Given this spec and this implementation, verify:
-1) Every spec requirement (B-XXX, E-XXX, I-XXX) is implemented correctly
-2) No behavior exists that isn't in the spec (over-engineering)
-3) Edge cases are handled as specified
-4) Error conditions produce the specified errors
-5) Contracts/interfaces match the spec
+# Si hay PR abierto:
+codex exec "Verify spec conformance. Read the spec at [path a la spec]. Read the implementation diff with: gh pr diff [number]. For each requirement (B-XXX, E-XXX, I-XXX), state MATCH, MISMATCH (explain), or GAP (not found). Also detect over-engineering (code without spec requirement)."
 
-Report: for each requirement, state MATCH, MISMATCH (explain), or GAP (not found).
-
-Spec:
-[contenido de la spec]
-
-Implementation files:
-[contenido de los archivos implementados]"
+# Si no hay PR:
+codex exec "Verify spec conformance. Read the spec at [path a la spec]. Read the implementation files listed in /tmp/cvm-verify-manifest.txt. For each requirement (B-XXX, E-XXX, I-XXX), state MATCH, MISMATCH (explain), or GAP (not found). Also detect over-engineering (code without spec requirement)."
 ```
+
+**IMPORTANTE**: Codex tiene acceso al filesystem y a `gh`. NUNCA copiar contenido de archivos en el prompt de Codex — siempre darle paths o comandos para que los lea el mismo.
 
 **Si no disponible**: la verificacion es solo Opus (single verify). Informar al usuario que no hay second opinion externa.
 

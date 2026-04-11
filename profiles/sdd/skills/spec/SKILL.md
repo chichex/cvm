@@ -93,10 +93,12 @@ Si el usuario pide cambios, iterar hasta que apruebe.
 Verificar disponibilidad de Codex: `codex exec "echo ok" 2>/dev/null` (con timeout de 10s).
 Si falla o no responde: Codex no disponible para esta sesion.
 
-**Si disponible**, validar la spec:
+**Si disponible**, validar la spec (NUNCA pasar contenido inline — dar el path):
 ```bash
-codex exec "Review this spec for: 1) ambiguity, 2) gaps, 3) contradictions, 4) testability. Be critical. Spec: [contenido]"
+codex exec "Review the spec at specs/<nombre>.spec.md for: 1) ambiguity, 2) gaps, 3) contradictions, 4) testability. Be critical."
 ```
+Codex tiene acceso al filesystem — que lea el archivo directamente.
+
 - Si hay issues: incorporar, actualizar, mostrar cambios
 - Si pasa: status → approved
 
