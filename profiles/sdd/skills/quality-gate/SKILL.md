@@ -27,8 +27,8 @@ Revisar los archivos modificados buscando:
 ## Paso 5: Spec coverage (nuevo en SDD)
 
 Si hay specs en `specs/`:
-1. Leer las specs con status "implemented" o "approved"
-2. Para cada spec, verificar:
+1. Leer las specs con status "implemented" que fueron tocadas por el task actual (no auditar todas las specs del proyecto)
+2. Para cada spec relevante, verificar:
    - Cada behavior (B-XXX) tiene test?
    - Cada edge case (E-XXX) tiene test o handling?
    - Cada invariante (I-XXX) se enforce en el codigo?

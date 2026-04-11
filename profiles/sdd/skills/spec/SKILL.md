@@ -95,7 +95,7 @@ Si falla o no responde: Codex no disponible para esta sesion.
 
 **Si disponible**, validar la spec:
 ```bash
-timeout 900 codex exec "Review this spec for: 1) ambiguity, 2) gaps, 3) contradictions, 4) testability. Be critical. Spec: [contenido]" 2>/dev/null
+codex exec "Review this spec for: 1) ambiguity, 2) gaps, 3) contradictions, 4) testability. Be critical. Spec: [contenido]"
 ```
 - Si hay issues: incorporar, actualizar, mostrar cambios
 - Si pasa: status → approved

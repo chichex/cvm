@@ -45,9 +45,11 @@ Los datos de test vienen de los examples de la spec, no datos inventados.
 ## Paso 4: Verificar strategy
 
 **Si la estrategia es TDD:**
-- Correr los tests — TODOS deben fallar (no hay implementacion)
-- Si TODOS los tests pasan sin implementacion nueva, revisar — pueden estar testeando behavior pre-existente. Al menos un test DEBE fallar para demostrar el gap que se va a implementar.
-- Reportar: "N tests generados, todos fallando (pre-implementacion)"
+- Correr los tests generados
+- Al menos un test DEBE fallar para demostrar el gap que se va a implementar
+- Si algunos tests pasan: es normal en codebases existentes que ya cumplen parte del behavior — no son tests mal escritos
+- Si TODOS pasan sin implementacion nueva: revisar — puede ser que el behavior ya exista, o que los tests no sean suficientemente especificos
+- Reportar: "N tests generados, M fallando (gap demostrado), P pasando (behavior pre-existente)"
 
 **Si la estrategia es tests-post-impl:**
 - Los tests se generan pero se guardan para despues de implementar

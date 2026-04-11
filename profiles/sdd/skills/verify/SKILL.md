@@ -35,7 +35,7 @@ Si falla o no responde: Codex no disponible para esta sesion.
 **Si disponible**, lanzar en paralelo con Opus:
 
 ```bash
-timeout 900 codex exec "Given this spec and this implementation, verify:
+codex exec "Given this spec and this implementation, verify:
 1) Every spec requirement (B-XXX, E-XXX, I-XXX) is implemented correctly
 2) No behavior exists that isn't in the spec (over-engineering)
 3) Edge cases are handled as specified

@@ -57,18 +57,22 @@ Verificar que hay spec → Si no hay: crear spec retroactiva minima
 Responder directamente. No SDD.
 ```
 
-**6. Trivial** (cambio aislado en 1-2 archivos, sin interfaces publicas nuevas, sin behavior nuevo, sin cambio cross-module. Ejemplos: fix typo, update config value, add log line, use existing util.)
+**6. Trivial** (sin cambio de contrato publico, sin behavior nuevo, sin cambio de persistencia/schema/protocolo/auth, sin efecto cross-module. Ejemplos: fix typo, update config value, add log line, use existing util.)
 ```
 Ejecutar directo. No SDD.
 ```
 
 ### Opt-out
 
-Si el usuario dice "directo", "sin spec", "rapido", o "just do it": skipear el workflow SDD y ejecutar directamente. Respetar la decision del usuario.
+Si el usuario dice "directo", "sin spec", "rapido", o "just do it":
+- **Trivial o config/docs**: ejecutar directo. No SDD.
+- **No trivial pero el usuario insiste**: aplicar SDD-lite automaticamente (spec inline, sin registry, single verify). Informar al usuario que se usa SDD-lite en vez de full skip.
+
+Respetar la decision del usuario, pero no saltear spec completamente para features nuevos — como minimo usar SDD-lite.
 
 ### SDD-lite (cambios de bajo riesgo)
 
-Para cambios que necesitan spec pero no el workflow completo (1-2 archivos, bajo riesgo, scope claro):
+Para cambios que necesitan spec pero no el workflow completo (bajo riesgo, scope claro):
 - Spec inline: behaviors y edge cases como comentarios en el PR, no archivo separado
 - Sin Codex validation
 - Single verification (solo Opus, no dual)
@@ -295,13 +299,14 @@ automaticamente encima del profile base al hacer `cvm use` o `cvm pull`.
 - Nunca commitear sin que el usuario lo pida (excepcion: `/execute` incluye commit/push/PR como parte del flujo autorizado)
 - Nunca especular sobre codigo sin leerlo — usar tools para verificar
 - Nunca hacer shotgun debugging
-- **Nunca implementar un feature nuevo sin spec** (excepto trivial)
-- **Nunca cambiar behavior sin actualizar la spec primero**
-- **Nunca ignorar el resultado de la dual verification**
+- **Nunca implementar un feature nuevo sin spec** (excepto trivial; si el usuario pide opt-out, usar SDD-lite como minimo)
+- **Nunca cambiar behavior sin actualizar la spec primero** (excepcion: hotfix urgente con spec post-facto)
+- **Nunca ignorar el resultado de la verificacion** (dual si Codex disponible, single si no)
 
 ## Entorno
 
 - macOS para desarrollo local
 - Evitar flags GNU-only como `grep -P`. Usar `grep -E` o perl one-liners
 - Para levantar servicios, usar el script `start.sh` del proyecto si existe
-- Codex disponible via `codex exec` para validacion externa. Verificar con `codex exec "echo ok" 2>/dev/null` (timeout 10s), no con `which codex`
+- Codex disponible via `codex exec` para validacion externa. Verificar con `codex exec "echo ok" 2>/dev/null`, no con `which codex`
+- macOS no tiene GNU `timeout` — los skills NO deben usar `timeout` directamente. Codex se ejecuta sin timeout de shell; si se cuelga, el usuario cancela manualmente
