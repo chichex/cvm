@@ -94,13 +94,12 @@ Estos skills se invocan con `/nombre`:
 | `/retro` | Fin de sesion: extraer y persistir learnings |
 | `/evolve` | Detectar patrones repetidos y generar nuevos skills |
 | `/maintain` | Higiene de KB: dedup, prune, consolidar |
-| `/validate` | Debugging adversarial con multiples agentes |
+| `/fix` | Diagnosticar y resolver bug con rigor + Codex second opinion si disponible |
 | `/orchestrate` | Analizar task y decidir: directo, subagent, o team (solo si hay soporte real) |
 | `/checkpoint` | Crear save point antes de cambios grandes |
 | `/quality-gate` | Validacion post-implementacion: lint, tests, slop |
 | `/spec` | Planificar implementacion completa con preflight y propuesta de teams solo si estan soportados |
 | `/execute` | Ejecutar un issue planificado con /spec de punta a punta |
-| `/fix` | Diagnosticar y resolver un bug con rigor |
 | `/ux` | Analizar screenshots de UI/UX y generar propuestas de mejora |
 | `/higiene` | Auditoria de higiene del entorno Claude Code y del proyecto |
 | `/skill-create` | Generar un nuevo skill custom para Claude Code |

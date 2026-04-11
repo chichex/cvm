@@ -23,6 +23,12 @@ Bug report:
 
 ## Paso 2: Diagnosticar root cause
 
+### 2a: Detectar herramientas
+
+Verificar disponibilidad de Codex: `codex exec "echo ok" 2>/dev/null` (con timeout de 10s).
+
+### 2b: Lanzar investigacion
+
 Lanzar un subagent con rol reviewer — `Agent(subagent_type: "general-purpose", model: "opus")`:
 
 - **TASK**: Encontrar la causa raiz del bug descrito
@@ -30,6 +36,26 @@ Lanzar un subagent con rol reviewer — `Agent(subagent_type: "general-purpose",
 - **MUST DO**: Leer el codigo involucrado. Seguir el flujo de datos desde el input hasta el sintoma. Buscar commits recientes que hayan tocado el area (`git log --oneline -20 -- [archivos]`). Verificar si hay tests que deberian haber atrapado esto. Buscar si el bug existe en otros lugares similares (mismo patron replicado). Terminar con `## Key Learnings:`.
 - **MUST NOT DO**: Proponer fixes. Editar archivos. Hacer cambios. Especular sin evidencia.
 - **CONTEXT**: [sintoma, reproduccion, archivos involucrados]
+
+**Si Codex esta disponible**, lanzar en paralelo con el subagent:
+
+```bash
+codex exec -s read-only "Investigar este bug: [descripcion]. Encontrar root cause. NO hacer cambios, solo reportar hallazgos con archivos y lineas especificas.
+
+Sintoma: [que pasa]
+Esperado: [que deberia pasar]
+
+Reportar: root cause con archivo(s), linea(s), y explicacion de POR QUE ocurre."
+```
+
+### 2c: Consolidar hallazgos
+
+**Si hubo dual investigation (Opus + Codex):**
+- Coinciden en root cause → alta confianza, proceder al gate
+- Difieren → analizar ambas hipotesis, presentar ambas al usuario en el gate del Paso 3
+
+**Si fue solo Opus:**
+- Usar el hallazgo del subagent directamente
 
 ## Paso 3: GATE — Confirmar diagnostico
 

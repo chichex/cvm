@@ -120,8 +120,7 @@ Cada skill gestiona sus propios pasos, validaciones, y gates.
 | `/verify` | Verificacion dual (Opus + Codex si disponible) |
 | `/spec-status` | Dashboard de estado de specs |
 | `/quality-gate` | Validacion post-impl (tests, lint, build, spec coverage) |
-| `/fix` | Diagnosticar bug con spec gap check |
-| `/validate` | Debugging adversarial con eje de spec conformance |
+| `/fix` | Diagnosticar bug con spec gap check + Codex second opinion |
 
 ### Knowledge
 | Skill | Proposito |

@@ -106,7 +106,7 @@ Si el Team se crea exitosamente:
 3. Correr build
 4. Verificar que todos los requisitos "Must have" del issue estan implementados — marcar cada checkbox
 5. Verificar cada criterio de aceptacion — marcar cada checkbox
-6. Correr `/validate` para revision de calidad
+6. Correr `/quality-gate` para revision de calidad
 
 Mostrar resumen final:
 ```

@@ -19,6 +19,25 @@ Investigar la causa root:
 2. Buscar en KB: `cvm kb search "<area del bug>"`
 3. Analizar la causa
 
+**Second opinion con Codex (si disponible):**
+
+Verificar disponibilidad: `codex exec "echo ok" 2>/dev/null` (con timeout de 10s).
+
+Si Codex esta disponible, lanzar para diagnostico independiente:
+
+```bash
+codex exec -s read-only "Diagnosticar este bug: [descripcion]. Encontrar root cause con archivos y lineas especificas. NO hacer cambios.
+
+Sintoma: [que pasa]
+Esperado: [que deberia pasar]
+
+Reportar: root cause con archivo(s), linea(s), y explicacion de POR QUE ocurre."
+```
+
+Si Codex fue consultado, comparar hallazgos:
+- Coinciden → alta confianza, proceder
+- Difieren → analizar ambas hipotesis, elegir la mejor fundamentada
+
 Gate: DEBE tener una hipotesis clara antes de continuar. No shotgun debugging.
 
 ## Paso 4: Spec gap check (nuevo en SDD)
