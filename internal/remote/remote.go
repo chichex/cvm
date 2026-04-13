@@ -120,6 +120,14 @@ func Add(profileName, repo, path, branch string, scope config.Scope, projectPath
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("cloning repo: %w", err)
 		}
+	} else {
+		fmt.Printf("Updating cached repo...\n")
+		cmd := exec.Command("git", "-C", cacheDir, "pull", "--ff-only")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("updating cached repo: %w", err)
+		}
 	}
 
 	// Auto-discover profile path if not provided
