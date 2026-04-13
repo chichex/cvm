@@ -223,7 +223,14 @@ func Pull(profileName string) ([]string, error) {
 		// Re-copy to profile
 		srcDir := filepath.Join(cacheDir, r.Path)
 		if _, err := os.Stat(srcDir); os.IsNotExist(err) {
-			fmt.Printf("  warning: path %q no longer exists in repo\n", r.Path)
+			fmt.Printf("  ⚠ profile %q was removed from the remote repo (path %q no longer exists)\n", name, r.Path)
+			fmt.Printf("    → the local copy is still installed but will not receive updates\n")
+			fmt.Printf("    → to clean up: cvm remote rm %s && cvm rm %s\n", name, name)
+			continue
+		}
+		if !looksLikeProfile(srcDir) {
+			fmt.Printf("  ⚠ path %q exists in repo but no longer looks like a profile\n", r.Path)
+			fmt.Printf("    → to clean up: cvm remote rm %s\n", name)
 			continue
 		}
 

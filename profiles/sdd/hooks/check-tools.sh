@@ -17,7 +17,16 @@ for tool in codex gh docker node npm go python3 ruff cargo make; do
 
   if command -v "$tool" > /dev/null 2>&1; then
     path=$(command -v "$tool")
-    json="$json\"$tool\":{\"available\":true,\"path\":\"$path\"}"
+    # Codex needs deeper validation: binary exists != configured
+    if [ "$tool" = "codex" ]; then
+      if codex exec "echo ok" > /dev/null 2>&1; then
+        json="$json\"$tool\":{\"available\":true,\"path\":\"$path\",\"verified\":true}"
+      else
+        json="$json\"$tool\":{\"available\":false,\"path\":\"$path\",\"verified\":false,\"reason\":\"installed but not configured (license, auth, or sandbox issue)\"}"
+      fi
+    else
+      json="$json\"$tool\":{\"available\":true,\"path\":\"$path\"}"
+    fi
   else
     json="$json\"$tool\":{\"available\":false}"
   fi
