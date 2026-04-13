@@ -91,9 +91,17 @@ cvm upgrade             # upgrade cvm itself to the latest version
 
 ```bash
 cvm kb put <key> --body "..." --tag "a,b"   # create/update entry
+cvm kb put <key> --body "..." --type learning # type: decision|learning|gotcha|discovery|session
 cvm kb ls [--tag <tag>]                      # list entries
 cvm kb show <key>                            # show entry content
-cvm kb search <query>                        # search entries
+cvm kb search <query>                        # search entries (ranked: exact > key > body)
+cvm kb search <query> --sort recent          # sort by date instead of relevance
+cvm kb search <query> --tag gotcha           # filter by tag
+cvm kb search <query> --type learning        # filter by type
+cvm kb search <query> --since 7d             # filter by age
+cvm kb timeline [--days 7]                   # entries grouped by day
+cvm kb stats                                 # token estimates and entry counts
+cvm kb compact                               # compact index for context injection
 cvm kb enable <key>                          # include in Claude context
 cvm kb disable <key>                         # exclude without deleting
 cvm kb rm <key>                              # delete entry
@@ -221,6 +229,35 @@ A **Spec-Driven Development** profile that enforces a spec-first workflow: every
 ```bash
 cvm add sdd git@github.com:chichex/cvm.git
 cvm use sdd
+```
+
+## The "sdd-mem" profile
+
+Extends **sdd** with a persistent memory system inspired by [claude-mem](https://github.com/thedotmack/claude-mem) but without the infrastructure overhead (no daemon, no ChromaDB, no per-tool observer).
+
+**Key additions over sdd:**
+- **Context injection**: `SessionStart` hook injects a compact summary of recent KB entries (~2K tokens budget)
+- **Auto session summary**: `SessionEnd` extracts a digest from the transcript (pure shell, no LLM) then generates a structured summary via Haiku (~$0.001/session)
+- **Progressive disclosure**: KB queries use 2-step pattern (search → show) to minimize token usage
+- **Token awareness**: rule enforcing token budget consciousness for KB context
+- **Content-hash dedup**: `cvm kb put` detects duplicate content and warns/skips
+- **1 new skill**: `/session-summary` — manual trigger when the auto hook didn't run
+
+**Configuration** (env vars in settings.json):
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CVM_CONTEXT_ENTRY_COUNT` | 10 | Max entries in context injection |
+| `CVM_CONTEXT_MAX_TOKENS` | 2000 | Token budget for context injection |
+| `CVM_AUTOSUMMARY_ENABLED` | true | Enable auto session summary |
+| `CVM_AUTOSUMMARY_MODEL` | haiku | Model for summary generation |
+| `CVM_AUTOSUMMARY_MIN_TOOLS` | 3 | Min tool uses to trigger summary |
+| `CVM_AUTOSUMMARY_MAX_TOKENS` | 500 | Max tokens for summary response |
+
+**Cost**: ~$0.001/session (vs claude-mem's ~$0.03 — 37x cheaper).
+
+```bash
+cvm add sdd-mem git@github.com:chichex/cvm.git
+cvm use sdd-mem
 ```
 
 ## License

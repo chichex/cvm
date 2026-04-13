@@ -1,15 +1,54 @@
 package kb
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/chichex/cvm/internal/config"
 )
+
+// Spec: S-010 | Req: B-008
+var ValidTypes = []string{"decision", "learning", "gotcha", "discovery", "session"}
+
+func ValidateType(t string) error {
+	for _, v := range ValidTypes {
+		if t == v {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid type %q: must be one of %s", t, strings.Join(ValidTypes, ", "))
+}
+
+// Spec: S-010 | Req: B-009, B-010
+type SearchOptions struct {
+	Tag     string
+	Since   time.Duration
+	TypeTag string
+	Sort    string // "relevance" or "recent"
+}
+
+// Spec: S-010 | Req: B-014
+type CompactEntry struct {
+	Key       string
+	Tags      []string
+	FirstLine string
+	UpdatedAt time.Time
+}
+
+// Spec: S-010 | Req: B-012
+type StatsResult struct {
+	Total       int
+	Enabled     int
+	Stale       int
+	TotalTokens int
+	PerEntry    map[string]int
+}
 
 type Entry struct {
 	Key            string    `json:"key"`
@@ -266,6 +305,7 @@ func Search(scope config.Scope, projectPath, query string) ([]SearchResult, erro
 type SearchResult struct {
 	Entry   Entry
 	Snippet string
+	Rank    int // 0=exact key, 1=key contains, 2=body match (Spec: S-010 | Req: B-009)
 }
 
 func extractSnippet(content, query string) string {
@@ -355,4 +395,307 @@ func readBody(scope config.Scope, projectPath, key string) (string, error) {
 	}
 
 	return strings.TrimSpace(content), nil
+}
+
+// Spec: S-010 | Req: B-013
+func bodyHash(body string) string {
+	h := sha256.Sum256([]byte(body))
+	return fmt.Sprintf("%x", h[:8])
+}
+
+// Spec: S-010 | Req: B-008
+func PutWithOptions(scope config.Scope, projectPath, key, body string, tags []string, typeTag string) error {
+	if typeTag != "" {
+		if err := ValidateType(typeTag); err != nil {
+			return err
+		}
+		tags = append(tags, "type:"+typeTag)
+	}
+	return Put(scope, projectPath, key, body, tags)
+}
+
+// Spec: S-010 | Req: B-013 — content-hash dedup logic in Put
+func PutWithDedup(scope config.Scope, projectPath, key, body string, tags []string) (skipped bool, err error) {
+	dir := entriesDir(scope, projectPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return false, err
+	}
+
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return false, err
+	}
+
+	newHash := bodyHash(body)
+
+	// Check for duplicate content
+	for _, e := range idx.Entries {
+		existingBody, readErr := readBody(scope, projectPath, e.Key)
+		if readErr != nil {
+			continue
+		}
+		existingHash := bodyHash(existingBody)
+
+		if existingHash == newHash {
+			if e.Key == key {
+				// Same key, same body — check if tags differ
+				tagsChanged := !tagsEqual(e.Tags, tags)
+				if tagsChanged {
+					// Update tags only
+					now := time.Now()
+					for i, entry := range idx.Entries {
+						if entry.Key == key {
+							idx.Entries[i].Tags = tags
+							idx.Entries[i].UpdatedAt = now
+							break
+						}
+					}
+					content := renderDocument(key, tags, body)
+					if writeErr := os.WriteFile(entryPath(scope, projectPath, key), []byte(content), 0644); writeErr != nil {
+						return false, writeErr
+					}
+					return false, saveIndex(scope, projectPath, idx)
+				}
+				// Same key, same body, same tags — skip entirely
+				return true, nil
+			}
+			// Different key, same body — warn
+			fmt.Fprintf(os.Stderr, "warning: duplicate content (matches %q)\n", e.Key)
+		}
+	}
+
+	return false, Put(scope, projectPath, key, body, tags)
+}
+
+func tagsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Spec: S-010 | Req: B-009, B-010
+func SearchWithOptions(scope config.Scope, projectPath, query string, opts SearchOptions) ([]SearchResult, error) {
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return nil, err
+	}
+
+	lowerQuery := strings.ToLower(query)
+	var results []SearchResult
+
+	now := time.Now()
+
+	for _, e := range idx.Entries {
+		// Apply filters
+		if opts.Tag != "" {
+			hasTag := false
+			for _, t := range e.Tags {
+				if t == opts.Tag {
+					hasTag = true
+					break
+				}
+			}
+			if !hasTag {
+				continue
+			}
+		}
+
+		if opts.TypeTag != "" {
+			typeTag := "type:" + opts.TypeTag
+			hasType := false
+			for _, t := range e.Tags {
+				if t == typeTag {
+					hasType = true
+					break
+				}
+			}
+			if !hasType {
+				continue
+			}
+		}
+
+		if opts.Since > 0 {
+			cutoff := now.Add(-opts.Since)
+			if e.UpdatedAt.Before(cutoff) {
+				continue
+			}
+		}
+
+		// Check match + compute rank
+		lowerKey := strings.ToLower(e.Key)
+		rank := -1
+
+		if lowerKey == lowerQuery {
+			rank = 0 // exact key match
+		} else if strings.Contains(lowerKey, lowerQuery) {
+			rank = 1 // key contains
+		} else {
+			data, readErr := os.ReadFile(entryPath(scope, projectPath, e.Key))
+			if readErr != nil {
+				continue
+			}
+			content := strings.ToLower(string(data))
+			if strings.Contains(content, lowerQuery) {
+				rank = 2 // body contains
+			}
+		}
+
+		if rank >= 0 {
+			snippet := ""
+			if rank <= 1 {
+				// For key matches, read body for snippet
+				data, readErr := os.ReadFile(entryPath(scope, projectPath, e.Key))
+				if readErr == nil {
+					snippet = extractSnippet(string(data), query)
+				}
+			} else {
+				data, _ := os.ReadFile(entryPath(scope, projectPath, e.Key))
+				snippet = extractSnippet(string(data), query)
+			}
+
+			results = append(results, SearchResult{
+				Entry:   e,
+				Snippet: snippet,
+				Rank:    rank,
+			})
+		}
+	}
+
+	// Sort results
+	if opts.Sort == "recent" {
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Entry.UpdatedAt.After(results[j].Entry.UpdatedAt)
+		})
+	} else {
+		// Default: relevance (by rank, then by UpdatedAt within same rank)
+		sort.Slice(results, func(i, j int) bool {
+			if results[i].Rank != results[j].Rank {
+				return results[i].Rank < results[j].Rank
+			}
+			return results[i].Entry.UpdatedAt.After(results[j].Entry.UpdatedAt)
+		})
+	}
+
+	return results, nil
+}
+
+// Spec: S-010 | Req: B-011
+type TimelineDay struct {
+	Date    time.Time
+	Entries []Entry
+}
+
+func Timeline(scope config.Scope, projectPath string, days int) ([]TimelineDay, error) {
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return nil, err
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -days)
+
+	// Group by day
+	dayMap := make(map[string][]Entry)
+	for _, e := range idx.Entries {
+		if e.UpdatedAt.Before(cutoff) {
+			continue
+		}
+		dayKey := e.UpdatedAt.Format("2006-01-02")
+		dayMap[dayKey] = append(dayMap[dayKey], e)
+	}
+
+	// Sort days descending
+	var dayKeys []string
+	for k := range dayMap {
+		dayKeys = append(dayKeys, k)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(dayKeys)))
+
+	var result []TimelineDay
+	for _, k := range dayKeys {
+		t, _ := time.Parse("2006-01-02", k)
+		entries := dayMap[k]
+		// Sort entries within day by UpdatedAt desc
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].UpdatedAt.After(entries[j].UpdatedAt)
+		})
+		result = append(result, TimelineDay{Date: t, Entries: entries})
+	}
+
+	return result, nil
+}
+
+// Spec: S-010 | Req: B-012
+func StatsDetailed(scope config.Scope, projectPath string) (StatsResult, error) {
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return StatsResult{}, err
+	}
+
+	result := StatsResult{
+		PerEntry: make(map[string]int),
+	}
+	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
+
+	for _, e := range idx.Entries {
+		result.Total++
+		if e.Enabled {
+			result.Enabled++
+		}
+		if !e.LastReferenced.IsZero() && e.LastReferenced.Before(thirtyDaysAgo) {
+			result.Stale++
+		} else if e.LastReferenced.IsZero() && e.CreatedAt.Before(thirtyDaysAgo) {
+			result.Stale++
+		}
+
+		// Token estimation: chars/4
+		body, readErr := readBody(scope, projectPath, e.Key)
+		if readErr != nil {
+			continue
+		}
+		tokens := len(body) / 4
+		result.PerEntry[e.Key] = tokens
+		result.TotalTokens += tokens
+	}
+
+	return result, nil
+}
+
+// Spec: S-010 | Req: B-014
+func Compact(scope config.Scope, projectPath string) ([]CompactEntry, error) {
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []CompactEntry
+	for _, e := range idx.Entries {
+		body, readErr := readBody(scope, projectPath, e.Key)
+		firstLine := ""
+		if readErr == nil && body != "" {
+			lines := strings.SplitN(body, "\n", 2)
+			firstLine = strings.TrimSpace(lines[0])
+			if len(firstLine) > 80 {
+				firstLine = firstLine[:80] + "..."
+			}
+		}
+		entries = append(entries, CompactEntry{
+			Key:       e.Key,
+			Tags:      e.Tags,
+			FirstLine: firstLine,
+			UpdatedAt: e.UpdatedAt,
+		})
+	}
+
+	// Sort by UpdatedAt desc
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].UpdatedAt.After(entries[j].UpdatedAt)
+	})
+
+	return entries, nil
 }

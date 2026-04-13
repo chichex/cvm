@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"strconv"
+	"time"
 
 	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/kb"
@@ -23,6 +25,7 @@ var kbCmd = &cobra.Command{
 	Short: "Manage knowledge base entries",
 }
 
+// Spec: S-010 | Req: B-008, B-013
 var kbPutCmd = &cobra.Command{
 	Use:   "put <key>",
 	Short: "Create or update a KB entry",
@@ -32,16 +35,28 @@ var kbPutCmd = &cobra.Command{
 		key := args[0]
 		body, _ := cmd.Flags().GetString("body")
 		tagsStr, _ := cmd.Flags().GetString("tag")
+		typeTag, _ := cmd.Flags().GetString("type")
 		var tags []string
 		if tagsStr != "" {
 			for _, t := range strings.Split(tagsStr, ",") {
 				tags = append(tags, strings.TrimSpace(t))
 			}
 		}
-		if err := kb.Put(scope, projectPath, key, body, tags); err != nil {
+		if typeTag != "" {
+			if err := kb.ValidateType(typeTag); err != nil {
+				return err
+			}
+			tags = append(tags, "type:"+typeTag)
+		}
+		skipped, err := kb.PutWithDedup(scope, projectPath, key, body, tags)
+		if err != nil {
 			return err
 		}
-		fmt.Printf("Saved KB entry %q (%s)\n", key, scope)
+		if skipped {
+			fmt.Printf("Skipped KB entry %q (identical content)\n", key)
+		} else {
+			fmt.Printf("Saved KB entry %q (%s)\n", key, scope)
+		}
 		return nil
 	},
 }
@@ -132,13 +147,29 @@ var kbDisableCmd = &cobra.Command{
 	},
 }
 
+// Spec: S-010 | Req: B-009, B-010
 var kbSearchCmd = &cobra.Command{
 	Use:   "search <query>",
 	Short: "Search KB entries",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		scope, projectPath := kbScope(cmd)
-		results, err := kb.Search(scope, projectPath, args[0])
+
+		opts := kb.SearchOptions{}
+		opts.Tag, _ = cmd.Flags().GetString("tag")
+		opts.TypeTag, _ = cmd.Flags().GetString("type")
+		opts.Sort, _ = cmd.Flags().GetString("sort")
+
+		sinceStr, _ := cmd.Flags().GetString("since")
+		if sinceStr != "" {
+			d, err := parseDuration(sinceStr)
+			if err != nil {
+				return fmt.Errorf("invalid --since value %q: %w", sinceStr, err)
+			}
+			opts.Since = d
+		}
+
+		results, err := kb.SearchWithOptions(scope, projectPath, args[0], opts)
 		if err != nil {
 			return err
 		}
@@ -156,6 +187,18 @@ var kbSearchCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// parseDuration parses duration strings like "7d", "30d", "24h"
+func parseDuration(s string) (time.Duration, error) {
+	if strings.HasSuffix(s, "d") {
+		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil {
+			return 0, err
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(s)
 }
 
 var kbCleanCmd = &cobra.Command{
@@ -193,14 +236,130 @@ var kbCleanCmd = &cobra.Command{
 	},
 }
 
+// Spec: S-010 | Req: B-011
+var kbTimelineCmd = &cobra.Command{
+	Use:   "timeline",
+	Short: "Show entries grouped by day",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		scope, projectPath := kbScope(cmd)
+		days, _ := cmd.Flags().GetInt("days")
+		timeline, err := kb.Timeline(scope, projectPath, days)
+		if err != nil {
+			return err
+		}
+		if len(timeline) == 0 {
+			fmt.Println("No entries in the last", days, "days")
+			return nil
+		}
+		for _, day := range timeline {
+			fmt.Printf("=== %s ===\n", day.Date.Format("2006-01-02"))
+			for _, e := range day.Entries {
+				tags := ""
+				if len(e.Tags) > 0 {
+					tags = fmt.Sprintf(" [%s]", strings.Join(e.Tags, ", "))
+				}
+				fmt.Printf("  - %s%s\n", e.Key, tags)
+			}
+			fmt.Println()
+		}
+		return nil
+	},
+}
+
+// Spec: S-010 | Req: B-012
+var kbStatsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Show KB statistics and token estimates",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		scope, projectPath := kbScope(cmd)
+		stats, err := kb.StatsDetailed(scope, projectPath)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("KB Statistics (%s)\n", scope)
+		fmt.Printf("  Total entries:   %d\n", stats.Total)
+		fmt.Printf("  Enabled:         %d\n", stats.Enabled)
+		fmt.Printf("  Stale (>30d):    %d\n", stats.Stale)
+		fmt.Printf("  Total tokens:    ~%d (estimated)\n", stats.TotalTokens)
+		if stats.TotalTokens > 50000 {
+			fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: total tokens exceed 50K — consider pruning stale entries\n")
+		}
+		if len(stats.PerEntry) > 0 {
+			fmt.Println("\n  Top entries by tokens:")
+			// Sort by tokens desc
+			type kv struct {
+				Key    string
+				Tokens int
+			}
+			var sorted []kv
+			for k, v := range stats.PerEntry {
+				sorted = append(sorted, kv{k, v})
+			}
+			for i := 0; i < len(sorted); i++ {
+				for j := i + 1; j < len(sorted); j++ {
+					if sorted[j].Tokens > sorted[i].Tokens {
+						sorted[i], sorted[j] = sorted[j], sorted[i]
+					}
+				}
+			}
+			limit := 10
+			if len(sorted) < limit {
+				limit = len(sorted)
+			}
+			for _, kv := range sorted[:limit] {
+				fmt.Printf("    %-35s ~%d tokens\n", kv.Key, kv.Tokens)
+			}
+		}
+		return nil
+	},
+}
+
+// Spec: S-010 | Req: B-014
+var kbCompactCmd = &cobra.Command{
+	Use:   "compact",
+	Short: "Show compact index for context injection",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		scope, projectPath := kbScope(cmd)
+		entries, err := kb.Compact(scope, projectPath)
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			fmt.Println("No entries")
+			return nil
+		}
+		fmt.Printf("%-30s %-20s %-12s %s\n", "KEY", "TAGS", "UPDATED", "FIRST-LINE")
+		fmt.Printf("%-30s %-20s %-12s %s\n", "---", "----", "-------", "----------")
+		for _, e := range entries {
+			tags := strings.Join(e.Tags, ",")
+			if len(tags) > 18 {
+				tags = tags[:18] + ".."
+			}
+			updated := e.UpdatedAt.Format("2006-01-02")
+			fmt.Printf("%-30s %-20s %-12s %s\n", e.Key, tags, updated, e.FirstLine)
+		}
+		return nil
+	},
+}
+
 func init() {
-	for _, c := range []*cobra.Command{kbPutCmd, kbLsCmd, kbRmCmd, kbShowCmd, kbEnableCmd, kbDisableCmd, kbSearchCmd, kbCleanCmd} {
+	for _, c := range []*cobra.Command{kbPutCmd, kbLsCmd, kbRmCmd, kbShowCmd, kbEnableCmd, kbDisableCmd, kbSearchCmd, kbCleanCmd, kbTimelineCmd, kbStatsCmd, kbCompactCmd} {
 		c.Flags().Bool("local", false, "Use local KB (default: global)")
 	}
 	kbPutCmd.Flags().String("body", "", "Entry body content")
 	kbPutCmd.Flags().String("tag", "", "Comma-separated tags")
+	kbPutCmd.Flags().String("type", "", "Entry type: "+strings.Join(kb.ValidTypes, "|"))
 	kbLsCmd.Flags().String("tag", "", "Filter by tag")
 	kbCleanCmd.Flags().Bool("force", false, "Skip confirmation prompt")
+
+	// Search flags (B-009, B-010)
+	kbSearchCmd.Flags().String("sort", "relevance", "Sort order: relevance|recent")
+	kbSearchCmd.Flags().String("tag", "", "Filter by tag")
+	kbSearchCmd.Flags().String("since", "", "Filter by age, e.g. 7d or 30d")
+	kbSearchCmd.Flags().String("type", "", "Filter by type tag")
+
+	// Timeline flags (B-011)
+	kbTimelineCmd.Flags().Int("days", 7, "Number of days to show")
 
 	kbCmd.AddCommand(kbPutCmd)
 	kbCmd.AddCommand(kbLsCmd)
@@ -210,4 +369,7 @@ func init() {
 	kbCmd.AddCommand(kbDisableCmd)
 	kbCmd.AddCommand(kbSearchCmd)
 	kbCmd.AddCommand(kbCleanCmd)
+	kbCmd.AddCommand(kbTimelineCmd)
+	kbCmd.AddCommand(kbStatsCmd)
+	kbCmd.AddCommand(kbCompactCmd)
 }
