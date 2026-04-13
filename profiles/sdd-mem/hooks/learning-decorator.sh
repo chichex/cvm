@@ -1,8 +1,59 @@
 #!/bin/bash
-# UserPromptSubmit hook: on-the-fly learning protocol
-# Inyecta protocolo de learning con self-check agresivo.
-# Primer prompt: protocolo completo. Despues: self-check cada 15+ min.
+# Spec: S-011 | Req: B-002 | UserPromptSubmit: on-the-fly learning protocol + prompt capture
+# Captures the user prompt to session buffer, then injects the learning protocol.
+# MUST complete in < 500ms for capture portion (I-002).
 
+set -euo pipefail
+
+# --- B-002: Capture user prompt to session buffer ---
+INPUT=$(cat)
+
+session_id=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || true
+
+if [ -z "$session_id" ]; then
+  echo "[learning-decorator] warning: session_id missing, skipping capture" >&2
+fi
+
+if [ -n "$session_id" ]; then
+  # Extract user prompt (may be a string or array of content blocks)
+  user_prompt=$(echo "$INPUT" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+prompt = data.get('content', data.get('prompt', data.get('user_prompt', data.get('message', ''))))
+if isinstance(prompt, list):
+    texts = []
+    for block in prompt:
+        if isinstance(block, dict) and block.get('type') == 'text':
+            texts.append(block.get('text', ''))
+    prompt = ' '.join(texts)
+prompt = str(prompt).strip()
+print(prompt[:200])
+" 2>/dev/null) || user_prompt=""
+
+  # Filter out system-reminder prompts
+  if [ -n "$user_prompt" ] && [[ "$user_prompt" != \<system* ]]; then
+    timestamp=$(date +%H:%M)
+    new_line="[${timestamp}] USER: ${user_prompt}"
+    buffer_key="session-buffer-${session_id}"
+
+    existing=$(cvm kb show "$buffer_key" --local 2>/dev/null | sed '1,/^$/d' || true)
+
+    if [ -n "$existing" ]; then
+      line_count=$(echo "$existing" | wc -l | tr -d ' ')
+      if [ "$line_count" -ge 100 ]; then
+        existing=$(echo "$existing" | tail -n 99)
+      fi
+      new_body="${existing}
+${new_line}"
+    else
+      new_body="$new_line"
+    fi
+
+    cvm kb put "$buffer_key" --body "$new_body" --tag "session-buffer" --local 2>/dev/null || true
+  fi
+fi
+
+# --- Learning protocol injection (writes to stdout for Claude Code to consume) ---
 PULSE_FILE="$HOME/.cvm/learning-pulse"
 
 # First prompt of session: full protocol

@@ -1,9 +1,63 @@
 #!/usr/bin/env bash
-# Spec: S-010 | Req: B-002 | Context injection hook
+# Spec: S-010 | Req: B-002 | Spec: S-011 | Req: E-002 | Context injection hook
 # Injects a compact KB summary into the session context at startup.
+# Also cleans up orphaned session buffers older than 24h (E-002).
 # Pure shell + single python3 call — no LLM calls (I-002). Must complete in < 2s (I-003).
 
 set -euo pipefail
+
+# --- E-002: Orphaned session buffer cleanup ---
+# Scan KB local for entries with tag "session-buffer" older than 24h and delete them.
+CVM_HOME_CLEANUP="${HOME}/.cvm"
+cwd_cleanup="$(pwd)"
+safe_cleanup=$(echo "$cwd_cleanup" | sed 's|/|-|g' | sed 's|^-||')
+safe_cleanup="${safe_cleanup: -100}"
+local_kb_cleanup="${CVM_HOME_CLEANUP}/local/kb/${safe_cleanup}"
+
+if [ -d "$local_kb_cleanup" ]; then
+  index_file="${local_kb_cleanup}/.index.json"
+  if [ -f "$index_file" ]; then
+    now_epoch=$(date +%s)
+    # Find session-buffer entries older than 24h and delete them
+    orphans=$(python3 -c "
+import json, sys, os
+from datetime import datetime, timezone
+
+index_file = sys.argv[1]
+now_epoch = int(sys.argv[2])
+cutoff = now_epoch - 86400  # 24h in seconds
+
+with open(index_file) as f:
+    idx = json.load(f)
+
+for e in idx.get('entries', []):
+    tags = e.get('tags', [])
+    if 'session-buffer' not in tags:
+        continue
+    created = e.get('created_at', e.get('updated_at', ''))
+    if not created:
+        continue
+    try:
+        dt = datetime.fromisoformat(created)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        epoch = int(dt.timestamp())
+        if epoch < cutoff:
+            print(e['key'])
+    except Exception:
+        pass
+" "$index_file" "$now_epoch" 2>/dev/null || true)
+
+    if [ -n "$orphans" ]; then
+      while IFS= read -r orphan_key; do
+        if [ -n "$orphan_key" ]; then
+          echo "[context-inject] warning: deleting orphaned session buffer: ${orphan_key}" >&2
+          cvm kb rm "$orphan_key" --local 2>/dev/null || true
+        fi
+      done <<< "$orphans"
+    fi
+  fi
+fi
 
 MAX_ENTRIES="${CVM_CONTEXT_ENTRY_COUNT:-10}"
 MAX_TOKENS="${CVM_CONTEXT_MAX_TOKENS:-2000}"
