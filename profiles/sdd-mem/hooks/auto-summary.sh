@@ -8,7 +8,11 @@ set -euo pipefail
 ENABLED="${CVM_AUTOSUMMARY_ENABLED:-true}"
 MODEL="${CVM_AUTOSUMMARY_MODEL:-haiku}"
 MAX_TOKENS="${CVM_AUTOSUMMARY_MAX_TOKENS:-500}"
-DIGEST_FILE="/tmp/cvm-session-digest-$$.txt"
+
+# Derive project dir name (same logic as session-digest.sh and Claude Code)
+cwd="$(pwd)"
+project_dir=$(echo "$cwd" | sed 's|/|-|g' | sed 's|^-||')
+DIGEST_FILE="/tmp/cvm-session-digest-${project_dir}.txt"
 
 # --- Guard clauses ---
 if [ "$ENABLED" != "true" ]; then

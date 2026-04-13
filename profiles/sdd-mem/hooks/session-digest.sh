@@ -6,7 +6,6 @@
 set -euo pipefail
 
 MIN_TOOLS="${CVM_AUTOSUMMARY_MIN_TOOLS:-3}"
-DIGEST_FILE="/tmp/cvm-session-digest-$$.txt"
 
 # --- Locate the transcript JSONL ---
 CLAUDE_DIR="${HOME}/.claude"
@@ -14,6 +13,9 @@ CLAUDE_DIR="${HOME}/.claude"
 # Derive project dir name (same as Claude Code: replace / with -, strip leading -)
 cwd="$(pwd)"
 project_dir=$(echo "$cwd" | sed 's|/|-|g' | sed 's|^-||')
+
+# Use project_dir for digest filename so auto-summary.sh can find it (NOT $$, which differs per process)
+DIGEST_FILE="/tmp/cvm-session-digest-${project_dir}.txt"
 project_path="${CLAUDE_DIR}/projects/${project_dir}"
 
 if [ ! -d "$project_path" ]; then
