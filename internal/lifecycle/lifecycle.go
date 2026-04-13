@@ -204,7 +204,7 @@ func Status() error {
 
 func detectTools() map[string]bool {
 	tools := map[string]bool{}
-	for _, tool := range []string{"claude", "codex", "aider", "gh", "docker", "node", "npm", "go"} {
+	for _, tool := range []string{"claude", "codex", "gemini", "aider", "gh", "docker", "node", "npm", "go"} { // Spec: S-012 | Req: B-002
 		_, err := exec.LookPath(tool)
 		tools[tool] = err == nil
 	}

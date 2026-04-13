@@ -19,11 +19,15 @@ Investigar la causa root:
 2. Buscar en KB: `cvm kb search "<area del bug>"`
 3. Analizar la causa
 
-**Second opinion con Codex (si disponible):**
+**Second opinion con Codex y/o Gemini (si disponibles):**
 
-Verificar disponibilidad: `codex exec "echo ok" 2>/dev/null` (con timeout de 10s).
+<!-- Spec: S-012 | Req: B-005 -->
 
-Si Codex esta disponible, lanzar para diagnostico independiente:
+Verificar disponibilidad:
+- Codex: `codex exec "echo ok" 2>/dev/null`
+- Gemini: leer `~/.cvm/available-tools.json` y verificar `gemini.available == true`
+
+Si Codex esta disponible, lanzar en background para diagnostico independiente:
 
 ```bash
 codex exec -s read-only "Diagnosticar este bug: [descripcion]. Encontrar root cause con archivos y lineas especificas. NO hacer cambios.
@@ -31,14 +35,30 @@ codex exec -s read-only "Diagnosticar este bug: [descripcion]. Encontrar root ca
 Sintoma: [que pasa]
 Esperado: [que deberia pasar]
 
-Reportar: root cause con archivo(s), linea(s), y explicacion de POR QUE ocurre."
+Reportar: root cause con archivo(s), linea(s), y explicacion de POR QUE ocurre." > /tmp/cvm-fix-codex.txt 2>&1 &
+CODEX_PID=$!
 ```
 
-Si Codex fue consultado, comparar hallazgos:
-- Coinciden → alta confianza, proceder
-- Difieren → analizar ambas hipotesis, elegir la mejor fundamentada
+Si Gemini esta disponible, lanzar en background en paralelo:
 
-Gate: DEBE tener una hipotesis clara antes de continuar. No shotgun debugging.
+```bash
+gemini -p "Diagnosticar este bug: [descripcion]. Encontrar root cause con archivos y lineas especificas. NO hacer cambios. Sintoma: [que pasa]. Esperado: [que deberia pasar]. Reportar: root cause con archivo(s), linea(s), y explicacion de POR QUE ocurre." > /tmp/cvm-fix-gemini.txt 2>&1 &
+GEMINI_PID=$!
+```
+
+Esperar resultados:
+```bash
+[ -n "$CODEX_PID" ] && wait $CODEX_PID
+[ -n "$GEMINI_PID" ] && wait $GEMINI_PID
+```
+
+Comparar hallazgos:
+- Codex y Gemini coinciden → alta confianza, proceder
+- Codex y Gemini difieren → presentar ambas hipotesis al usuario para resolucion
+- Solo uno disponible → usar ese resultado
+- Ninguno disponible → proceder con analisis propio
+
+Gate: DEBE tener una hipotesis clara (del conjunto combinado de opiniones) antes de continuar. No shotgun debugging.
 
 ## Paso 4: Spec gap check (nuevo en SDD)
 

@@ -88,21 +88,39 @@ Crear o actualizar `specs/REGISTRY.md`:
 Mostrar la spec completa al usuario. Esperar aprobacion antes de continuar.
 Si el usuario pide cambios, iterar hasta que apruebe.
 
-## Paso 3: Validacion externa (si Codex esta disponible)
+## Paso 3: Validacion externa (Codex y/o Gemini si disponibles)
 
-Verificar disponibilidad de Codex: `codex exec "echo ok" 2>/dev/null` (con timeout de 10s).
-Si falla o no responde: Codex no disponible para esta sesion.
+<!-- Spec: S-012 | Req: B-003 -->
 
-**Si disponible**, validar la spec (NUNCA pasar contenido inline — dar el path):
+Verificar disponibilidad de validadores externos:
+- Codex: `codex exec "echo ok" 2>/dev/null`
+- Gemini: leer `~/.cvm/available-tools.json` y verificar `gemini.available == true`
+
+Si ninguno esta disponible: informar al usuario, aprobar solo con su OK.
+
+**Si Codex esta disponible**, lanzar en background (NUNCA pasar contenido inline — dar el path):
 ```bash
-codex exec "Review the spec at specs/<nombre>.spec.md for: 1) ambiguity, 2) gaps, 3) contradictions, 4) testability. Be critical."
+codex exec "Review the spec at specs/<nombre>.spec.md for: 1) ambiguity, 2) gaps, 3) contradictions, 4) testability. Be critical." > /tmp/cvm-spec-codex-review.txt 2>&1 &
+CODEX_PID=$!
 ```
-Codex tiene acceso al filesystem — que lea el archivo directamente.
+
+**Si Gemini esta disponible**, lanzar en background en paralelo:
+```bash
+gemini -p "Review the spec at specs/<nombre>.spec.md for: 1) ambiguity 2) gaps 3) contradictions 4) testability. Be critical. Output a structured review." > /tmp/cvm-spec-gemini-review.txt 2>&1 &
+GEMINI_PID=$!
+```
+
+**Recolectar resultados** (esperar a los procesos que se lanzaron):
+```bash
+# Esperar solo los que se lanzaron
+[ -n "$CODEX_PID" ] && wait $CODEX_PID
+[ -n "$GEMINI_PID" ] && wait $GEMINI_PID
+```
+
+Presentar ambas opiniones al usuario. Si alguno falla: loguear advertencia, continuar con el que este disponible.
 
 - Si hay issues: incorporar, actualizar, mostrar cambios
 - Si pasa: status → approved
-
-**Si no disponible**: informar al usuario, aprobar solo con su OK.
 
 ## Paso 4: Preflight check
 

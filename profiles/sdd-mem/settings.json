@@ -23,7 +23,8 @@
       "Bash(npm *)",
       "Bash(node *)",
       "Bash(npx *)",
-      "Bash(codex *)"
+      "Bash(codex *)",
+      "Bash(gemini *)"
     ],
     "defaultMode": "default"
   },
