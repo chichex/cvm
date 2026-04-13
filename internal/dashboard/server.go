@@ -3,7 +3,6 @@
 package dashboard
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -143,9 +142,8 @@ func (s *Server) Run() error {
 
 	select {
 	case <-quit:
-		// Graceful shutdown
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		// Graceful shutdown — Ctrl+C is a clean exit, not an error
+		fmt.Println("\nShutting down…")
 		s.watcher.Stop()
 		if s.globalBack != nil {
 			s.globalBack.Close() //nolint:errcheck
@@ -153,7 +151,9 @@ func (s *Server) Run() error {
 		if s.localBack != nil {
 			s.localBack.Close() //nolint:errcheck
 		}
-		return s.httpServer.Shutdown(ctx)
+		// Force-close the server (don't wait for SSE connections to drain)
+		s.httpServer.Close() //nolint:errcheck
+		return nil
 	case err := <-errCh:
 		return err
 	}
