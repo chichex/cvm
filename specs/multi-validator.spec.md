@@ -1,7 +1,7 @@
 # S-012: Multi-Validator — Gemini como tercer validador
 
 **Version:** 0.2.0  
-**Status:** draft  
+**Status:** implemented  
 **Validación:** manual  
 **Origen:** Sesión 2026-04-13. Gemini CLI disponible en el entorno, usarlo como validador adicional junto con Opus y Codex.
 

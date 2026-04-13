@@ -359,6 +359,8 @@ func handleKbGet(raw json.RawMessage) toolsCallResult {
 // stripFrontmatter removes the YAML frontmatter block from markdown content.
 // Frontmatter format: ---\nkey: ...\ntags: [...]\n---\n\n<body>
 // Spec: S-014 | Req: I-007
+// Note: no longer called by production code (kb_get uses b.Get() which returns body only),
+// but retained because it is tested directly in main_test.go.
 func stripFrontmatter(content string) string {
 	const frontmatterEnd = "\n---\n\n"
 	if idx := strings.Index(content, frontmatterEnd); idx >= 0 {

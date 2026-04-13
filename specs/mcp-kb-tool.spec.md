@@ -1,7 +1,7 @@
 # S-014: MCP KB Tool — KB accesible como MCP server
 
 **Version:** 0.1.0  
-**Status:** draft  
+**Status:** implemented  
 **Validación:** TDD + manual  
 **Origen:** Expansión de B-016 (specs/sdd-mem.spec.md). Claude actualmente accede a la KB ejecutando shells a `cvm kb search` y `cvm kb show`. Un MCP server nativo elimina el overhead de process spawning, permite respuestas estructuradas JSON, y habilita a Claude a consultar la KB directamente via tool call sin invocar Bash.
 

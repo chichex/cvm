@@ -6,8 +6,6 @@
 # Note: settings.json matcher limits this to Bash|Write|Edit|NotebookEdit,
 # so filtered tools never reach this script.
 
-set -euo pipefail
-
 INPUT=$(cat)
 
 # Single python3 call to extract session_id, tool_name, and build summary

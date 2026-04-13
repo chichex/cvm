@@ -1,7 +1,7 @@
 # S-015: Semi-auto Observation Capture via PostToolUse Hook
 
 **Version:** 0.1.0
-**Status:** draft
+**Status:** implemented
 **Validation:** manual + integration tests
 **Origen:** Expands S-011 B-001 and S-010 B-017 (Phase 3). Delivers richer per-tool observation capture with a configurable tool allowlist, tighter latency budget, and an enriched capture format that remains fully compatible with the existing session buffer consumed by session-summary.sh.
 
