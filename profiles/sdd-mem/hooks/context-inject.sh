@@ -13,7 +13,7 @@ CVM_HOME="${HOME}/.cvm"
 GLOBAL_KB="${CVM_HOME}/global/kb"
 LOCAL_KB=""
 
-# Derive local KB path from cwd (same hashing as config.hashPath in Go)
+# Derive local KB path from cwd (same hashing as config.hashPath in Go — keeps underscores, strips leading -)
 cwd="$(pwd)"
 safe=$(echo "$cwd" | sed 's|/|-|g' | sed 's|^-||')
 safe="${safe: -100}"

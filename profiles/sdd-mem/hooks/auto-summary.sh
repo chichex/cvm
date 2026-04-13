@@ -11,7 +11,7 @@ MAX_TOKENS="${CVM_AUTOSUMMARY_MAX_TOKENS:-500}"
 
 # Derive project dir name (same logic as session-digest.sh and Claude Code)
 cwd="$(pwd)"
-project_dir=$(echo "$cwd" | sed 's|/|-|g' | sed 's|^-||')
+project_dir=$(echo "$cwd" | sed 's|/|-|g; s|_|-|g')
 DIGEST_FILE="/tmp/cvm-session-digest-${project_dir}.txt"
 
 # --- Guard clauses ---

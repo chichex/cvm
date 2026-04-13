@@ -10,9 +10,9 @@ MIN_TOOLS="${CVM_AUTOSUMMARY_MIN_TOOLS:-3}"
 # --- Locate the transcript JSONL ---
 CLAUDE_DIR="${HOME}/.claude"
 
-# Derive project dir name (same as Claude Code: replace / with -, strip leading -)
+# Derive project dir name (same as Claude Code: replace / and _ with -, keep leading -)
 cwd="$(pwd)"
-project_dir=$(echo "$cwd" | sed 's|/|-|g' | sed 's|^-||')
+project_dir=$(echo "$cwd" | sed 's|/|-|g; s|_|-|g')
 
 # Use project_dir for digest filename so auto-summary.sh can find it (NOT $$, which differs per process)
 DIGEST_FILE="/tmp/cvm-session-digest-${project_dir}.txt"
