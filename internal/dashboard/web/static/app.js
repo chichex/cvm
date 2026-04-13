@@ -5,13 +5,11 @@
 // ---- State ----
 
 const state = {
-  tab: 'timeline',
-  timelineScope: 'both',
-  browserScope: 'both',
-  browserQuery: '',
-  browserTag: '',
-  browserSelectedKey: null,
-  sessionId: null,
+  tab: 'sessions',
+  knowledgeScope: 'both',
+  knowledgeQuery: '',
+  knowledgeTag: '',
+  knowledgeSelectedKey: null,
   sseConnected: false,
 };
 
@@ -46,6 +44,16 @@ function relativeTime(isoStr) {
   return `${d}d ago`;
 }
 
+function formatDuration(startIso, endIso) {
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  const diffMin = Math.round(Math.max(0, end - start) / 60000);
+  if (diffMin < 60) return `${diffMin}m`;
+  const h = Math.floor(diffMin / 60);
+  const m = diffMin % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 function formatTokens(n) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k tokens`;
   return `${n} tokens`;
@@ -78,7 +86,6 @@ function renderScopeBadge(scope) {
 }
 
 // ---- Tab navigation ----
-// Spec: S-016 | Req: I-003a, I-003b, I-003c
 
 function initTabs() {
   $$('nav button[data-tab]').forEach(btn => {
@@ -88,11 +95,11 @@ function initTabs() {
   });
 
   window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '') || 'timeline';
+    const hash = window.location.hash.replace('#', '') || 'sessions';
     if (hash !== state.tab) switchTab(hash, false);
   });
 
-  const initial = window.location.hash.replace('#', '') || 'timeline';
+  const initial = window.location.hash.replace('#', '') || 'sessions';
   switchTab(initial, false);
 }
 
@@ -107,15 +114,12 @@ function switchTab(tab, updateHash = true) {
     view.classList.toggle('active', view.dataset.tab === tab);
   });
 
-  // Refresh data when switching tabs
-  if (tab === 'timeline') loadTimeline();
-  if (tab === 'session') loadSession();
-  if (tab === 'browser') loadEntries();
+  if (tab === 'sessions') loadSessions();
+  if (tab === 'knowledge') loadKnowledge();
   if (tab === 'stats') loadStats();
 }
 
 // ---- SSE ----
-// Spec: S-016 | Req: I-002p..I-002u, I-004b, I-004g
 
 function initSSE() {
   const src = new EventSource('/api/events');
@@ -130,300 +134,271 @@ function initSSE() {
     updateSSEIndicator();
   });
 
-  src.addEventListener('tick', () => {
-    // Only refresh on tick if timeline is active — avoid unnecessary fetches
-    // Don't auto-refresh timeline on tick (causes flicker). Only refresh on actual changes.
-  });
-
   src.addEventListener('entry_added', (e) => {
     const data = JSON.parse(e.data || '{}');
-    if (state.tab === 'timeline') loadTimeline();
-    if (state.tab === 'browser') loadEntries();
+    if (state.tab === 'sessions') loadSessions();
+    if (state.tab === 'knowledge') loadKnowledge();
     console.debug('[SSE] entry_added', data);
   });
 
   src.addEventListener('session_updated', (e) => {
     const data = JSON.parse(e.data || '{}');
-    if (state.tab === 'session') loadSession();
+    if (state.tab === 'sessions') loadSessions();
     console.debug('[SSE] session_updated', data);
   });
 }
 
 function updateSSEIndicator() {
   const dot = $('#sse-dot');
-  if (dot) {
-    dot.classList.toggle('connected', state.sseConnected);
-  }
+  if (dot) dot.classList.toggle('connected', state.sseConnected);
   const label = $('#sse-label');
-  if (label) {
-    label.textContent = state.sseConnected ? 'live' : 'disconnected';
-  }
+  if (label) label.textContent = state.sseConnected ? 'live' : 'disconnected';
 }
 
-// ---- Timeline ----
-// Spec: S-016 | Req: I-004a..I-004g
+// ---- Sessions tab ----
 
-async function loadTimeline() {
-  const scope = state.timelineScope;
-  let url = `/api/timeline?limit=50&scope=${scope}`;
+async function loadSessions() {
   let data;
   try {
-    const res = await fetch(url);
-    if (!res.ok) return; // Don't clear DOM on error
+    const res = await fetch('/api/sessions');
+    if (!res.ok) return;
     data = await res.json();
   } catch (e) {
-    console.error('Timeline fetch failed', e);
-    return; // Don't clear DOM on error
-  }
-
-  // Don't replace valid data with empty response (transient backend errors)
-  if ((!data.days || data.days.length === 0) && $('#timeline-list')?.children.length > 0) {
+    console.error('Sessions fetch failed', e);
     return;
   }
 
-  const container = $('#timeline-list');
-  if (!container) return;
+  const sessions = data.sessions || [];
+  const meta = $('#sessions-meta');
+  const list = $('#sessions-list');
+  if (!list) return;
 
-  // Build new content in a fragment first, then swap
+  const activeCount = sessions.filter(s => s.status === 'active').length;
+  const totalCount = sessions.length;
+  if (meta) {
+    meta.textContent = `${totalCount} session${totalCount !== 1 ? 's' : ''} · ${activeCount} active`;
+  }
+
   const frag = document.createDocumentFragment();
 
-  if (!data.days || data.days.length === 0) {
-    frag.appendChild(el('div', 'empty-state', 'No entries in the selected timeframe.'));
+  if (!sessions.length) {
+    frag.appendChild(el('div', 'empty-state', 'No sessions found.'));
   } else {
-    for (const day of data.days) {
-      const group = el('div', 'day-group');
-      const header = el('div', 'day-header', day.date);
-      group.appendChild(header);
-      for (const entry of day.entries) {
-        group.appendChild(renderEntryCard(entry));
-      }
-      frag.appendChild(group);
-    }
+    sessions.forEach(session => frag.appendChild(renderSessionCard(session)));
   }
 
-  // Preserve scroll position — Spec: S-016 | Req: I-004f
-  const scrollTop = container.scrollTop;
-  container.innerHTML = '';
-  container.appendChild(frag);
-  container.scrollTop = scrollTop;
+  list.innerHTML = '';
+  list.appendChild(frag);
 }
 
-function renderEntryCard(entry) {
-  const card = el('div', 'entry-card');
+function renderSessionCard(session) {
+  const isActive = session.status === 'active';
+  const card = el('div', `session-card ${isActive ? 'session-card--active' : 'session-card--summarized'}`);
 
-  const header = el('div', 'entry-header');
-  const keyEl = el('span', 'entry-key', entry.key);
-  header.appendChild(keyEl);
+  // --- Header row ---
+  const header = el('div', 'session-card__header');
 
-  (entry.tags || []).forEach(tag => header.appendChild(renderBadge(tag)));
-  if (entry.scope) header.appendChild(renderScopeBadge(entry.scope));
+  const idEl = el('span', 'session-card__id', session.id.substring(0, 16) + (session.id.length > 16 ? '…' : ''));
+  idEl.title = session.id;
+  header.appendChild(idEl);
+
+  const statusBadge = el('span', `badge ${isActive ? 'badge-active' : 'badge-summarized'}`, isActive ? 'ACTIVE' : 'SUMMARIZED');
+  header.appendChild(statusBadge);
+
+  if (session.project_dir) {
+    const projEl = el('span', 'session-card__project', session.project_dir);
+    header.appendChild(projEl);
+  }
+
   card.appendChild(header);
 
-  const meta = el('div', 'entry-meta');
-  meta.appendChild(el('span', '', relativeTime(entry.updated_at)));
-  if (entry.token_estimate) {
-    meta.appendChild(el('span', '', `~${entry.token_estimate} tok`));
+  // --- Meta row ---
+  const metaRow = el('div', 'session-card__meta');
+  if (session.created_at) {
+    metaRow.appendChild(el('span', '', new Date(session.created_at).toLocaleString()));
   }
-  card.appendChild(meta);
+  if (session.created_at && session.updated_at) {
+    metaRow.appendChild(el('span', 'session-card__duration', formatDuration(session.created_at, session.updated_at)));
+  }
+  if (isActive && session.line_count != null) {
+    metaRow.appendChild(el('span', '', `${session.line_count} events`));
+    metaRow.appendChild(el('span', 'session-card__live', `last activity ${relativeTime(session.updated_at)}`));
+  }
+  card.appendChild(metaRow);
 
-  if (entry.first_line) {
-    card.appendChild(el('div', 'first-line', entry.first_line));
+  // --- Summary preview (summarized sessions) ---
+  if (!isActive && session.summary_body) {
+    const summaryEl = el('div', 'session-card__summary');
+    // Show first 3 lines of the summary body
+    const lines = session.summary_body.split('\n').filter(l => l.trim()).slice(0, 3);
+    lines.forEach(line => {
+      summaryEl.appendChild(el('div', 'session-card__summary-line', line));
+    });
+    card.appendChild(summaryEl);
   }
 
-  // Body (lazy-loaded on click) — Spec: S-016 | Req: I-004d
-  const bodyDiv = el('div', 'body-content');
-  card.appendChild(bodyDiv);
+  // --- Knowledge section ---
+  const knowledge = session.knowledge || [];
+  if (knowledge.length > 0) {
+    const kSection = el('div', 'session-card__knowledge');
+    const kToggle = el('button', 'session-card__knowledge-toggle',
+      `${knowledge.length} linked knowledge entr${knowledge.length === 1 ? 'y' : 'ies'}`);
+    kSection.appendChild(kToggle);
 
-  let bodyLoaded = false;
+    const kList = el('div', 'session-card__knowledge-list');
+    kList.style.display = 'none';
+    knowledge.forEach(kEntry => {
+      kList.appendChild(renderKnowledgePill(kEntry));
+    });
+    kSection.appendChild(kList);
 
-  card.addEventListener('click', async () => {
+    kToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = kList.style.display !== 'none';
+      kList.style.display = isOpen ? 'none' : 'block';
+      kToggle.classList.toggle('open', !isOpen);
+    });
+
+    card.appendChild(kSection);
+  }
+
+  // --- Expandable detail ---
+  const detail = el('div', 'session-card__detail');
+  card.appendChild(detail);
+
+  let detailLoaded = false;
+
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.session-card__knowledge')) return;
     card.classList.toggle('expanded');
-    if (card.classList.contains('expanded') && !bodyLoaded) {
-      bodyLoaded = true;
-      bodyDiv.textContent = 'Loading...';
-      try {
-        const scope = entry.scope || 'global';
-        const res = await fetch(`/api/entries?q=&scope=${scope}&limit=1&offset=0`);
-        // Try to find the entry by key in entries endpoint
-        const data = await fetch(`/api/entries?scope=${scope}&limit=500`);
-        const json = await data.json();
-        const found = (json.entries || []).find(e => e.key === entry.key);
-        bodyDiv.textContent = found ? found.body : '(body not available)';
-      } catch {
-        bodyDiv.textContent = '(failed to load body)';
-      }
+    if (card.classList.contains('expanded') && !detailLoaded) {
+      detailLoaded = true;
+      renderSessionDetail(detail, session);
     }
   });
 
   return card;
 }
 
-// ---- Session ----
-// Spec: S-016 | Req: I-005a..I-005g
+function renderKnowledgePill(entry) {
+  const pill = el('div', 'knowledge-pill');
 
-async function loadSession() {
-  // First, get all active buffers
-  let listData;
-  try {
-    const res = await fetch('/api/session');
-    listData = await res.json();
-  } catch {
-    return;
-  }
+  const header = el('div', 'knowledge-pill__header');
+  header.appendChild(el('span', 'entry-key', entry.key));
+  (entry.tags || []).forEach(tag => header.appendChild(renderBadge(tag)));
+  header.appendChild(renderScopeBadge(entry.scope));
+  pill.appendChild(header);
 
-  const buffers = listData.buffers || [];
-  const selector = $('#session-selector');
-  const container = $('#session-lines');
-
-  if (!buffers.length) {
-    // Spec: S-016 | Req: I-005f
-    if (selector) selector.innerHTML = '';
-    if (container) {
-      container.innerHTML = '';
-      container.appendChild(el('div', 'session-empty', 'No active session buffer found.'));
+  if (entry.body) {
+    const preview = entry.body.split('\n').filter(l => l.trim())[0] || '';
+    if (preview) {
+      pill.appendChild(el('div', 'knowledge-pill__preview', preview.substring(0, 120)));
     }
-    return;
   }
 
-  // Populate selector — Spec: S-016 | Req: I-005b, I-005c
-  if (selector) {
-    const currentId = state.sessionId || buffers[0].session_id;
-    selector.innerHTML = '';
-    buffers.forEach(buf => {
-      const opt = document.createElement('option');
-      opt.value = buf.session_id;
-      const started = buf.created_at ? new Date(buf.created_at).toLocaleTimeString() : '';
-      opt.textContent = `${buf.session_id.substring(0, 8)}… (${buf.line_count} lines, started ${started})`;
-      if (buf.session_id === currentId) opt.selected = true;
-      selector.appendChild(opt);
-    });
-    state.sessionId = currentId;
-    selector.onchange = () => {
-      state.sessionId = selector.value;
-      fetchSessionDetail(state.sessionId);
-    };
-  }
-
-  // Show project dir
-  const projectInfo = $('#session-project');
-  if (projectInfo && listData.project_dir) {
-    projectInfo.textContent = listData.project_dir;
-  }
-
-  fetchSessionDetail(state.sessionId || buffers[0].session_id);
+  return pill;
 }
 
-async function fetchSessionDetail(id) {
-  if (!id) return;
-  state.sessionId = id;
-
-  const container = $('#session-lines');
-  if (!container) return;
-
-  let data;
-  try {
-    const res = await fetch(`/api/session?id=${encodeURIComponent(id)}`);
-    if (!res.ok) return;
-    data = await res.json();
-  } catch {
-    return;
-  }
-
-  // Don't replace valid data with empty response
-  if ((!data.found || !data.lines || data.lines.length === 0) && container.children.length > 1) {
-    return;
-  }
-
-  const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 40;
-
+function renderSessionDetail(container, session) {
   container.innerHTML = '';
 
-  if (!data.found || !data.lines || data.lines.length === 0) {
-    container.appendChild(el('div', 'session-empty', 'Buffer is empty.'));
-    return;
-  }
+  if (session.status === 'active') {
+    // Show full buffer lines
+    if (!session.lines || !session.lines.length) {
+      container.appendChild(el('div', 'session-empty', 'Buffer is empty.'));
+      return;
+    }
+    const bufContainer = el('div', 'session-container');
+    session.lines.forEach(line => {
+      const row = el('div', 'session-line');
 
-  // Render session metadata bar
-  const metaBar = $('#session-meta');
-  if (metaBar && data.found) {
-    const parts = [];
-    if (data.project_dir) parts.push(data.project_dir);
-    if (data.created_at) {
-      const started = new Date(data.created_at);
-      parts.push(`Started: ${started.toLocaleString()}`);
-      if (data.updated_at) {
-        const updated = new Date(data.updated_at);
-        const durationMin = Math.round((updated - started) / 60000);
-        parts.push(`Duration: ${durationMin}m`);
+      const ts = el('span', 'session-ts', line.timestamp || '');
+      row.appendChild(ts);
+
+      const type = el('span', 'session-type');
+      if (line.type === 'TOOL') {
+        type.appendChild(renderBadge(line.tool || 'TOOL'));
+      } else if (line.type === 'USER') {
+        type.appendChild(el('span', 'badge badge-decision', 'USER'));
+      } else {
+        type.appendChild(el('span', 'badge badge-default', 'RAW'));
       }
+      row.appendChild(type);
+
+      row.appendChild(el('span', 'session-content', line.content || ''));
+      bufContainer.appendChild(row);
+    });
+    container.appendChild(bufContainer);
+  } else {
+    // Show full summary
+    if (!session.summary_body) {
+      container.appendChild(el('div', 'session-empty', 'No summary body.'));
+      return;
     }
-    parts.push(`${data.line_count} events`);
-    metaBar.textContent = parts.join('  ·  ');
+    const summaryFull = el('div', 'session-summary-full');
+    summaryFull.textContent = session.summary_body;
+    container.appendChild(summaryFull);
   }
 
-  data.lines.forEach(line => {
-    const row = el('div', 'session-line');
-
-    const ts = el('span', 'session-ts', line.timestamp || '');
-    row.appendChild(ts);
-
-    const type = el('span', 'session-type');
-    if (line.type === 'TOOL') {
-      type.appendChild(renderBadge(line.tool || 'TOOL'));
-    } else if (line.type === 'USER') {
-      type.appendChild(el('span', 'badge badge-decision', 'USER'));
-    } else {
-      type.appendChild(el('span', 'badge badge-default', 'RAW'));
-    }
-    row.appendChild(type);
-
-    row.appendChild(el('span', 'session-content', line.content || ''));
-    container.appendChild(row);
-  });
-
-  // Auto-scroll to bottom — Spec: S-016 | Req: I-005g
-  if (wasAtBottom) {
-    container.scrollTop = container.scrollHeight;
+  // Show full knowledge entries
+  const knowledge = session.knowledge || [];
+  if (knowledge.length > 0) {
+    const kHeader = el('div', 'session-detail-section-header', `Linked Knowledge (${knowledge.length})`);
+    container.appendChild(kHeader);
+    knowledge.forEach(kEntry => {
+      const entryEl = el('div', 'session-detail-knowledge-entry');
+      const eh = el('div', 'entry-header');
+      eh.appendChild(el('span', 'entry-key', kEntry.key));
+      (kEntry.tags || []).forEach(tag => eh.appendChild(renderBadge(tag)));
+      eh.appendChild(renderScopeBadge(kEntry.scope));
+      entryEl.appendChild(eh);
+      const meta = el('div', 'entry-meta');
+      meta.appendChild(el('span', '', relativeTime(kEntry.updated_at)));
+      meta.appendChild(el('span', '', `~${kEntry.token_estimate} tok`));
+      entryEl.appendChild(meta);
+      if (kEntry.body) {
+        entryEl.appendChild(el('div', 'detail-body', kEntry.body));
+      }
+      container.appendChild(entryEl);
+    });
   }
 }
 
-// ---- Browser ----
-// Spec: S-016 | Req: I-006a..I-006g
+// ---- Knowledge tab (merged Timeline + Browser) ----
 
-function initBrowser() {
-  const qInput = $('#browser-q');
+function initKnowledge() {
+  const qInput = $('#knowledge-q');
   if (qInput) {
     qInput.addEventListener('input', () => {
-      state.browserQuery = qInput.value;
+      state.knowledgeQuery = qInput.value;
       clearTimeout(debounceTimer);
-      // Debounce 300ms — Spec: S-016 | Req: I-006a
-      debounceTimer = setTimeout(() => loadEntries(), 300);
+      debounceTimer = setTimeout(() => loadKnowledge(), 300);
     });
   }
 
-  const tagInput = $('#browser-tag');
+  const tagInput = $('#knowledge-tag');
   if (tagInput) {
     tagInput.addEventListener('change', () => {
-      state.browserTag = tagInput.value;
-      loadEntries();
+      state.knowledgeTag = tagInput.value;
+      loadKnowledge();
     });
   }
 
-  $$('#browser-scope .scope-btn').forEach(btn => {
+  $$('#knowledge-scope .scope-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      state.browserScope = btn.dataset.scope;
-      $$('#browser-scope .scope-btn').forEach(b => b.classList.remove('active'));
+      state.knowledgeScope = btn.dataset.scope;
+      $$('#knowledge-scope .scope-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      loadEntries();
+      loadKnowledge();
     });
   });
 }
 
-async function loadEntries() {
+async function loadKnowledge() {
   const t0 = performance.now();
-  const q = state.browserQuery;
-  const tag = state.browserTag;
-  const scope = state.browserScope;
+  const q = state.knowledgeQuery;
+  const tag = state.knowledgeTag;
+  const scope = state.knowledgeScope;
 
   let url = `/api/entries?scope=${scope}&limit=100`;
   if (q) url += `&q=${encodeURIComponent(q)}`;
@@ -438,20 +413,16 @@ async function loadEntries() {
     return;
   }
 
-  // Don't replace valid data with empty response on transient errors
-  if ((!data.entries || !data.entries.length) && !q && !tag && $('#browser-list')?.children.length > 1) {
+  if ((!data.entries || !data.entries.length) && !q && !tag && $('#knowledge-list')?.children.length > 1) {
     return;
   }
 
   const elapsed = Math.round(performance.now() - t0);
-
-  const list = $('#browser-list');
+  const list = $('#knowledge-list');
   if (!list) return;
 
-  const meta = $('#browser-meta');
-  if (meta) {
-    meta.textContent = `${data.total || 0} entries · ${elapsed}ms`;
-  }
+  const meta = $('#knowledge-meta');
+  if (meta) meta.textContent = `${data.total || 0} entries · ${elapsed}ms`;
 
   list.innerHTML = '';
 
@@ -469,32 +440,30 @@ async function loadEntries() {
     header.appendChild(renderScopeBadge(entry.scope));
     card.appendChild(header);
 
-    const meta = el('div', 'entry-meta');
-    meta.appendChild(el('span', '', relativeTime(entry.updated_at)));
-    meta.appendChild(el('span', '', `~${entry.token_estimate} tok`));
-    card.appendChild(meta);
+    const metaEl = el('div', 'entry-meta');
+    metaEl.appendChild(el('span', '', relativeTime(entry.updated_at)));
+    metaEl.appendChild(el('span', '', `~${entry.token_estimate} tok`));
+    card.appendChild(metaEl);
 
-    // Click shows detail — Spec: S-016 | Req: I-006e
     card.addEventListener('click', () => {
-      state.browserSelectedKey = entry.key;
-      $$('#browser-list .entry-card').forEach(c => c.classList.remove('expanded'));
+      state.knowledgeSelectedKey = entry.key;
+      $$('#knowledge-list .entry-card').forEach(c => c.classList.remove('expanded'));
       card.classList.add('expanded');
-      showBrowserDetail(entry);
+      showKnowledgeDetail(entry);
     });
 
     list.appendChild(card);
   });
 }
 
-function showBrowserDetail(entry) {
-  const panel = $('#browser-detail');
+function showKnowledgeDetail(entry) {
+  const panel = $('#knowledge-detail');
   if (!panel) return;
 
   panel.classList.remove('empty');
   panel.innerHTML = '';
 
-  const keyEl = el('div', 'detail-key', entry.key);
-  panel.appendChild(keyEl);
+  panel.appendChild(el('div', 'detail-key', entry.key));
 
   const meta = el('div', 'detail-meta');
   meta.appendChild(el('span', '', `Scope: ${entry.scope}`));
@@ -506,12 +475,10 @@ function showBrowserDetail(entry) {
   (entry.tags || []).forEach(tag => tagsRow.appendChild(renderBadge(tag)));
   panel.appendChild(tagsRow);
 
-  const body = el('div', 'detail-body', entry.body || '');
-  panel.appendChild(body);
+  panel.appendChild(el('div', 'detail-body', entry.body || ''));
 }
 
 // ---- Stats ----
-// Spec: S-016 | Req: I-007a..I-007e
 
 async function loadStats() {
   let data;
@@ -526,9 +493,7 @@ async function loadStats() {
   renderScopeStats('local', data.local || {});
 
   const activeSessEl = $('#stats-active-sessions');
-  if (activeSessEl) {
-    activeSessEl.textContent = data.active_sessions || 0;
-  }
+  if (activeSessEl) activeSessEl.textContent = data.active_sessions || 0;
 }
 
 function renderScopeStats(scope, stats) {
@@ -545,37 +510,18 @@ function renderScopeStats(scope, stats) {
 
   if (tagsEl && stats.by_tag) {
     tagsEl.innerHTML = '';
-    const sorted = Object.entries(stats.by_tag)
-      .sort((a, b) => b[1] - a[1]);
-
+    const sorted = Object.entries(stats.by_tag).sort((a, b) => b[1] - a[1]);
     sorted.forEach(([tag, count]) => {
       const row = el('div', 'tag-row');
       row.appendChild(el('span', 'tag-name', tag));
       row.appendChild(el('span', 'tag-count', String(count)));
       tagsEl.appendChild(row);
     });
-
-    if (!sorted.length) {
-      tagsEl.appendChild(el('span', '', 'No tags'));
-    }
+    if (!sorted.length) tagsEl.appendChild(el('span', '', 'No tags'));
   }
 }
 
-// ---- Scope toggle for timeline ----
-
-function initTimelineScope() {
-  $$('#timeline-scope .scope-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.timelineScope = btn.dataset.scope;
-      $$('#timeline-scope .scope-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      loadTimeline();
-    });
-  });
-}
-
 // ---- Stats auto-refresh ----
-// Spec: S-016 | Req: I-007d
 
 function startStatsRefresh() {
   clearInterval(statsRefreshTimer);
@@ -589,7 +535,6 @@ function startStatsRefresh() {
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initSSE();
-  initBrowser();
-  initTimelineScope();
+  initKnowledge();
   startStatsRefresh();
 });

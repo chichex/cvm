@@ -484,6 +484,217 @@ func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// --- Sessions (combined active buffers + completed summaries) ---
+
+type knowledgeEntryJSON struct {
+	Key           string   `json:"key"`
+	Tags          []string `json:"tags"`
+	Scope         string   `json:"scope"`
+	CreatedAt     string   `json:"created_at"`
+	UpdatedAt     string   `json:"updated_at"`
+	Body          string   `json:"body"`
+	TokenEstimate int      `json:"token_estimate"`
+}
+
+type sessionCardJSON struct {
+	// Common fields
+	ID         string               `json:"id"`
+	Key        string               `json:"key"`
+	Status     string               `json:"status"`    // "active" or "summarized"
+	Scope      string               `json:"scope"`     // "local" (active) or "global" (summarized)
+	CreatedAt  string               `json:"created_at"`
+	UpdatedAt  string               `json:"updated_at"`
+	ProjectDir string               `json:"project_dir,omitempty"`
+	Knowledge  []knowledgeEntryJSON `json:"knowledge"`
+
+	// Active-only fields
+	LineCount int              `json:"line_count,omitempty"`
+	Lines     []sessionLineJSON `json:"lines,omitempty"`
+
+	// Summarized-only fields
+	SummaryBody string `json:"summary_body,omitempty"`
+}
+
+type sessionsResponse struct {
+	Sessions   []sessionCardJSON `json:"sessions"`
+	ProjectDir string            `json:"project_dir"`
+}
+
+// handleSessions serves GET /api/sessions
+// Returns active session buffers (local KB) + completed summaries (global KB),
+// each correlated with knowledge entries created during their timeframe.
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var cards []sessionCardJSON
+
+	// --- Active buffers from local KB ---
+	if s.localBack != nil {
+		entries, err := s.localBack.List("")
+		if err == nil {
+			for _, e := range entries {
+				if !strings.HasPrefix(e.Key, "session-buffer-") {
+					continue
+				}
+				sid := strings.TrimPrefix(e.Key, "session-buffer-")
+				doc, err := s.localBack.Get(e.Key)
+				lines := []sessionLineJSON{}
+				if err == nil {
+					lines = ParseSessionLines(doc.Body)
+				}
+				tags := e.Tags
+				if tags == nil {
+					tags = []string{}
+				}
+				card := sessionCardJSON{
+					ID:         sid,
+					Key:        e.Key,
+					Status:     "active",
+					Scope:      "local",
+					CreatedAt:  e.CreatedAt.UTC().Format(time.RFC3339),
+					UpdatedAt:  e.UpdatedAt.UTC().Format(time.RFC3339),
+					ProjectDir: s.cfg.ProjectPath,
+					LineCount:  len(lines),
+					Lines:      lines,
+					Knowledge:  []knowledgeEntryJSON{},
+				}
+				cards = append(cards, card)
+			}
+		}
+	}
+
+	// --- Completed summaries from global KB ---
+	if s.globalBack != nil {
+		entries, err := s.globalBack.List("")
+		if err == nil {
+			for _, e := range entries {
+				// session summaries: key starts with "session-" but NOT "session-buffer-"
+				if !strings.HasPrefix(e.Key, "session-") || strings.HasPrefix(e.Key, "session-buffer-") {
+					continue
+				}
+				// Must have "summary" in tags to be a completed session
+				hasSummaryTag := false
+				for _, t := range e.Tags {
+					if t == "summary" {
+						hasSummaryTag = true
+						break
+					}
+				}
+				if !hasSummaryTag {
+					continue
+				}
+				doc, err := s.globalBack.Get(e.Key)
+				summaryBody := ""
+				if err == nil {
+					summaryBody = doc.Body
+				}
+				tags := e.Tags
+				if tags == nil {
+					tags = []string{}
+				}
+				card := sessionCardJSON{
+					ID:          e.Key,
+					Key:         e.Key,
+					Status:      "summarized",
+					Scope:       "global",
+					CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
+					UpdatedAt:   e.UpdatedAt.UTC().Format(time.RFC3339),
+					SummaryBody: summaryBody,
+					Knowledge:   []knowledgeEntryJSON{},
+				}
+				cards = append(cards, card)
+			}
+		}
+	}
+
+	// --- Correlate knowledge entries to sessions ---
+	// Collect all non-session knowledge entries from both scopes
+	type scopedKB struct {
+		entry knowledgeEntryJSON
+		ts    time.Time
+	}
+	var allKB []scopedKB
+
+	collectKB := func(b kb.Backend, scopeName string) {
+		if b == nil {
+			return
+		}
+		entries, err := b.List("")
+		if err != nil {
+			return
+		}
+		for _, e := range entries {
+			// Skip session keys
+			if strings.HasPrefix(e.Key, "session-") {
+				continue
+			}
+			doc, err := b.Get(e.Key)
+			body := ""
+			if err == nil {
+				body = doc.Body
+			}
+			tags := e.Tags
+			if tags == nil {
+				tags = []string{}
+			}
+			allKB = append(allKB, scopedKB{
+				entry: knowledgeEntryJSON{
+					Key:           e.Key,
+					Tags:          tags,
+					Scope:         scopeName,
+					CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
+					UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
+					Body:          body,
+					TokenEstimate: len(body) / 4,
+				},
+				ts: e.CreatedAt,
+			})
+		}
+	}
+
+	collectKB(s.globalBack, "global")
+	collectKB(s.localBack, "local")
+
+	// For each session card, find knowledge entries whose CreatedAt falls within the session timeframe
+	for i, card := range cards {
+		start, errStart := time.Parse(time.RFC3339, card.CreatedAt)
+		end, errEnd := time.Parse(time.RFC3339, card.UpdatedAt)
+		if errStart != nil || errEnd != nil {
+			continue
+		}
+		// Add a small buffer after the session ended (5 min) to capture entries written just after
+		end = end.Add(5 * time.Minute)
+
+		for _, kb := range allKB {
+			if !kb.ts.Before(start) && !kb.ts.After(end) {
+				cards[i].Knowledge = append(cards[i].Knowledge, kb.entry)
+			}
+		}
+	}
+
+	// Sort: active first, then by UpdatedAt desc
+	sort.Slice(cards, func(i, j int) bool {
+		if cards[i].Status != cards[j].Status {
+			return cards[i].Status == "active"
+		}
+		ti, _ := time.Parse(time.RFC3339, cards[i].UpdatedAt)
+		tj, _ := time.Parse(time.RFC3339, cards[j].UpdatedAt)
+		return ti.After(tj)
+	})
+
+	if cards == nil {
+		cards = []sessionCardJSON{}
+	}
+
+	jsonOK(w, sessionsResponse{
+		Sessions:   cards,
+		ProjectDir: s.cfg.ProjectPath,
+	})
+}
+
 // --- Stats ---
 
 type scopeStatsJSON struct {

@@ -228,15 +228,17 @@ main {
   white-space: nowrap;
 }
 
-.badge-learning  { background: var(--badge-learning);  color: var(--blue); }
-.badge-gotcha    { background: var(--badge-gotcha);    color: var(--orange); }
-.badge-decision  { background: var(--badge-decision);  color: var(--green); }
-.badge-session   { background: var(--badge-session);   color: var(--purple); }
-.badge-summary   { background: #2a2a3a; color: var(--pink); }
-.badge-spec-gap  { background: #3a2a1a; color: var(--yellow); }
-.badge-default   { background: var(--badge-default);   color: var(--muted); }
-.badge-global    { background: #1a2a1a; color: var(--teal); }
-.badge-local     { background: #2a1a2a; color: var(--pink); }
+.badge-learning   { background: var(--badge-learning);  color: var(--blue); }
+.badge-gotcha     { background: var(--badge-gotcha);    color: var(--orange); }
+.badge-decision   { background: var(--badge-decision);  color: var(--green); }
+.badge-session    { background: var(--badge-session);   color: var(--purple); }
+.badge-summary    { background: #2a2a3a; color: var(--pink); }
+.badge-spec-gap   { background: #3a2a1a; color: var(--yellow); }
+.badge-default    { background: var(--badge-default);   color: var(--muted); }
+.badge-global     { background: #1a2a1a; color: var(--teal); }
+.badge-local      { background: #2a1a2a; color: var(--pink); }
+.badge-active     { background: #0d2b1a; color: var(--green); }
+.badge-summarized { background: #0d1f3a; color: var(--accent); }
 
 .entry-meta {
   display: flex;
@@ -503,10 +505,217 @@ main {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
+/* ---- Sessions tab ---- */
+
+.sessions-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Session card base */
+.session-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  border-left-width: 3px;
+}
+.session-card:hover { background: #1a1a2a; }
+.session-card.expanded { background: #1a1a2a; }
+
+/* Active: green left border */
+.session-card--active {
+  border-left-color: var(--green);
+}
+.session-card--active:hover,
+.session-card--active.expanded {
+  border-color: var(--green);
+}
+
+/* Summarized: blue/accent left border */
+.session-card--summarized {
+  border-left-color: var(--accent);
+}
+.session-card--summarized:hover,
+.session-card--summarized.expanded {
+  border-color: var(--accent);
+}
+
+/* Card header row */
+.session-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.session-card__id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: default;
+}
+
+.session-card__project {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+/* Meta row */
+.session-card__meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.session-card__duration {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.session-card__live {
+  color: var(--green);
+  font-size: 11px;
+}
+
+/* Summary preview */
+.session-card__summary {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--border);
+}
+
+.session-card__summary-line {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Knowledge section */
+.session-card__knowledge {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.session-card__knowledge-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  transition: background 0.15s, color 0.15s;
+}
+.session-card__knowledge-toggle:hover,
+.session-card__knowledge-toggle.open {
+  background: var(--surface);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.session-card__knowledge-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Knowledge pill (inline in session card) */
+.knowledge-pill {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.knowledge-pill__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.knowledge-pill__preview {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Expanded session detail area */
+.session-card__detail {
+  display: none;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.session-card.expanded .session-card__detail { display: block; }
+
+/* Full summary in expanded detail */
+.session-summary-full {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+/* Section header within detail */
+.session-detail-section-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 14px 0 6px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.session-detail-knowledge-entry {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+
 /* ---- Responsive ---- */
 
 @media (max-width: 768px) {
   .browser-layout { flex-direction: column; }
   .browser-detail { width: 100%; min-height: 200px; }
   .stats-grid { grid-template-columns: 1fr; }
+  .session-card__project { max-width: 150px; }
 }

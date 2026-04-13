@@ -12,9 +12,8 @@
   <header>
     <span class="logo">CVM</span>
     <nav>
-      <button data-tab="timeline" class="active">Timeline</button>
-      <button data-tab="session">Session</button>
-      <button data-tab="browser">Browser</button>
+      <button data-tab="sessions" class="active">Sessions</button>
+      <button data-tab="knowledge">Knowledge</button>
       <button data-tab="stats">Stats</button>
     </nav>
     <div class="status-dot">
@@ -25,44 +24,29 @@
 
   <main>
 
-    <!-- ===== Timeline ===== -->
-    <section class="view active" data-tab="timeline">
+    <!-- ===== Sessions ===== -->
+    <section class="view active" data-tab="sessions">
       <div class="toolbar">
-        <div id="timeline-scope" class="scope-toggle">
+        <span class="meta" id="sessions-meta">Loading sessions…</span>
+      </div>
+      <div id="sessions-list" class="sessions-list"></div>
+    </section>
+
+    <!-- ===== Knowledge ===== -->
+    <section class="view" data-tab="knowledge">
+      <div class="toolbar">
+        <input id="knowledge-q" type="text" placeholder="Search KB… (debounced 300ms)">
+        <input id="knowledge-tag" type="text" placeholder="Filter by tag">
+        <div id="knowledge-scope" class="scope-toggle">
           <button class="scope-btn active" data-scope="both">Both</button>
           <button class="scope-btn" data-scope="global">Global</button>
           <button class="scope-btn" data-scope="local">Local</button>
         </div>
-        <span class="meta">Recent KB entries — auto-refreshes via SSE</span>
-      </div>
-      <div id="timeline-list" class="entry-list"></div>
-    </section>
-
-    <!-- ===== Session ===== -->
-    <section class="view" data-tab="session">
-      <div class="toolbar">
-        <select id="session-selector" title="Select session buffer"></select>
-        <span class="meta">Live session buffer — tool observations &amp; user prompts</span>
-      </div>
-      <div id="session-meta" class="session-meta-bar"></div>
-      <div id="session-lines" class="session-container"></div>
-    </section>
-
-    <!-- ===== Browser ===== -->
-    <section class="view" data-tab="browser">
-      <div class="toolbar">
-        <input id="browser-q" type="text" placeholder="Search KB… (debounced 300ms)">
-        <input id="browser-tag" type="text" placeholder="Filter by tag">
-        <div id="browser-scope" class="scope-toggle">
-          <button class="scope-btn active" data-scope="both">Both</button>
-          <button class="scope-btn" data-scope="global">Global</button>
-          <button class="scope-btn" data-scope="local">Local</button>
-        </div>
-        <span id="browser-meta" class="meta"></span>
+        <span id="knowledge-meta" class="meta"></span>
       </div>
       <div class="browser-layout">
-        <div id="browser-list" class="browser-list"></div>
-        <div id="browser-detail" class="browser-detail empty">
+        <div id="knowledge-list" class="browser-list"></div>
+        <div id="knowledge-detail" class="browser-detail empty">
           <span>Select an entry to view its full body</span>
         </div>
       </div>

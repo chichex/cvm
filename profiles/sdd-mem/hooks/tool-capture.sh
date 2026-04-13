@@ -53,8 +53,8 @@ existing=$(cvm kb show "$buffer_key" --local 2>/dev/null | sed '1,/^$/d' || true
 # Cap at 100 lines: drop oldest if needed
 if [ -n "$existing" ]; then
   line_count=$(echo "$existing" | wc -l | tr -d ' ')
-  if [ "$line_count" -ge 100 ]; then
-    existing=$(echo "$existing" | tail -n 99)
+  if [ "$line_count" -ge 500 ]; then
+    existing=$(echo "$existing" | tail -n 499)
   fi
   new_body="${existing}
 ${new_line}"
