@@ -378,6 +378,52 @@ func Stats(scope config.Scope, projectPath string) (total, enabled, stale int, e
 	return total, enabled, stale, nil
 }
 
+// putWithTime is like Put but accepts an explicit timestamp for testability.
+// Spec: S-013 | Req: I-001b
+func putWithTime(scope config.Scope, projectPath, key, body string, tags []string, now time.Time) error {
+	dir := entriesDir(scope, projectPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	idx, err := loadIndex(scope, projectPath)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for i, e := range idx.Entries {
+		if e.Key == key {
+			idx.Entries[i].Tags = tags
+			idx.Entries[i].UpdatedAt = now
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		idx.Entries = append(idx.Entries, Entry{
+			Key:       key,
+			Tags:      tags,
+			Enabled:   true,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+
+	content := fmt.Sprintf("---\nkey: %s\ntags: [%s]\n---\n\n%s\n", key, strings.Join(tags, ", "), body)
+	if err := os.WriteFile(entryPath(scope, projectPath, key), []byte(content), 0644); err != nil {
+		return err
+	}
+
+	return saveIndex(scope, projectPath, idx)
+}
+
+// errNotFound returns the canonical "not found" error for a key.
+func errNotFound(key string) error {
+	return fmt.Errorf("entry %q not found", key)
+}
+
 func renderDocument(key string, tags []string, body string) string {
 	return fmt.Sprintf("---\nkey: %s\ntags: [%s]\n---\n\n%s\n", key, strings.Join(tags, ", "), body)
 }

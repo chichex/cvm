@@ -9,7 +9,8 @@
     "CVM_CONTEXT_ENTRY_COUNT": "10",
     "CVM_CONTEXT_MAX_TOKENS": "2000",
     "CVM_AUTOSUMMARY_ENABLED": "true",
-    "CVM_AUTOSUMMARY_MODEL": "haiku"
+    "CVM_AUTOSUMMARY_MODEL": "haiku",
+    "CVM_OBSERVE_TOOLS": "Bash,Write,Edit"
   },
   "permissions": {
     "allow": [
@@ -79,7 +80,13 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Write|Edit|NotebookEdit",
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/tool-observe.sh" }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/tool-capture.sh" }
         ]
