@@ -5,14 +5,12 @@ LDFLAGS := -ldflags "-X github.com/chichex/cvm/cmd.Version=$(VERSION)"
 
 build:
 	go build $(LDFLAGS) -o bin/cvm .
-	go build -o bin/cvm-mcp-kb ./cmd/mcp-kb/
 
 install: build
 	cp bin/cvm /usr/local/bin/cvm
-	cp bin/cvm-mcp-kb /usr/local/bin/cvm-mcp-kb
 
 uninstall:
-	rm -f /usr/local/bin/cvm /usr/local/bin/cvm-mcp-kb
+	rm -f /usr/local/bin/cvm
 
 test:
 	go test ./...

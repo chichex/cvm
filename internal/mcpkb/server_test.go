@@ -1,6 +1,6 @@
 // Spec: S-014 | Type: unit
 // Tests for the MCP KB server: tools/list, kb_search, kb_get behaviors.
-package main
+package mcpkb
 
 import (
 	"encoding/json"

@@ -217,7 +217,7 @@ Extends **sdd** with a persistent memory system inspired by [claude-mem](https:/
 
 **Key additions over sdd:**
 - **SQLite + FTS5 backend**: KB entries stored in SQLite with full-text search, porter stemming, and BM25 ranking. Flat files kept as automatic fallback. Set `CVM_KB_BACKEND=flat` to force flat files.
-- **MCP KB tools**: Native `kb_search` and `kb_get` tools exposed via MCP — Claude queries the KB directly without shelling out. Requires `cvm-mcp-kb` binary in PATH (see install).
+- **MCP KB tools**: Native `kb_search` and `kb_get` tools exposed via MCP — Claude queries the KB directly without shelling out. Ships as `cvm mcp-kb` subcommand, no extra install needed.
 - **Context injection**: `SessionStart` hook injects a compact summary of recent KB entries (~2K tokens budget)
 - **Auto session summary**: `SessionEnd` generates a structured summary via Haiku (~$0.001/session)
 - **Tool observation**: `PostToolUse` hook captures Bash/Write/Edit events to enrich session summaries. Configurable via `CVM_OBSERVE_TOOLS`.
@@ -241,10 +241,7 @@ Extends **sdd** with a persistent memory system inspired by [claude-mem](https:/
 ```bash
 cvm add sdd-mem git@github.com:chichex/cvm.git
 cvm use sdd-mem
-
-# Optional: install MCP server for native KB tools
-# (included in `make install`, or manually):
-go build -o /usr/local/bin/cvm-mcp-kb ./cmd/mcp-kb/
+# MCP tools activate automatically — no extra setup needed
 ```
 
 ## License

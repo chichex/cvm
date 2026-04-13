@@ -9,8 +9,8 @@
       "args": ["-y", "@upstash/context7-mcp@latest"]
     },
     "cvm-kb": {
-      "command": "cvm-mcp-kb",
-      "args": []
+      "command": "cvm",
+      "args": ["mcp-kb"]
     }
   }
 }

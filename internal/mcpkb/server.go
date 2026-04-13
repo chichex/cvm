@@ -1,7 +1,7 @@
 // Spec: S-014
-// Package main implements a minimal MCP server that exposes the CVM Knowledge Base
+// Package mcpkb implements a minimal MCP server that exposes the CVM Knowledge Base
 // via two tools: kb_search and kb_get. Transport: stdio JSON-RPC 2.0.
-package main
+package mcpkb
 
 import (
 	"bufio"
@@ -360,7 +360,7 @@ func handleKbGet(raw json.RawMessage) toolsCallResult {
 // Frontmatter format: ---\nkey: ...\ntags: [...]\n---\n\n<body>
 // Spec: S-014 | Req: I-007
 // Note: no longer called by production code (kb_get uses b.Get() which returns body only),
-// but retained because it is tested directly in main_test.go.
+// but retained because it is tested directly in server_test.go.
 func stripFrontmatter(content string) string {
 	const frontmatterEnd = "\n---\n\n"
 	if idx := strings.Index(content, frontmatterEnd); idx >= 0 {
@@ -469,9 +469,11 @@ func handleToolsCall(req rpcRequest) rpcResponse {
 	}
 }
 
-// ---- Main loop (Spec: S-014 | Req: B-001) ----
+// ---- Serve (Spec: S-014 | Req: B-001) ----
 
-func main() {
+// Serve starts the MCP stdio JSON-RPC 2.0 server loop.
+// Req: B-001
+func Serve() {
 	// I-002: Never write to stdout except for JSON-RPC responses
 	scanner := bufio.NewScanner(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)

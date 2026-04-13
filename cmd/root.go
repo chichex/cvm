@@ -43,6 +43,7 @@ func init() {
 	rootCmd.AddCommand(lifecycleCmd)
 	rootCmd.AddCommand(remoteCmd)
 	rootCmd.AddCommand(overrideCmd)
+	rootCmd.AddCommand(mcpKbCmd)
 
 	// Legacy (still work, but simplified API is preferred)
 	rootCmd.AddCommand(globalCmd)
