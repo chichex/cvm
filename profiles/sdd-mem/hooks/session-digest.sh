@@ -32,7 +32,7 @@ if [ -z "$transcript" ] || [ ! -f "$transcript" ]; then
 fi
 
 # --- Extract digest using python3 ---
-python3 << 'PYEOF' "$transcript" "$MIN_TOOLS" "$DIGEST_FILE"
+python3 - "$transcript" "$MIN_TOOLS" "$DIGEST_FILE" << 'PYEOF'
 import json
 import sys
 import os

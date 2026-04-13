@@ -44,7 +44,7 @@ ${digest_content}
 
 summary=""
 if command -v claude &>/dev/null; then
-  summary=$(echo "$prompt" | claude -p --model "$MODEL" --max-tokens "$MAX_TOKENS" 2>/dev/null) || true
+  summary=$(echo "$prompt" | claude -p --model "$MODEL" 2>/dev/null) || true
 fi
 
 if [ -z "$summary" ]; then
