@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Spec: S-015 | Req: B-001 | PostToolUse: structured tool observation capture to session buffer
-# Appends a [HH:MM] [TOOL:<name>] <summary> line to KB entry "session-buffer-<session_id>"
-# for each tool use in CVM_OBSERVE_TOOLS (default: Bash,Write,Edit).
+# Spec: S-017 | Req: B-003, B-014 | PostToolUse: structured tool observation capture via cvm session append
+# Appends a tool event to the CVM session for each tool use in CVM_OBSERVE_TOOLS (default: Bash,Write,Edit).
 # MUST complete in < 50ms (I-001). No LLM calls. No network.
-# Replaces tool-capture.sh for Bash|Write|Edit subset (Option A — S-015 B-007).
+# Replaces session-buffer KB writes (S-015 superseded by S-017).
 
 INPUT=$(cat)
 
@@ -89,7 +88,8 @@ else:
     summary = f'used {tool}'
 
 print(f'{sid}')
-print(f'[TOOL:{tool}] {summary}')
+print(f'{tool}')
+print(f'{summary}')
 " 2>&1)
 
 exit_code=$?
@@ -99,34 +99,16 @@ if [ $exit_code -ne 0 ]; then
   exit 0
 fi
 
-session_id=$(echo "$result" | head -1)
-tool_summary=$(echo "$result" | tail -1)
+session_id=$(echo "$result" | sed -n '1p')
+tool_name=$(echo "$result" | sed -n '2p')
+tool_summary=$(echo "$result" | sed -n '3p')
 
-if [ -z "$session_id" ] || [ -z "$tool_summary" ]; then
+if [ -z "$session_id" ] || [ -z "$tool_name" ] || [ -z "$tool_summary" ]; then
   exit 0
 fi
 
-timestamp=$(date +%H:%M)
-new_line="[${timestamp}] ${tool_summary}"
-buffer_key="session-buffer-${session_id}"
-
-# Read existing buffer body, strip frontmatter (B-006 read-modify-write)
-existing=$(cvm kb show "$buffer_key" --local 2>/dev/null | sed '1,/^$/d' || true)
-
-# Cap at 100 lines: drop oldest if at/above cap (B-006, I-004, B-010)
-if [ -n "$existing" ]; then
-  line_count=$(echo "$existing" | wc -l | tr -d ' ')
-  if [ "$line_count" -ge 500 ]; then
-    existing=$(echo "$existing" | tail -n 499)
-  fi
-  new_body="${existing}
-${new_line}"
-else
-  new_body="$new_line"
-fi
-
-# Write back (B-006)
-cvm kb put "$buffer_key" --body "$new_body" --tag "session-buffer" --local 2>/dev/null || \
-  echo "[tool-observe] warning: cvm kb put failed" >&2
+# Append tool event to session (B-003, B-014: cvm session append replaces kb put)
+cvm session append "$session_id" --type tool --tool "$tool_name" --content "$tool_summary" 2>/dev/null || \
+  echo "[tool-observe] warning: cvm session append failed" >&2
 
 exit 0

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -82,6 +83,23 @@ func (e *testEnv) mustFail(args ...string) string {
 		e.t.Fatalf("expected cvm %s to fail, but it succeeded\noutput: %s", strings.Join(args, " "), out)
 	}
 	return out
+}
+
+// runWithEnv executes cvm with extra environment variables merged into the environment.
+func (e *testEnv) runWithEnv(extra map[string]string, args ...string) string {
+	e.t.Helper()
+	cmd := exec.Command(cvmBin, args...)
+	cmd.Dir = e.projectDir
+	env := append(os.Environ(), "HOME="+e.home)
+	for k, v := range extra {
+		env = append(env, k+"="+v)
+	}
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		e.t.Fatalf("cvm %s failed: %v\noutput: %s", strings.Join(args, " "), err, string(out))
+	}
+	return string(out)
 }
 
 // seedClaudeDir creates a minimal ~/.claude/ with a CLAUDE.md so profiles
@@ -600,31 +618,33 @@ func TestEdgeKBDisableNonexistent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Lifecycle
+// Session (replaces legacy Lifecycle)
 // ---------------------------------------------------------------------------
 
-func TestLifecycle(t *testing.T) {
+func TestSession(t *testing.T) {
 	e := newTestEnv(t)
 
-	// status before any session
-	out := e.mustRun("lifecycle", "status")
-	assertContains(t, out, "No active cvm session")
+	// status before any session — no sessions dir yet
+	out := e.mustRun("session", "status")
+	assertContains(t, out, "No active sessions")
 
-	// start
-	out = e.mustRun("lifecycle", "start")
-	assertContains(t, out, "cvm session started")
+	// start — output contains UUID (mixed with stats on stderr via CombinedOutput)
+	out = e.mustRun("session", "start")
+	uuid := extractUUID(out)
+	if uuid == "" {
+		t.Fatalf("session start did not return a valid UUID, got: %q", out)
+	}
 
-	// status after start
-	out = e.mustRun("lifecycle", "status")
-	assertContains(t, out, "Session active since")
+	// ls lists all sessions (active and closed), so the new session should appear
+	out = e.mustRun("session", "ls")
+	assertContains(t, out, uuid[:8])
 
-	// end
-	out = e.mustRun("lifecycle", "end")
-	assertContains(t, out, "session ended")
+	// end with CVM_AUTOSUMMARY_ENABLED=false to skip LLM call
+	e.runWithEnv(map[string]string{"CVM_AUTOSUMMARY_ENABLED": "false"}, "session", "end", uuid)
 
-	// status after end
-	out = e.mustRun("lifecycle", "status")
-	assertContains(t, out, "No active cvm session")
+	// ls still shows the session (now closed)
+	out = e.mustRun("session", "ls")
+	assertContains(t, out, uuid[:8])
 }
 
 // ---------------------------------------------------------------------------
@@ -762,7 +782,7 @@ func TestUseAppliesChicheMCPServersToClaudeUserConfig(t *testing.T) {
 	assertJSONKeyExists(t, claudeUserConfig, "oauthAccount")
 }
 
-func TestLifecycleEndSavesAddedMCPServersToActiveProfile(t *testing.T) {
+func TestSessionEndSavesAddedMCPServersToActiveProfile(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
@@ -801,7 +821,11 @@ func TestLifecycleEndSavesAddedMCPServersToActiveProfile(t *testing.T) {
 		t.Fatalf("write active settings: %v", err)
 	}
 
-	e.mustRun("lifecycle", "end")
+	// Start a session then end it (with autosummary disabled to skip LLM call).
+	// session end triggers saveActiveProfiles which persists MCP servers to the active profile.
+	startOut := e.mustRun("session", "start")
+	uuid := extractUUID(startOut)
+	e.runWithEnv(map[string]string{"CVM_AUTOSUMMARY_ENABLED": "false"}, "session", "end", uuid)
 
 	profileSettings := filepath.Join(e.home, ".cvm", "global", "profiles", "chiche", ".claude.json")
 	assertMCPServerExists(t, activeSettings, "sequential-thinking")
@@ -917,6 +941,14 @@ func TestGlobalInitDefaultName(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// extractUUID finds a UUID v4 in a string (session start output mixes UUID on stdout with stats on stderr).
+var uuidRe = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
+func extractUUID(s string) string {
+	match := uuidRe.FindString(s)
+	return match
+}
 
 func assertContains(t *testing.T, haystack, needle string) {
 	t.Helper()

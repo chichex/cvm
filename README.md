@@ -31,9 +31,8 @@ cd cvm && make install
 
 ```bash
 # Install a profile
-cvm add sdd git@github.com:chichex/cvm.git           # spec-driven development
-cvm add sdd-mem git@github.com:chichex/cvm.git       # sdd + persistent memory
-cvm use sdd                                          # or: cvm use sdd-mem
+cvm add sdd-mem git@github.com:chichex/cvm.git       # spec-driven development + persistent memory
+cvm use sdd-mem
 
 # That's it. Update anytime:
 cvm pull
@@ -135,12 +134,16 @@ cvm restore --global    # only global
 cvm restore --local     # only local
 ```
 
-### Lifecycle (used by hooks)
+### Session (used by hooks)
 
 ```bash
-cvm lifecycle start    # session start: load context, detect tools
-cvm lifecycle end      # session end: cleanup + auto-run automation
-cvm lifecycle status   # show current session info
+cvm session start      # session start: create session file, detect tools
+cvm session end <uuid> # session end: generate summary + cleanup + auto-run automation
+cvm session status     # show active sessions
+cvm session append <uuid> --type <prompt|tool|agent> [--content ...] [--tool ...] [--agent-type ...]
+cvm session ls         # list all sessions (default: 20 most recent)
+cvm session show <uuid>  # show all events for a session
+cvm session gc         # delete closed sessions older than 30 days
 cvm automation status  # queued candidates summary
 cvm automation ls      # list candidate briefs
 cvm automation show <id>  # inspect a materialized brief
@@ -194,37 +197,22 @@ When you run `cvm use work`:
 4. Copies the "work" profile into `~/.claude/`
 5. Updates `~/.cvm/state.json`
 
-## The "sdd" profile
-
-A **Spec-Driven Development** profile that enforces a spec-first workflow: every feature starts as a specification, implementation follows the spec, and verification checks compliance against it.
-
-- **18 skills**: learn, decide, gotcha, recall, retro, evolve, maintain, orchestrate, checkpoint, quality-gate, spec, derive-tests, execute, fix, verify, spec-status, skill-create, headless
-- **10 rules**: model selection, context hygiene, cost awareness, scope guard, KB awareness, agent routing, spec-first, no-spec-drift, traceability
-- **5 agents**: researcher (haiku), implementer (sonnet), reviewer (opus), specifier (sonnet), verifier (opus)
-- **MCP servers**: playwright, context7
-- **Spec lifecycle**: specs live in `specs/`, are tracked with frontmatter status, and drive test derivation
-- **Traceability**: every code change links back to a spec section
-- **Drift protection**: implementation that deviates from spec is flagged automatically
-
-```bash
-cvm add sdd git@github.com:chichex/cvm.git
-cvm use sdd
-```
-
 ## The "sdd-mem" profile
 
-Extends **sdd** with a persistent memory system inspired by [claude-mem](https://github.com/thedotmack/claude-mem) but without the infrastructure overhead (no daemon, no ChromaDB, no per-tool observer).
+A **Spec-Driven Development** profile with persistent memory. Enforces a spec-first workflow: every feature starts as a specification, implementation follows the spec, and verification checks compliance.
 
-**Key additions over sdd:**
-- **SQLite + FTS5 backend**: KB entries stored in SQLite with full-text search, porter stemming, and BM25 ranking. Flat files kept as automatic fallback. Set `CVM_KB_BACKEND=flat` to force flat files.
-- **MCP KB tools**: Native `kb_search` and `kb_get` tools exposed via MCP — Claude queries the KB directly without shelling out. Ships as `cvm mcp-kb` subcommand, no extra install needed.
+> **Note**: The `sdd` profile (without memory) has been deprecated and removed. Use `sdd-mem` for all new installations.
+
+- **18+ skills**: learn, decide, gotcha, recall, retro, evolve, maintain, orchestrate, checkpoint, quality-gate, spec, derive-tests, execute, fix, verify, spec-status, skill-create, headless
+- **10 rules**: model selection, context hygiene, cost awareness, scope guard, KB awareness, agent routing, spec-first, no-spec-drift, traceability
+- **5 agents**: researcher (haiku), implementer (sonnet), reviewer (opus), specifier (sonnet), verifier (opus)
+- **MCP servers**: playwright, context7, cvm-kb
+- **SQLite + FTS5 backend**: KB entries stored in SQLite with full-text search, porter stemming, and BM25 ranking
+- **MCP KB tools**: Native `kb_search` and `kb_get` tools exposed via MCP — Claude queries the KB directly
+- **CVM-owned sessions**: JSONL storage in `~/.cvm/sessions/`, cross-project visibility, auto-summary via Haiku
+- **Tool observation**: `PostToolUse` hook captures Bash/Write/Edit/NotebookEdit events to enrich session summaries
 - **Context injection**: `SessionStart` hook injects a compact summary of recent KB entries (~2K tokens budget)
-- **Auto session summary**: `SessionEnd` generates a structured summary via Haiku (~$0.001/session)
-- **Tool observation**: `PostToolUse` hook captures Bash/Write/Edit events to enrich session summaries. Configurable via `CVM_OBSERVE_TOOLS`.
-- **Progressive disclosure**: KB queries use 2-step pattern (search → show) to minimize token usage
-- **Token awareness**: rule enforcing token budget consciousness for KB context
 - **Content-hash dedup**: `cvm kb put` detects duplicate content and warns/skips
-- **2 extra skills**: `/session-summary` (manual trigger) and all sdd skills
 
 **Configuration** (env vars in settings.json):
 | Variable | Default | Description |
@@ -236,12 +224,11 @@ Extends **sdd** with a persistent memory system inspired by [claude-mem](https:/
 | `CVM_AUTOSUMMARY_ENABLED` | true | Enable auto session summary |
 | `CVM_AUTOSUMMARY_MODEL` | haiku | Model for summary generation |
 
-**Cost**: ~$0.001/session (vs claude-mem's ~$0.03 — 37x cheaper).
+**Cost**: ~$0.001/session for auto-summaries.
 
 ```bash
 cvm add sdd-mem git@github.com:chichex/cvm.git
 cvm use sdd-mem
-# MCP tools activate automatically — no extra setup needed
 ```
 
 ## License

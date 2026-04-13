@@ -1,11 +1,11 @@
-#!/bin/bash
-# Spec: S-011 | Req: B-002 | UserPromptSubmit: on-the-fly learning protocol + prompt capture
-# Captures the user prompt to session buffer, then injects the learning protocol.
-# MUST complete in < 500ms for capture portion (I-002).
+#!/usr/bin/env bash
+# Spec: S-017 | Req: B-002, B-014 | UserPromptSubmit: on-the-fly learning protocol + prompt capture
+# Captures the user prompt via cvm session append, then injects the learning protocol.
+# MUST complete in < 500ms for capture portion (I-001).
 
 set -euo pipefail
 
-# --- B-002: Capture user prompt to session buffer ---
+# --- B-002, B-014: Capture user prompt to session via cvm session append ---
 INPUT=$(cat)
 
 session_id=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || true
@@ -27,29 +27,12 @@ if isinstance(prompt, list):
             texts.append(block.get('text', ''))
     prompt = ' '.join(texts)
 prompt = str(prompt).strip()
-print(prompt[:200])
+print(prompt[:300])
 " 2>/dev/null) || user_prompt=""
 
-  # Filter out system-reminder prompts
+  # Filter out system-reminder prompts; pass the rest to cvm session append
   if [ -n "$user_prompt" ] && [[ "$user_prompt" != \<system* ]]; then
-    timestamp=$(date +%H:%M)
-    new_line="[${timestamp}] USER: ${user_prompt}"
-    buffer_key="session-buffer-${session_id}"
-
-    existing=$(cvm kb show "$buffer_key" --local 2>/dev/null | sed '1,/^$/d' || true)
-
-    if [ -n "$existing" ]; then
-      line_count=$(echo "$existing" | wc -l | tr -d ' ')
-      if [ "$line_count" -ge 500 ]; then
-        existing=$(echo "$existing" | tail -n 499)
-      fi
-      new_body="${existing}
-${new_line}"
-    else
-      new_body="$new_line"
-    fi
-
-    cvm kb put "$buffer_key" --body "$new_body" --tag "session-buffer" --local 2>/dev/null || true
+    cvm session append "$session_id" --type prompt --content "$user_prompt" 2>/dev/null || true
   fi
 fi
 
