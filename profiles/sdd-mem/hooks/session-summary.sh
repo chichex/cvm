@@ -23,6 +23,7 @@ buffer=$(cvm kb show "$buffer_key" --local 2>/dev/null | sed '1,/^$/d' || true)
 cleanup_buffer() {
   cvm kb rm "$buffer_key" --local 2>/dev/null || true
 }
+trap cleanup_buffer EXIT
 
 # E-001: short session — skip LLM call
 if [ -z "$buffer" ]; then

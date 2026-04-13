@@ -9,8 +9,7 @@
     "CVM_CONTEXT_ENTRY_COUNT": "10",
     "CVM_CONTEXT_MAX_TOKENS": "2000",
     "CVM_AUTOSUMMARY_ENABLED": "true",
-    "CVM_AUTOSUMMARY_MODEL": "haiku",
-    "CVM_AUTOSUMMARY_MAX_TOKENS": "500"
+    "CVM_AUTOSUMMARY_MODEL": "haiku"
   },
   "permissions": {
     "allow": [
@@ -79,7 +78,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "",
+        "matcher": "Bash|Write|Edit|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/tool-capture.sh" }
         ]

@@ -3,75 +3,50 @@
 # Appends a one-line observation to KB entry "session-buffer-<session_id>" for
 # each significant tool use (Bash, Write, Edit, NotebookEdit).
 # MUST complete in < 500ms (I-001). No LLM calls. No network.
+# Note: settings.json matcher limits this to Bash|Write|Edit|NotebookEdit,
+# so filtered tools never reach this script.
 
 set -euo pipefail
 
 INPUT=$(cat)
 
-# Extract session_id
-session_id=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || true
-if [ -z "$session_id" ]; then
-  echo "[tool-capture] warning: session_id missing, skipping" >&2
-  exit 0
-fi
-
-# Extract tool_name
-tool_name=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tool_name',''))" 2>/dev/null) || true
-
-# Filter: only capture Bash, Write, Edit, NotebookEdit
-case "$tool_name" in
-  Bash|Write|Edit|NotebookEdit) ;;
-  *) exit 0 ;;
-esac
-
-# Build summary line depending on tool
-summary=""
-case "$tool_name" in
-  Bash)
-    cmd=$(echo "$INPUT" | python3 -c "
+# Single python3 call to extract session_id, tool_name, and build summary
+summary=$(echo "$INPUT" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
+sid = data.get('session_id', '')
+tool = data.get('tool_name', '')
 inp = data.get('tool_input', {})
-cmd = inp.get('command', '') if isinstance(inp, dict) else ''
-print(cmd[:120])
-" 2>/dev/null) || cmd=""
-    summary="Bash: ${cmd}"
-    ;;
-  Write)
-    fp=$(echo "$INPUT" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-inp = data.get('tool_input', {})
-print(inp.get('file_path', '') if isinstance(inp, dict) else '')
-" 2>/dev/null) || fp=""
-    summary="Write: wrote ${fp}"
-    ;;
-  Edit)
-    fp=$(echo "$INPUT" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-inp = data.get('tool_input', {})
-print(inp.get('file_path', '') if isinstance(inp, dict) else '')
-" 2>/dev/null) || fp=""
-    summary="Edit: edited ${fp}"
-    ;;
-  NotebookEdit)
-    fp=$(echo "$INPUT" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-inp = data.get('tool_input', {})
-print(inp.get('file_path', inp.get('notebook_path', '')) if isinstance(inp, dict) else '')
-" 2>/dev/null) || fp=""
-    summary="NotebookEdit: edited notebook ${fp}"
-    ;;
-esac
+if not isinstance(inp, dict):
+    inp = {}
 
-if [ -z "$summary" ]; then
+if not sid or not tool:
+    sys.exit(1)
+
+if tool == 'Bash':
+    detail = inp.get('command', '')[:120]
+    line = f'Bash: {detail}'
+elif tool == 'Write':
+    line = f\"Write: wrote {inp.get('file_path', '')}\"
+elif tool == 'Edit':
+    line = f\"Edit: edited {inp.get('file_path', '')}\"
+elif tool == 'NotebookEdit':
+    line = f\"NotebookEdit: edited notebook {inp.get('file_path', inp.get('notebook_path', ''))}\"
+else:
+    sys.exit(1)
+
+print(f'{sid}\n{line}')
+" 2>/dev/null) || exit 0
+
+session_id=$(echo "$summary" | head -1)
+tool_summary=$(echo "$summary" | tail -1)
+
+if [ -z "$session_id" ] || [ -z "$tool_summary" ]; then
   exit 0
 fi
 
 timestamp=$(date +%H:%M)
-new_line="[${timestamp}] ${summary}"
+new_line="[${timestamp}] ${tool_summary}"
 buffer_key="session-buffer-${session_id}"
 
 # Read existing body (strip frontmatter)
