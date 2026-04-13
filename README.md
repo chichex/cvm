@@ -31,9 +31,9 @@ cd cvm && make install
 
 ```bash
 # Install a profile
-cvm add chiche git@github.com:chichex/cvm.git   # general-purpose (18 skills, auto-KB)
-cvm add sdd git@github.com:chichex/cvm.git       # spec-driven development
-cvm use chiche                                    # or: cvm use sdd
+cvm add sdd git@github.com:chichex/cvm.git           # spec-driven development
+cvm add sdd-mem git@github.com:chichex/cvm.git       # sdd + persistent memory
+cvm use sdd                                          # or: cvm use sdd-mem
 
 # That's it. Update anytime:
 cvm pull
@@ -194,32 +194,12 @@ When you run `cvm use work`:
 4. Copies the "work" profile into `~/.claude/`
 5. Updates `~/.cvm/state.json`
 
-## The "chiche" profile
-
-cvm ships with a built-in profile called **chiche** — a self-improving Claude Code configuration with:
-
-- **18 skills**: learn, decide, gotcha, recall, retro, evolve, maintain, validate, orchestrate, checkpoint, quality-gate, spec, execute, fix, ux, higiene, skill-create, headless
-- **5 rules**: model selection, context hygiene, cost awareness, scope guard, KB awareness
-- **3 agents**: researcher (haiku), implementer (sonnet), reviewer (opus)
-- **3 hooks**: tool detection, config protection, slop checking
-- **Auto-KB**: learns from your sessions and persists insights between conversations
-- **Low-latency automation loop**: prompt path stays light; no hidden headless Claude calls on session end
-- **Adversarial debugging**: launches competing agents to investigate bugs
-- **Thresholded evolution**: maintain/evolve candidates are queued only when KB/session signals justify it
-- **Automatic maintenance**: stale/duplicate KB entries are normalized and suppressed automatically
-- **Automatic skill generation**: repeated KB patterns can install auto-generated skills into `.claude/skills/`
-
-```bash
-cvm add chiche git@github.com:chichex/cvm.git
-cvm use chiche
-```
-
 ## The "sdd" profile
 
 A **Spec-Driven Development** profile that enforces a spec-first workflow: every feature starts as a specification, implementation follows the spec, and verification checks compliance against it.
 
-- **21 skills**: all chiche skills + derive-tests, spec-status, verify
-- **8 rules**: chiche rules + spec-first, no-spec-drift, traceability
+- **18 skills**: learn, decide, gotcha, recall, retro, evolve, maintain, orchestrate, checkpoint, quality-gate, spec, derive-tests, execute, fix, verify, spec-status, skill-create, headless
+- **10 rules**: model selection, context hygiene, cost awareness, scope guard, KB awareness, agent routing, spec-first, no-spec-drift, traceability
 - **5 agents**: researcher (haiku), implementer (sonnet), reviewer (opus), specifier (sonnet), verifier (opus)
 - **MCP servers**: playwright, context7
 - **Spec lifecycle**: specs live in `specs/`, are tracked with frontmatter status, and drive test derivation
