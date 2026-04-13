@@ -12,22 +12,23 @@ Escanear la conversacion actual y extraer:
 - **Next steps**: que queda pendiente
 
 ### Paso 2: Verificar duplicados
-Buscar si ya existe un summary para hoy:
+Buscar si ya existe un summary para esta sesion:
 ```bash
-cvm kb search "session-summary" --tag "session"
+cvm kb search "session" --tag "session"
 ```
-Si ya existe uno reciente (misma fecha), actualizar en vez de crear uno nuevo.
+Si ya existe uno reciente (misma hora), actualizar en vez de crear uno nuevo.
 
 ### Paso 3: Persistir
+Usar el mismo formato de key que el hook automatico (`session-YYYYMMDD-HHMMSS`):
 ```bash
-cvm kb put "session-summary-YYYYMMDD" --body "Request: ... | Accomplished: ... | Discovered: ... | Next: ..." --tag "session,summary"
+cvm kb put "session-YYYYMMDD-HHMMSS" --body "Request: ... | Accomplished: ... | Discovered: ... | Next: ..." --tag "session,summary"
 ```
 
 ### Paso 4: Reporte
 Mostrar el summary guardado en formato legible:
 ```
 Session summary guardado:
-- Key: session-summary-YYYYMMDD
+- Key: session-YYYYMMDD-HHMMSS
 - Request: ...
 - Accomplished: ...
 - Discovered: ...

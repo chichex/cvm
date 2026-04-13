@@ -1,8 +1,8 @@
 # S-010: Profile `sdd-mem` — SDD con memoria persistente mejorada
 
-**Version:** 0.1.0  
-**Status:** draft  
-**Validación:** manual + integration tests  
+**Version:** 0.2.0  
+**Status:** implemented  
+**Validación:** manual + integration tests + e2e (KB only)  
 **Origen:** Análisis comparativo cvm vs claude-mem (abril 2026)
 
 ---
@@ -356,3 +356,13 @@ vs claude-mem: ~$0.03/sesión (37x más caro)
 - claude-mem session summaries: `src/services/worker/SDKAgent.ts`, `src/sdk/prompts.ts`
 - claude-mem cost controls: `src/shared/SettingsDefaultsManager.ts`, `src/services/worker/http/routes/SessionRoutes.ts`
 - cvm KB source: `internal/kb/kb.go`, `cmd/kb.go`
+
+---
+
+## Changelog
+
+### 0.2.0 (2026-04-13)
+- **B-003/B-004 implementation drift**: Session digest (B-003) and auto-summary (B-004) were consolidated into a single hook `session-summary.sh`. The hook now consumes the S-011 realtime capture buffer instead of parsing transcript JSONL directly. This is an architectural improvement (more robust data source) that satisfies the original functional requirements.
+- **B-007**: Implemented as `profiles/sdd-mem/skills/session-summary/SKILL.md`. Manual trigger for in-session summary using conversation context (complements the hook which uses persisted buffer data).
+- **E2E tests**: Added for KB CLI workflow (B-008 through B-014). Hook-level E2E coverage pending.
+- **Phase 3 (B-015, B-016, B-017)**: Deferred to issue #7.
