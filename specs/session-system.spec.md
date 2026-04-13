@@ -20,7 +20,7 @@ Replace the current session lifecycle system (piggybacks on `~/.claude/sessions/
 - Dashboard reads sessions from `~/.cvm/sessions/` instead of local KB
 - Hook updates (sdd-mem profile): replace `cvm kb put session-buffer` with `cvm session append`
 - Removal of dead code: `cmd/lifecycle.go`, `internal/lifecycle/`, `hooks/tool-capture.sh`, `hooks/session-summary.sh`, `internal/dashboard/parser.go`
-- Update sdd profile: rename `cvm lifecycle` → `cvm session` in settings.json, remove `tool-capture.sh` hook entry
+- Remove `sdd` profile (deprecated — `sdd-mem` is the sole profile)
 - Preserve automation integration from `lifecycle.End()` in `cvm session end`: `saveActiveProfiles`, `automation.RecordSessionEnd`, `queueAutomationRunner`
 - `cvm session start` prints KB stats and detected tools (same as current `lifecycle.Start()`) but does NOT mutate automation state
 - Deprecate `CVM_AUTOSUMMARY_MIN_TOOLS` env var (S-011 legacy, replaced by hardcoded threshold in E-003)
