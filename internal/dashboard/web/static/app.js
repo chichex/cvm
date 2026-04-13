@@ -131,8 +131,8 @@ function initSSE() {
   });
 
   src.addEventListener('tick', () => {
-    // Refresh the current active tab on tick — Spec: S-016 | Req: I-004b
-    if (state.tab === 'timeline') loadTimeline();
+    // Only refresh on tick if timeline is active — avoid unnecessary fetches
+    // Don't auto-refresh timeline on tick (causes flicker). Only refresh on actual changes.
   });
 
   src.addEventListener('entry_added', (e) => {
@@ -169,36 +169,42 @@ async function loadTimeline() {
   let data;
   try {
     const res = await fetch(url);
+    if (!res.ok) return; // Don't clear DOM on error
     data = await res.json();
   } catch (e) {
     console.error('Timeline fetch failed', e);
+    return; // Don't clear DOM on error
+  }
+
+  // Don't replace valid data with empty response (transient backend errors)
+  if ((!data.days || data.days.length === 0) && $('#timeline-list')?.children.length > 0) {
     return;
   }
 
   const container = $('#timeline-list');
   if (!container) return;
 
-  // Preserve scroll position — Spec: S-016 | Req: I-004f
-  const scrollTop = container.scrollTop;
-
-  container.innerHTML = '';
+  // Build new content in a fragment first, then swap
+  const frag = document.createDocumentFragment();
 
   if (!data.days || data.days.length === 0) {
-    container.appendChild(el('div', 'empty-state', 'No entries in the selected timeframe.'));
-    return;
-  }
-
-  for (const day of data.days) {
-    const group = el('div', 'day-group');
-    const header = el('div', 'day-header', day.date);
-    group.appendChild(header);
-
-    for (const entry of day.entries) {
-      group.appendChild(renderEntryCard(entry));
+    frag.appendChild(el('div', 'empty-state', 'No entries in the selected timeframe.'));
+  } else {
+    for (const day of data.days) {
+      const group = el('div', 'day-group');
+      const header = el('div', 'day-header', day.date);
+      group.appendChild(header);
+      for (const entry of day.entries) {
+        group.appendChild(renderEntryCard(entry));
+      }
+      frag.appendChild(group);
     }
-    container.appendChild(group);
   }
 
+  // Preserve scroll position — Spec: S-016 | Req: I-004f
+  const scrollTop = container.scrollTop;
+  container.innerHTML = '';
+  container.appendChild(frag);
   container.scrollTop = scrollTop;
 }
 
@@ -310,8 +316,14 @@ async function fetchSessionDetail(id) {
   let data;
   try {
     const res = await fetch(`/api/session?id=${encodeURIComponent(id)}`);
+    if (!res.ok) return;
     data = await res.json();
   } catch {
+    return;
+  }
+
+  // Don't replace valid data with empty response
+  if ((!data.found || !data.lines || data.lines.length === 0) && container.children.length > 1) {
     return;
   }
 
@@ -395,8 +407,14 @@ async function loadEntries() {
   let data;
   try {
     const res = await fetch(url);
+    if (!res.ok) return;
     data = await res.json();
   } catch {
+    return;
+  }
+
+  // Don't replace valid data with empty response on transient errors
+  if ((!data.entries || !data.entries.length) && !q && !tag && $('#browser-list')?.children.length > 1) {
     return;
   }
 
