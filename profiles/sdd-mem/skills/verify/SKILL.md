@@ -84,13 +84,18 @@ GEMINI_PID=$!
 
 Gemini tiene acceso al filesystem. NUNCA copiar contenido de archivos en el prompt.
 
-**Si no disponible**: omitir columna Gemini del reporte.
+**Si no disponible**: mostrar "-" en la columna Gemini del reporte.
 
 **Esperar resultados de background processes:**
 ```bash
 [ -n "$CODEX_PID" ] && wait $CODEX_PID
 [ -n "$GEMINI_PID" ] && wait $GEMINI_PID
 ```
+
+**Manejo de fallos (I-006):** Si el output de Codex o Gemini esta vacio, contiene un error,
+o no tiene verdicts parseables: loguear warning, excluir ese validador de la matriz de
+consenso, y proceder con los validadores restantes. NUNCA bloquear el workflow por un
+validador fallido.
 
 ## Paso 3: Consolidar resultados
 
@@ -127,7 +132,7 @@ Dual Verification: [spec ID] v[version]
 | Requisito | Opus | [Codex|Gemini] | Consenso |
 |-----------|------|----------------|----------|
 | B-001 | MATCH | MATCH | VERIFIED |
-| B-002 | MATCH | MISMATCH | CONCERN |
+| B-002 | MATCH | MISMATCH | REVIEW |
 | E-001 | GAP | GAP | NOT_IMPLEMENTED |
 
 Matriz de consenso con 2 validadores:

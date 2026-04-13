@@ -52,6 +52,9 @@ Esperar resultados:
 [ -n "$GEMINI_PID" ] && wait $GEMINI_PID
 ```
 
+Si el output de Codex o Gemini esta vacio o contiene un error: loguear warning, excluir
+ese validador, y proceder con los disponibles. NUNCA bloquear el workflow por un fallo.
+
 Comparar hallazgos:
 - Codex y Gemini coinciden → alta confianza, proceder
 - Codex y Gemini difieren → presentar ambas hipotesis al usuario para resolucion
