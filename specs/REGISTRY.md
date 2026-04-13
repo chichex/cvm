@@ -6,3 +6,4 @@
 | S-013 | sqlite-fts5 | implemented | 0.1.0 | TDD | specs/sqlite-fts5.spec.md |
 | S-014 | mcp-kb-tool | implemented | 0.1.0 | TDD + manual | specs/mcp-kb-tool.spec.md |
 | S-015 | tool-observation | implemented | 0.1.0 | manual + integration tests | specs/tool-observation.spec.md |
+| S-016 | dashboard | draft | 0.1.0 | manual + browser testing | specs/dashboard.spec.md |
