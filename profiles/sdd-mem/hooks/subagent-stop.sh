@@ -11,6 +11,10 @@ INPUT=$(cat)
 # --- B-003: Capture agent summary to session buffer ---
 session_id=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || true
 
+if [ -z "$session_id" ]; then
+  echo "[subagent-stop] warning: session_id missing, skipping capture" >&2
+fi
+
 if [ -n "$session_id" ]; then
   agent_type=$(echo "$INPUT" | python3 -c "
 import json, sys

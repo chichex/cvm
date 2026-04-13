@@ -10,12 +10,16 @@ INPUT=$(cat)
 
 session_id=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || true
 
+if [ -z "$session_id" ]; then
+  echo "[learning-decorator] warning: session_id missing, skipping capture" >&2
+fi
+
 if [ -n "$session_id" ]; then
   # Extract user prompt (may be a string or array of content blocks)
   user_prompt=$(echo "$INPUT" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-prompt = data.get('prompt', data.get('user_prompt', data.get('message', '')))
+prompt = data.get('content', data.get('prompt', data.get('user_prompt', data.get('message', ''))))
 if isinstance(prompt, list):
     texts = []
     for block in prompt:
