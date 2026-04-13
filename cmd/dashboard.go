@@ -14,7 +14,8 @@ import (
 // dashboardCmd is the `cvm dashboard` subcommand.
 // Spec: S-016 | Req: I-001, B-001, B-002, B-003
 var dashboardCmd = &cobra.Command{
-	Use:   "dashboard",
+	Use:     "dash",
+	Aliases: []string{"dashboard"},
 	Short: "Start the CVM realtime observability web dashboard",
 	Long: `Start a local HTTP server that lets you observe CVM activity in your browser.
 
