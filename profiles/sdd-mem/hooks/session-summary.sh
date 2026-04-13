@@ -86,7 +86,27 @@ except (json.JSONDecodeError, KeyError):
 
 if [ -n "$parsed" ]; then
   ts=$(date +%Y%m%d-%H%M%S)
-  cvm kb put "session-${ts}" --body "$parsed" --tag "session,summary" 2>/dev/null || \
+
+  # Enrich with session metadata for dashboard
+  project_dir="${PWD:-unknown}"
+  event_count="$line_count"
+  buffer_chars=${#buffer}
+  est_tokens=$((buffer_chars / 4))
+
+  # Extract duration from buffer timestamps (first and last [HH:MM] entries)
+  first_ts=$(echo "$buffer" | grep -oE '^\[([0-9]{2}:[0-9]{2})\]' | head -1 | tr -d '[]') || true
+  last_ts=$(echo "$buffer" | grep -oE '^\[([0-9]{2}:[0-9]{2})\]' | tail -1 | tr -d '[]') || true
+
+  # Build metadata header
+  meta="[meta] project=${project_dir} | events=${event_count} | est_tokens=${est_tokens}"
+  if [ -n "$first_ts" ] && [ -n "$last_ts" ]; then
+    meta="${meta} | time_range=${first_ts}-${last_ts}"
+  fi
+
+  enriched_body="${meta}
+${parsed}"
+
+  cvm kb put "session-${ts}" --body "$enriched_body" --tag "session,summary" 2>/dev/null || \
     echo "[session-summary] warning: failed to store summary in KB" >&2
 fi
 

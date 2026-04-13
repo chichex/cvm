@@ -225,12 +225,21 @@ function renderSessionCard(session) {
   if (session.created_at) {
     metaRow.appendChild(el('span', '', new Date(session.created_at).toLocaleString()));
   }
-  // Only show duration for active/stale sessions (summarized ones have created_at == updated_at)
+  // Duration for active/stale from timestamps; for summarized from meta time_range
   if ((isActive || isStale) && session.created_at && session.updated_at) {
     metaRow.appendChild(el('span', 'session-card__duration', formatDuration(session.created_at, session.updated_at)));
+  } else if (isSummarized && session.meta?.time_range) {
+    metaRow.appendChild(el('span', 'session-card__duration', session.meta.time_range));
   }
+  // Event count
   if ((isActive || isStale) && session.line_count != null) {
     metaRow.appendChild(el('span', '', `${session.line_count} events`));
+  } else if (isSummarized && session.meta?.event_count) {
+    metaRow.appendChild(el('span', '', `${session.meta.event_count} events`));
+  }
+  // Estimated tokens
+  if (isSummarized && session.meta?.est_tokens) {
+    metaRow.appendChild(el('span', '', `~${session.meta.est_tokens} tok`));
   }
   if (isActive) {
     metaRow.appendChild(el('span', 'session-card__live', `last activity ${relativeTime(session.updated_at)}`));

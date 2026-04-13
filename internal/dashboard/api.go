@@ -496,15 +496,23 @@ type knowledgeEntryJSON struct {
 	TokenEstimate int      `json:"token_estimate"`
 }
 
+type sessionMetaJSON struct {
+	ProjectDir string `json:"project_dir,omitempty"`
+	EventCount string `json:"event_count,omitempty"`
+	EstTokens  string `json:"est_tokens,omitempty"`
+	TimeRange  string `json:"time_range,omitempty"`
+}
+
 type sessionCardJSON struct {
 	// Common fields
 	ID         string               `json:"id"`
 	Key        string               `json:"key"`
-	Status     string               `json:"status"`    // "active" or "summarized"
+	Status     string               `json:"status"`    // "active", "stale", or "summarized"
 	Scope      string               `json:"scope"`     // "local" (active) or "global" (summarized)
 	CreatedAt  string               `json:"created_at"`
 	UpdatedAt  string               `json:"updated_at"`
 	ProjectDir string               `json:"project_dir,omitempty"`
+	Meta       *sessionMetaJSON     `json:"meta,omitempty"`
 	Knowledge  []knowledgeEntryJSON `json:"knowledge"`
 
 	// Active-only fields
@@ -600,6 +608,18 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 				if tags == nil {
 					tags = []string{}
 				}
+				// Parse [meta] line if present
+				var meta *sessionMetaJSON
+				displayBody := summaryBody
+				if strings.HasPrefix(summaryBody, "[meta]") {
+					parts := strings.SplitN(summaryBody, "\n", 2)
+					metaLine := parts[0]
+					if len(parts) > 1 {
+						displayBody = parts[1]
+					}
+					meta = parseMetaLine(metaLine)
+				}
+
 				card := sessionCardJSON{
 					ID:          e.Key,
 					Key:         e.Key,
@@ -607,7 +627,9 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 					Scope:       "global",
 					CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
 					UpdatedAt:   e.UpdatedAt.UTC().Format(time.RFC3339),
-					SummaryBody: summaryBody,
+					ProjectDir:  metaProjectDir(meta),
+					Meta:        meta,
+					SummaryBody: displayBody,
 					Knowledge:   []knowledgeEntryJSON{},
 				}
 				cards = append(cards, card)
@@ -778,4 +800,34 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		Local:          localStats,
 		ActiveSessions: activeSessions,
 	})
+}
+
+// parseMetaLine parses "[meta] key=val | key=val | ..." into sessionMetaJSON.
+func parseMetaLine(line string) *sessionMetaJSON {
+	meta := &sessionMetaJSON{}
+	line = strings.TrimPrefix(line, "[meta] ")
+	for _, part := range strings.Split(line, " | ") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		switch kv[0] {
+		case "project":
+			meta.ProjectDir = kv[1]
+		case "events":
+			meta.EventCount = kv[1]
+		case "est_tokens":
+			meta.EstTokens = kv[1]
+		case "time_range":
+			meta.TimeRange = kv[1]
+		}
+	}
+	return meta
+}
+
+func metaProjectDir(m *sessionMetaJSON) string {
+	if m != nil {
+		return m.ProjectDir
+	}
+	return ""
 }
