@@ -8,7 +8,7 @@ mkdir -p "$(dirname "$tools_file")"
 json="{"
 first=true
 
-for tool in codex gh docker node npm go python3 ruff cargo make; do
+for tool in codex gemini gh docker node npm go python3 ruff cargo make; do
   if [ "$first" = true ]; then
     first=false
   else
@@ -23,6 +23,14 @@ for tool in codex gh docker node npm go python3 ruff cargo make; do
         json="$json\"$tool\":{\"available\":true,\"path\":\"$path\",\"verified\":true}"
       else
         json="$json\"$tool\":{\"available\":false,\"path\":\"$path\",\"verified\":false,\"reason\":\"installed but not configured (license, auth, or sandbox issue)\"}"
+      fi
+    # Spec: S-012 | Req: B-001 | Gemini needs deeper validation: LLM prompt health check
+    elif [ "$tool" = "gemini" ]; then
+      gemini_output=$(gemini -p "reply with exactly: ok" 2>/dev/null) && echo "$gemini_output" | grep -q "ok"
+      if [ $? -eq 0 ]; then
+        json="$json\"$tool\":{\"available\":true,\"path\":\"$path\",\"verified\":true}"
+      else
+        json="$json\"$tool\":{\"available\":false,\"path\":\"$path\",\"verified\":false,\"reason\":\"installed but not configured\"}"
       fi
     else
       json="$json\"$tool\":{\"available\":true,\"path\":\"$path\"}"

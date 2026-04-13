@@ -9,7 +9,7 @@ Orden de trabajo:
 2. **Contrato antes de implementacion** — las interfaces se derivan de la spec
 3. **Validacion derivada de la spec** — los tests se generan desde la spec cuando TDD aplica; cuando no, se define la estrategia de validacion apropiada
 4. **Codigo derivado** — la implementacion satisface la spec, nada mas
-5. **Verificacion dual** — un agente Opus y Codex validan independientemente el resultado final
+5. **Verificacion multi** — un agente Opus, Codex, y Gemini (si disponibles) validan independientemente el resultado final
 
 Principios core:
 - **Spec = Single Source of Truth**: si el codigo no matchea la spec, el codigo esta mal
@@ -104,7 +104,7 @@ Auto-routing (clasificar intent)
 /execute ──→ Implementar wave por wave
     │
     ▼
-/verify ──→ Verificacion dual: Opus + Codex (si disponible)
+/verify ──→ Verificacion multi: Opus + Codex + Gemini (si disponibles)
 ```
 
 Cada skill gestiona sus propios pasos, validaciones, y gates.
@@ -117,7 +117,7 @@ Cada skill gestiona sus propios pasos, validaciones, y gates.
 | `/spec` | Crear spec formal + plan de implementacion |
 | `/derive-tests` | Generar tests desde spec |
 | `/execute` | Implementar desde spec, wave por wave |
-| `/verify` | Verificacion dual (Opus + Codex si disponible) |
+| `/verify` | Verificacion multi (Opus + Codex + Gemini si disponibles — Gemini es opcional) |
 | `/spec-status` | Dashboard de estado de specs |
 | `/quality-gate` | Validacion post-impl (tests, lint, build, spec coverage) |
 | `/fix` | Diagnosticar bug con spec gap check + Codex second opinion |
@@ -322,7 +322,7 @@ automaticamente encima del profile base al hacer `cvm use` o `cvm pull`.
 - Nunca hacer shotgun debugging
 - **Nunca implementar un feature nuevo sin spec** (excepto trivial; si el usuario pide opt-out, usar SDD-lite como minimo)
 - **Nunca cambiar behavior sin actualizar la spec primero** (excepcion: hotfix urgente con spec post-facto)
-- **Nunca ignorar el resultado de la verificacion** (dual si Codex disponible, single si no)
+- **Nunca ignorar el resultado de la verificacion** (triple si Codex+Gemini disponibles, dual si uno disponible, single si ninguno)
 - **Nunca pasar contenido de archivos inline en prompts de Codex** — Codex tiene acceso al filesystem y a `gh`. Darle paths para que lea, o comandos como `gh pr diff`. Si hay un PR abierto, usarlo. Si no, escribir un manifiesto con paths en `/tmp/` y referenciarlo. Esto aplica a specs, implementaciones, diffs, y cualquier otro contenido.
 
 ## Entorno
@@ -331,4 +331,5 @@ automaticamente encima del profile base al hacer `cvm use` o `cvm pull`.
 - Evitar flags GNU-only como `grep -P`. Usar `grep -E` o perl one-liners
 - Para levantar servicios, usar el script `start.sh` del proyecto si existe
 - Codex disponible via `codex exec` para validacion externa. Verificar con `codex exec "echo ok" 2>/dev/null`, no con `which codex`
-- macOS no tiene GNU `timeout` — los skills NO deben usar `timeout` directamente. Codex se ejecuta sin timeout de shell; si se cuelga, el usuario cancela manualmente
+- Gemini disponible via `gemini -p` para validacion externa (tercer validador opcional). Verificar via `~/.cvm/available-tools.json` (campo `gemini.available`). Gemini tiene acceso al filesystem. Spec: S-012
+- macOS no tiene GNU `timeout` — los skills NO deben usar `timeout` directamente. Codex y Gemini se ejecutan sin timeout de shell; si se cuelgan, el usuario cancela manualmente
