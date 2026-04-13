@@ -216,28 +216,35 @@ cvm use sdd
 Extends **sdd** with a persistent memory system inspired by [claude-mem](https://github.com/thedotmack/claude-mem) but without the infrastructure overhead (no daemon, no ChromaDB, no per-tool observer).
 
 **Key additions over sdd:**
+- **SQLite + FTS5 backend**: KB entries stored in SQLite with full-text search, porter stemming, and BM25 ranking. Flat files kept as automatic fallback. Set `CVM_KB_BACKEND=flat` to force flat files.
+- **MCP KB tools**: Native `kb_search` and `kb_get` tools exposed via MCP — Claude queries the KB directly without shelling out. Requires `cvm-mcp-kb` binary in PATH (see install).
 - **Context injection**: `SessionStart` hook injects a compact summary of recent KB entries (~2K tokens budget)
-- **Auto session summary**: `SessionEnd` extracts a digest from the transcript (pure shell, no LLM) then generates a structured summary via Haiku (~$0.001/session)
+- **Auto session summary**: `SessionEnd` generates a structured summary via Haiku (~$0.001/session)
+- **Tool observation**: `PostToolUse` hook captures Bash/Write/Edit events to enrich session summaries. Configurable via `CVM_OBSERVE_TOOLS`.
 - **Progressive disclosure**: KB queries use 2-step pattern (search → show) to minimize token usage
 - **Token awareness**: rule enforcing token budget consciousness for KB context
 - **Content-hash dedup**: `cvm kb put` detects duplicate content and warns/skips
-- **1 new skill**: `/session-summary` — manual trigger when the auto hook didn't run
+- **2 extra skills**: `/session-summary` (manual trigger) and all sdd skills
 
 **Configuration** (env vars in settings.json):
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `CVM_KB_BACKEND` | sqlite | KB storage backend (`sqlite` or `flat`) |
+| `CVM_OBSERVE_TOOLS` | Bash,Write,Edit | Tools captured by PostToolUse hook |
 | `CVM_CONTEXT_ENTRY_COUNT` | 10 | Max entries in context injection |
 | `CVM_CONTEXT_MAX_TOKENS` | 2000 | Token budget for context injection |
 | `CVM_AUTOSUMMARY_ENABLED` | true | Enable auto session summary |
 | `CVM_AUTOSUMMARY_MODEL` | haiku | Model for summary generation |
-| `CVM_AUTOSUMMARY_MIN_TOOLS` | 3 | Min tool uses to trigger summary |
-| `CVM_AUTOSUMMARY_MAX_TOKENS` | 500 | Max tokens for summary response |
 
 **Cost**: ~$0.001/session (vs claude-mem's ~$0.03 — 37x cheaper).
 
 ```bash
 cvm add sdd-mem git@github.com:chichex/cvm.git
 cvm use sdd-mem
+
+# Optional: install MCP server for native KB tools
+# (included in `make install`, or manually):
+go build -o /usr/local/bin/cvm-mcp-kb ./cmd/mcp-kb/
 ```
 
 ## License
