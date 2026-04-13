@@ -69,7 +69,7 @@ The server stops when you press Ctrl-C.`,
 			// Port-in-use error: print to stderr and exit 1
 			// Spec: S-016 | Req: I-001c, B-003
 			if isPortInUseErr(err, port) {
-				fmt.Fprintf(os.Stderr, "port %d already in use\n", port)
+				fmt.Fprintf(os.Stderr, "port %d already in use — try: cvm dashboard --port %d\n", port, port+1)
 				os.Exit(1)
 			}
 			return err
@@ -100,6 +100,6 @@ func contains(s, sub string) bool {
 }
 
 func init() {
-	dashboardCmd.Flags().Int("port", 3333, "Port to listen on (also: CVM_DASHBOARD_PORT env var)")
+	dashboardCmd.Flags().Int("port", 4321, "Port to listen on (also: CVM_DASHBOARD_PORT env var)")
 	dashboardCmd.Flags().String("project", "", "Project directory for local KB (default: current directory)")
 }
