@@ -238,6 +238,7 @@ main {
 .badge-global     { background: #1a2a1a; color: var(--teal); }
 .badge-local      { background: #2a1a2a; color: var(--pink); }
 .badge-active     { background: #0d2b1a; color: var(--green); }
+.badge-stale      { background: #2a2a1a; color: var(--yellow); }
 .badge-summarized { background: #0d1f3a; color: var(--accent); }
 
 .entry-meta {
@@ -535,6 +536,17 @@ main {
 .session-card--active:hover,
 .session-card--active.expanded {
   border-color: var(--green);
+}
+
+/* Stale: yellow left border (orphaned buffer) */
+.session-card--stale {
+  border-left-color: var(--yellow);
+  opacity: 0.7;
+}
+.session-card--stale:hover,
+.session-card--stale.expanded {
+  border-color: var(--yellow);
+  opacity: 1;
 }
 
 /* Summarized: blue/accent left border */

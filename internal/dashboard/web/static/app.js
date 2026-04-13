@@ -193,7 +193,15 @@ async function loadSessions() {
 
 function renderSessionCard(session) {
   const isActive = session.status === 'active';
-  const card = el('div', `session-card ${isActive ? 'session-card--active' : 'session-card--summarized'}`);
+  const isStale = session.status === 'stale';
+  const isSummarized = session.status === 'summarized';
+
+  let cardClass = 'session-card';
+  if (isActive) cardClass += ' session-card--active';
+  else if (isStale) cardClass += ' session-card--stale';
+  else cardClass += ' session-card--summarized';
+
+  const card = el('div', cardClass);
 
   // --- Header row ---
   const header = el('div', 'session-card__header');
@@ -202,12 +210,12 @@ function renderSessionCard(session) {
   idEl.title = session.id;
   header.appendChild(idEl);
 
-  const statusBadge = el('span', `badge ${isActive ? 'badge-active' : 'badge-summarized'}`, isActive ? 'ACTIVE' : 'SUMMARIZED');
-  header.appendChild(statusBadge);
+  const statusLabel = isActive ? 'ACTIVE' : isStale ? 'STALE' : 'SUMMARIZED';
+  const badgeClass = isActive ? 'badge-active' : isStale ? 'badge-stale' : 'badge-summarized';
+  header.appendChild(el('span', `badge ${badgeClass}`, statusLabel));
 
   if (session.project_dir) {
-    const projEl = el('span', 'session-card__project', session.project_dir);
-    header.appendChild(projEl);
+    header.appendChild(el('span', 'session-card__project', session.project_dir));
   }
 
   card.appendChild(header);
@@ -217,11 +225,14 @@ function renderSessionCard(session) {
   if (session.created_at) {
     metaRow.appendChild(el('span', '', new Date(session.created_at).toLocaleString()));
   }
-  if (session.created_at && session.updated_at) {
+  // Only show duration for active/stale sessions (summarized ones have created_at == updated_at)
+  if ((isActive || isStale) && session.created_at && session.updated_at) {
     metaRow.appendChild(el('span', 'session-card__duration', formatDuration(session.created_at, session.updated_at)));
   }
-  if (isActive && session.line_count != null) {
+  if ((isActive || isStale) && session.line_count != null) {
     metaRow.appendChild(el('span', '', `${session.line_count} events`));
+  }
+  if (isActive) {
     metaRow.appendChild(el('span', 'session-card__live', `last activity ${relativeTime(session.updated_at)}`));
   }
   card.appendChild(metaRow);

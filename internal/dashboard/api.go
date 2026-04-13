@@ -549,10 +549,15 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 				if tags == nil {
 					tags = []string{}
 				}
+				// Mark as stale if last activity was >1h ago
+				status := "active"
+				if time.Since(e.UpdatedAt) > time.Hour {
+					status = "stale"
+				}
 				card := sessionCardJSON{
 					ID:         sid,
 					Key:        e.Key,
-					Status:     "active",
+					Status:     status,
 					Scope:      "local",
 					CreatedAt:  e.CreatedAt.UTC().Format(time.RFC3339),
 					UpdatedAt:  e.UpdatedAt.UTC().Format(time.RFC3339),
@@ -675,10 +680,12 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Sort: active first, then by UpdatedAt desc
+	// Sort: active first, stale second, summarized last, then by UpdatedAt desc
+	statusOrder := map[string]int{"active": 0, "stale": 1, "summarized": 2}
 	sort.Slice(cards, func(i, j int) bool {
-		if cards[i].Status != cards[j].Status {
-			return cards[i].Status == "active"
+		oi, oj := statusOrder[cards[i].Status], statusOrder[cards[j].Status]
+		if oi != oj {
+			return oi < oj
 		}
 		ti, _ := time.Parse(time.RFC3339, cards[i].UpdatedAt)
 		tj, _ := time.Parse(time.RFC3339, cards[j].UpdatedAt)
