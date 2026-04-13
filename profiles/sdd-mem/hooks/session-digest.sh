@@ -24,7 +24,8 @@ if [ ! -d "$project_path" ]; then
 fi
 
 # Find most recent .jsonl file (the current session's transcript)
-transcript=$(ls -t "${project_path}"/*.jsonl 2>/dev/null | head -1)
+# Use a subshell to avoid SIGPIPE killing the script when head closes the pipe early (pipefail + many files)
+transcript=$(ls -t "${project_path}"/*.jsonl 2>/dev/null | head -1 || true)
 
 if [ -z "$transcript" ] || [ ! -f "$transcript" ]; then
   echo "transcript not found, skipping auto-summary" >&2
