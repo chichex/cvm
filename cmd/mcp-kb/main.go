@@ -219,6 +219,7 @@ var kbGetDef = toolDef{
 // ---- Tool handlers ----
 
 // handleKbSearch implements the kb_search tool (Spec: S-014 | Req: B-002)
+// Spec: S-013 | Fix: Backend wiring — uses Backend instead of package-level SearchWithOptions
 func handleKbSearch(raw json.RawMessage) toolsCallResult {
 	var input kbSearchInput
 	if err := json.Unmarshal(raw, &input); err != nil {
@@ -251,12 +252,19 @@ func handleKbSearch(raw json.RawMessage) toolsCallResult {
 
 	scopeLabel := string(scope)
 
+	// Use Backend directly (Spec: S-013 | Fix: Backend wiring)
+	b, err := kb.NewBackend(scope, projectPath)
+	if err != nil {
+		return errorResult("storage_error", err.Error(), "", scopeLabel, nil)
+	}
+	defer b.Close()
+
 	opts := kb.SearchOptions{
 		Tag:     input.Tags,
 		TypeTag: input.Type,
 	}
 
-	results, err := kb.SearchWithOptions(scope, projectPath, input.Query, opts)
+	results, err := b.Search(input.Query, opts)
 	if err != nil {
 		// KB not initialized is treated as empty, not error (Spec: S-014 | Req: E-001)
 		if os.IsNotExist(err) {
@@ -297,6 +305,7 @@ func handleKbSearch(raw json.RawMessage) toolsCallResult {
 }
 
 // handleKbGet implements the kb_get tool (Spec: S-014 | Req: B-003)
+// Spec: S-013 | Fix: Backend wiring — uses b.Get() (read-only) instead of kb.Show() (mutates LastReferenced)
 func handleKbGet(raw json.RawMessage) toolsCallResult {
 	var input kbGetInput
 	if err := json.Unmarshal(raw, &input); err != nil {
@@ -314,8 +323,15 @@ func handleKbGet(raw json.RawMessage) toolsCallResult {
 
 	scopeLabel := string(scope)
 
-	// Get raw file content (includes frontmatter)
-	raw2, err := kb.Show(scope, projectPath, input.Key)
+	// Use Backend.Get (read-only, does not mutate LastReferenced)
+	// This fixes the read-only invariant violation from using kb.Show() (Spec: S-014 | Req: I-001)
+	b, err := kb.NewBackend(scope, projectPath)
+	if err != nil {
+		return errorResult("storage_error", err.Error(), input.Key, scopeLabel, nil)
+	}
+	defer b.Close()
+
+	doc, err := b.Get(input.Key)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return errorResultNotFound(input.Key, scopeLabel)
@@ -323,28 +339,7 @@ func handleKbGet(raw json.RawMessage) toolsCallResult {
 		return errorResult("storage_error", err.Error(), input.Key, scopeLabel, nil)
 	}
 
-	// Strip frontmatter (Spec: S-014 | Req: I-007)
-	body := stripFrontmatter(raw2)
-
-	// Load entry metadata from index to get timestamps and tags
-	entries, listErr := kb.List(scope, projectPath, "")
-	if listErr != nil {
-		return errorResult("storage_error", listErr.Error(), input.Key, scopeLabel, nil)
-	}
-
-	var entry *kb.Entry
-	for i := range entries {
-		if entries[i].Key == input.Key {
-			entry = &entries[i]
-			break
-		}
-	}
-
-	if entry == nil {
-		return errorResultNotFound(input.Key, scopeLabel)
-	}
-
-	tags := entry.Tags
+	tags := doc.Entry.Tags
 	if tags == nil {
 		tags = []string{}
 	}
@@ -352,9 +347,9 @@ func handleKbGet(raw json.RawMessage) toolsCallResult {
 	out := getOutput{
 		Key:       input.Key,
 		Tags:      tags,
-		Body:      body,
-		CreatedAt: entry.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		UpdatedAt: entry.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		Body:      doc.Body,
+		CreatedAt: doc.Entry.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		UpdatedAt: doc.Entry.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		Scope:     scopeLabel,
 	}
 

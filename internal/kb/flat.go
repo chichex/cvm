@@ -4,6 +4,8 @@
 package kb
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/chichex/cvm/internal/config"
@@ -89,6 +91,91 @@ func (f *FlatBackend) LoadDocuments() ([]Document, error) {
 // SaveDocument upserts a Document.
 func (f *FlatBackend) SaveDocument(doc Document) error {
 	return SaveDocument(f.scope, f.projectPath, doc)
+}
+
+// Show returns the raw rendered content of the entry (including frontmatter) and updates LastReferenced.
+// Spec: S-013 | Fix: Backend wiring
+func (f *FlatBackend) Show(key string) (string, error) {
+	data, err := os.ReadFile(entryPath(f.scope, f.projectPath, key))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("entry %q not found", key)
+		}
+		return "", err
+	}
+	idx, _ := loadIndex(f.scope, f.projectPath)
+	for i, e := range idx.Entries {
+		if e.Key == key {
+			idx.Entries[i].LastReferenced = time.Now()
+			saveIndex(f.scope, f.projectPath, idx)
+			break
+		}
+	}
+	return string(data), nil
+}
+
+// Clean removes all entries and returns the count removed.
+// Spec: S-013 | Fix: Backend wiring
+func (f *FlatBackend) Clean() (int, error) {
+	idx, err := loadIndex(f.scope, f.projectPath)
+	if err != nil {
+		return 0, err
+	}
+	count := len(idx.Entries)
+	if count == 0 {
+		return 0, nil
+	}
+	for _, e := range idx.Entries {
+		os.Remove(entryPath(f.scope, f.projectPath, e.Key))
+	}
+	idx.Entries = nil
+	if err := saveIndex(f.scope, f.projectPath, idx); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// PutWithDedup inserts or updates only if the content hash differs.
+// Spec: S-013 | Fix: Backend wiring
+func (f *FlatBackend) PutWithDedup(key, body string, tags []string, now time.Time) (skipped bool, err error) {
+	dir := entriesDir(f.scope, f.projectPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return false, err
+	}
+	idx, err := loadIndex(f.scope, f.projectPath)
+	if err != nil {
+		return false, err
+	}
+	newHash := bodyHash(body)
+	for _, e := range idx.Entries {
+		existingBody, readErr := readBody(f.scope, f.projectPath, e.Key)
+		if readErr != nil {
+			continue
+		}
+		if bodyHash(existingBody) == newHash {
+			if e.Key == key {
+				tagsChanged := !tagsEqual(e.Tags, tags)
+				if tagsChanged {
+					for i, entry := range idx.Entries {
+						if entry.Key == key {
+							idx.Entries[i].Tags = tags
+							idx.Entries[i].UpdatedAt = now
+							break
+						}
+					}
+					content := renderDocument(key, tags, body)
+					if writeErr := os.WriteFile(entryPath(f.scope, f.projectPath, key), []byte(content), 0644); writeErr != nil {
+						return false, writeErr
+					}
+					return false, saveIndex(f.scope, f.projectPath, idx)
+				}
+				return true, nil
+			}
+			fmt.Fprintf(os.Stderr, "warning: duplicate content (matches %q)\n", e.Key)
+		}
+	}
+	// No duplicate — delegate to Put
+	return false, f.Put(key, body, tags, now)
 }
 
 // Close is a no-op for the flat-file backend.

@@ -5,8 +5,6 @@
 # MUST complete in < 50ms (I-001). No LLM calls. No network.
 # Replaces tool-capture.sh for Bash|Write|Edit subset (Option A — S-015 B-007).
 
-set -euo pipefail
-
 INPUT=$(cat)
 
 # Single python3 call: validate, filter by allowlist, build summary line
@@ -92,11 +90,11 @@ else:
 
 print(f'{sid}')
 print(f'[TOOL:{tool}] {summary}')
-" 2>/dev/null)
+" 2>&1)
 
 exit_code=$?
 
-# Exit code 2 = not in allowlist (silent skip); exit code 1 = warning already written
+# Exit code 2 = not in allowlist (silent skip); exit code 1 = warning written to stderr
 if [ $exit_code -ne 0 ]; then
   exit 0
 fi

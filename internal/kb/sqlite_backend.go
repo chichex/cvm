@@ -294,8 +294,9 @@ func (s *SQLiteBackend) Search(query string, opts SearchOptions) ([]SearchResult
 
 	rows, err := s.db.Query(baseQuery, args...)
 	if err != nil {
-		// FTS5 syntax error — return empty results rather than panic
-		return nil, fmt.Errorf("fts5 search: %w", err)
+		// FTS5 syntax error (e.g. query contains '-' operator) — fall back to LIKE scan
+		// Spec: S-013 | Fix: Backend wiring (graceful fallback for user queries with special chars)
+		return s.searchLike(query, opts)
 	}
 	defer rows.Close()
 
@@ -355,6 +356,84 @@ func (s *SQLiteBackend) Search(query string, opts SearchOptions) ([]SearchResult
 		})
 	}
 
+	return results, nil
+}
+
+// searchLike performs a case-insensitive substring scan as a fallback when FTS5 query parsing fails.
+// Spec: S-013 | Fix: Backend wiring (graceful FTS5 fallback)
+func (s *SQLiteBackend) searchLike(query string, opts SearchOptions) ([]SearchResult, error) {
+	likePattern := "%" + strings.ReplaceAll(query, "%", "\\%") + "%"
+
+	likeQuery := `SELECT e.key, e.body, e.tags, e.enabled, e.created_at, e.updated_at, e.last_referenced
+		FROM entries e
+		WHERE (LOWER(e.key) LIKE LOWER(?) OR LOWER(e.body) LIKE LOWER(?))`
+	args := []interface{}{likePattern, likePattern}
+
+	if opts.Tag != "" {
+		likeQuery += ` AND EXISTS (SELECT 1 FROM json_each(e.tags) WHERE value = ?)`
+		args = append(args, opts.Tag)
+	}
+	if opts.TypeTag != "" {
+		likeQuery += ` AND EXISTS (SELECT 1 FROM json_each(e.tags) WHERE value = ?)`
+		args = append(args, "type:"+opts.TypeTag)
+	}
+	if opts.Since > 0 {
+		cutoff := time.Now().Add(-opts.Since).UTC().Format(time.RFC3339Nano)
+		likeQuery += ` AND e.updated_at >= ?`
+		args = append(args, cutoff)
+	}
+
+	rows, err := s.db.Query(likeQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("like search: %w", err)
+	}
+	defer rows.Close()
+
+	lowerQuery := strings.ToLower(query)
+	var results []SearchResult
+	for rows.Next() {
+		var key, body, tagsJSON string
+		var enabledInt int
+		var createdStr, updatedStr string
+		var lastRefStr sql.NullString
+
+		if err := rows.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr); err != nil {
+			return nil, err
+		}
+		e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr)
+		if err != nil {
+			continue
+		}
+
+		lowerKey := strings.ToLower(key)
+		var rankCat int
+		if lowerKey == lowerQuery {
+			rankCat = 0
+		} else if strings.Contains(lowerKey, lowerQuery) {
+			rankCat = 1
+		} else {
+			rankCat = 2
+		}
+
+		snippet := extractSnippet(body, query)
+		results = append(results, SearchResult{Entry: e, Snippet: snippet, Rank: rankCat})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if opts.Sort == "recent" {
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Entry.UpdatedAt.After(results[j].Entry.UpdatedAt)
+		})
+	} else {
+		sort.Slice(results, func(i, j int) bool {
+			if results[i].Rank != results[j].Rank {
+				return results[i].Rank < results[j].Rank
+			}
+			return results[i].Entry.UpdatedAt.After(results[j].Entry.UpdatedAt)
+		})
+	}
 	return results, nil
 }
 
@@ -606,6 +685,59 @@ func (s *SQLiteBackend) Clean() (int, error) {
 func bodyHashSQLite(body string) string {
 	h := sha256.Sum256([]byte(body))
 	return fmt.Sprintf("%x", h[:8])
+}
+
+// PutWithDedup inserts or updates only if the content hash differs.
+// Returns skipped=true if the entry already exists with identical body and tags.
+// Spec: S-013 | Fix: Backend wiring
+func (s *SQLiteBackend) PutWithDedup(key, body string, tags []string, now time.Time) (skipped bool, err error) {
+	newHash := bodyHashSQLite(body)
+
+	// Scan all entries to find duplicates
+	rows, err := s.db.Query(`SELECT key, body, tags FROM entries`)
+	if err != nil {
+		return false, fmt.Errorf("dedup scan: %w", err)
+	}
+	defer rows.Close()
+
+	type existingEntry struct {
+		key  string
+		body string
+		tags []string
+	}
+	var existing []existingEntry
+
+	for rows.Next() {
+		var eKey, eBody, eTagsJSON string
+		if err := rows.Scan(&eKey, &eBody, &eTagsJSON); err != nil {
+			continue
+		}
+		var eTags []string
+		json.Unmarshal([]byte(eTagsJSON), &eTags)
+		existing = append(existing, existingEntry{eKey, eBody, eTags})
+	}
+	rows.Close()
+
+	for _, e := range existing {
+		if bodyHashSQLite(e.body) == newHash {
+			if e.key == key {
+				tagsChanged := !tagsEqual(e.tags, tags)
+				if tagsChanged {
+					// Same key, same body, different tags — update tags only
+					tagsJSON, _ := json.Marshal(tags)
+					nowStr := now.UTC().Format(time.RFC3339Nano)
+					_, err = s.db.Exec(`UPDATE entries SET tags = ?, updated_at = ? WHERE key = ?`, string(tagsJSON), nowStr, key)
+					return false, err
+				}
+				// Same key, same body, same tags — skip
+				return true, nil
+			}
+			// Different key, same body — warn but continue
+			fmt.Fprintf(os.Stderr, "warning: duplicate content (matches %q)\n", e.key)
+		}
+	}
+
+	return false, s.Put(key, body, tags, now)
 }
 
 // --- helpers ---

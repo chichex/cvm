@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -114,192 +113,92 @@ func saveIndex(scope config.Scope, projectPath string, idx *Index) error {
 	return os.WriteFile(indexPath(scope, projectPath), data, 0644)
 }
 
+// Put inserts or updates an entry. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func Put(scope config.Scope, projectPath, key, body string, tags []string) error {
-	dir := entriesDir(scope, projectPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return err
 	}
-
-	now := time.Now()
-	found := false
-	for i, e := range idx.Entries {
-		if e.Key == key {
-			idx.Entries[i].Tags = tags
-			idx.Entries[i].UpdatedAt = now
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		idx.Entries = append(idx.Entries, Entry{
-			Key:       key,
-			Tags:      tags,
-			Enabled:   true,
-			CreatedAt: now,
-			UpdatedAt: now,
-		})
-	}
-
-	content := fmt.Sprintf("---\nkey: %s\ntags: [%s]\n---\n\n%s\n", key, strings.Join(tags, ", "), body)
-	if err := os.WriteFile(entryPath(scope, projectPath, key), []byte(content), 0644); err != nil {
-		return err
-	}
-
-	return saveIndex(scope, projectPath, idx)
+	defer b.Close()
+	return b.Put(key, body, tags, time.Now())
 }
 
+// LoadDocuments returns all Documents. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func LoadDocuments(scope config.Scope, projectPath string) ([]Document, error) {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return nil, err
 	}
-
-	docs := make([]Document, 0, len(idx.Entries))
-	for _, entry := range idx.Entries {
-		body, err := readBody(scope, projectPath, entry.Key)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
-		}
-		docs = append(docs, Document{
-			Entry: entry,
-			Body:  body,
-		})
-	}
-	return docs, nil
+	defer b.Close()
+	return b.LoadDocuments()
 }
 
+// SaveDocument upserts a Document. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func SaveDocument(scope config.Scope, projectPath string, doc Document) error {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return err
 	}
-
-	found := false
-	for i, entry := range idx.Entries {
-		if entry.Key == doc.Entry.Key {
-			idx.Entries[i] = doc.Entry
-			found = true
-			break
-		}
-	}
-	if !found {
-		idx.Entries = append(idx.Entries, doc.Entry)
-	}
-
-	if err := os.MkdirAll(entriesDir(scope, projectPath), 0755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(entryPath(scope, projectPath, doc.Entry.Key), []byte(renderDocument(doc.Entry.Key, doc.Entry.Tags, doc.Body)), 0644); err != nil {
-		return err
-	}
-
-	return saveIndex(scope, projectPath, idx)
+	defer b.Close()
+	return b.SaveDocument(doc)
 }
 
+// List returns all entries optionally filtered by tag. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func List(scope config.Scope, projectPath, tag string) ([]Entry, error) {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return nil, err
 	}
-	if tag == "" {
-		return idx.Entries, nil
-	}
-	var filtered []Entry
-	for _, e := range idx.Entries {
-		for _, t := range e.Tags {
-			if t == tag {
-				filtered = append(filtered, e)
-				break
-			}
-		}
-	}
-	return filtered, nil
+	defer b.Close()
+	return b.List(tag)
 }
 
+// Remove deletes an entry. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func Remove(scope config.Scope, projectPath, key string) error {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return err
 	}
-	found := false
-	for i, e := range idx.Entries {
-		if e.Key == key {
-			idx.Entries = append(idx.Entries[:i], idx.Entries[i+1:]...)
-			found = true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("entry %q not found", key)
-	}
-	os.Remove(entryPath(scope, projectPath, key))
-	return saveIndex(scope, projectPath, idx)
+	defer b.Close()
+	return b.Remove(key)
 }
 
+// Show returns the raw content of the entry and updates LastReferenced. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func Show(scope config.Scope, projectPath, key string) (string, error) {
-	data, err := os.ReadFile(entryPath(scope, projectPath, key))
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("entry %q not found", key)
-		}
 		return "", err
 	}
-	idx, _ := loadIndex(scope, projectPath)
-	for i, e := range idx.Entries {
-		if e.Key == key {
-			idx.Entries[i].LastReferenced = time.Now()
-			saveIndex(scope, projectPath, idx)
-			break
-		}
-	}
-	return string(data), nil
+	defer b.Close()
+	return b.Show(key)
 }
 
+// SetEnabled toggles the enabled flag. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func SetEnabled(scope config.Scope, projectPath, key string, enabled bool) error {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return err
 	}
-	for i, e := range idx.Entries {
-		if e.Key == key {
-			idx.Entries[i].Enabled = enabled
-			idx.Entries[i].UpdatedAt = time.Now()
-			return saveIndex(scope, projectPath, idx)
-		}
-	}
-	return fmt.Errorf("entry %q not found", key)
+	defer b.Close()
+	return b.SetEnabled(key, enabled)
 }
 
+// Search performs full-text search. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func Search(scope config.Scope, projectPath, query string) ([]SearchResult, error) {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return nil, err
 	}
-	query = strings.ToLower(query)
-	var results []SearchResult
-	for _, e := range idx.Entries {
-		data, err := os.ReadFile(entryPath(scope, projectPath, e.Key))
-		if err != nil {
-			continue
-		}
-		content := strings.ToLower(string(data))
-		if strings.Contains(content, query) || strings.Contains(strings.ToLower(e.Key), query) {
-			results = append(results, SearchResult{
-				Entry:   e,
-				Snippet: extractSnippet(string(data), query),
-			})
-		}
-	}
-	return results, nil
+	defer b.Close()
+	return b.Search(query, SearchOptions{})
 }
 
 type SearchResult struct {
@@ -335,47 +234,30 @@ func extractSnippet(content, query string) string {
 	return strings.TrimSpace(snippet)
 }
 
+// Clean removes all entries. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func Clean(scope config.Scope, projectPath string) (int, error) {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return 0, err
 	}
-	count := len(idx.Entries)
-	if count == 0 {
-		return 0, nil
-	}
-
-	// Remove all entry files
-	for _, e := range idx.Entries {
-		os.Remove(entryPath(scope, projectPath, e.Key))
-	}
-
-	// Reset index
-	idx.Entries = nil
-	if err := saveIndex(scope, projectPath, idx); err != nil {
-		return 0, err
-	}
-	return count, nil
+	defer b.Close()
+	return b.Clean()
 }
 
+// Stats returns basic statistics. Delegates through Backend.
+// Spec: S-013 | Fix: Backend wiring
 func Stats(scope config.Scope, projectPath string) (total, enabled, stale int, err error) {
-	idx, err := loadIndex(scope, projectPath)
-	if err != nil {
-		return 0, 0, 0, err
+	b, bErr := NewBackend(scope, projectPath)
+	if bErr != nil {
+		return 0, 0, 0, bErr
 	}
-	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
-	for _, e := range idx.Entries {
-		total++
-		if e.Enabled {
-			enabled++
-		}
-		if !e.LastReferenced.IsZero() && e.LastReferenced.Before(thirtyDaysAgo) {
-			stale++
-		} else if e.LastReferenced.IsZero() && e.CreatedAt.Before(thirtyDaysAgo) {
-			stale++
-		}
+	defer b.Close()
+	result, sErr := b.Stats()
+	if sErr != nil {
+		return 0, 0, 0, sErr
 	}
-	return total, enabled, stale, nil
+	return result.Total, result.Enabled, result.Stale, nil
 }
 
 // putWithTime is like Put but accepts an explicit timestamp for testability.
@@ -449,7 +331,8 @@ func bodyHash(body string) string {
 	return fmt.Sprintf("%x", h[:8])
 }
 
-// Spec: S-010 | Req: B-008
+// PutWithOptions validates the type tag and calls Put. Delegates through Backend.
+// Spec: S-010 | Req: B-008 | Fix: Backend wiring
 func PutWithOptions(scope config.Scope, projectPath, key, body string, tags []string, typeTag string) error {
 	if typeTag != "" {
 		if err := ValidateType(typeTag); err != nil {
@@ -457,60 +340,23 @@ func PutWithOptions(scope config.Scope, projectPath, key, body string, tags []st
 		}
 		tags = append(tags, "type:"+typeTag)
 	}
-	return Put(scope, projectPath, key, body, tags)
+	b, err := NewBackend(scope, projectPath)
+	if err != nil {
+		return err
+	}
+	defer b.Close()
+	return b.Put(key, body, tags, time.Now())
 }
 
-// Spec: S-010 | Req: B-013 — content-hash dedup logic in Put
+// PutWithDedup inserts or updates only if the content hash differs. Delegates through Backend.
+// Spec: S-010 | Req: B-013 | Fix: Backend wiring
 func PutWithDedup(scope config.Scope, projectPath, key, body string, tags []string) (skipped bool, err error) {
-	dir := entriesDir(scope, projectPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return false, err
+	b, bErr := NewBackend(scope, projectPath)
+	if bErr != nil {
+		return false, bErr
 	}
-
-	idx, err := loadIndex(scope, projectPath)
-	if err != nil {
-		return false, err
-	}
-
-	newHash := bodyHash(body)
-
-	// Check for duplicate content
-	for _, e := range idx.Entries {
-		existingBody, readErr := readBody(scope, projectPath, e.Key)
-		if readErr != nil {
-			continue
-		}
-		existingHash := bodyHash(existingBody)
-
-		if existingHash == newHash {
-			if e.Key == key {
-				// Same key, same body — check if tags differ
-				tagsChanged := !tagsEqual(e.Tags, tags)
-				if tagsChanged {
-					// Update tags only
-					now := time.Now()
-					for i, entry := range idx.Entries {
-						if entry.Key == key {
-							idx.Entries[i].Tags = tags
-							idx.Entries[i].UpdatedAt = now
-							break
-						}
-					}
-					content := renderDocument(key, tags, body)
-					if writeErr := os.WriteFile(entryPath(scope, projectPath, key), []byte(content), 0644); writeErr != nil {
-						return false, writeErr
-					}
-					return false, saveIndex(scope, projectPath, idx)
-				}
-				// Same key, same body, same tags — skip entirely
-				return true, nil
-			}
-			// Different key, same body — warn
-			fmt.Fprintf(os.Stderr, "warning: duplicate content (matches %q)\n", e.Key)
-		}
-	}
-
-	return false, Put(scope, projectPath, key, body, tags)
+	defer b.Close()
+	return b.PutWithDedup(key, body, tags, time.Now())
 }
 
 func tagsEqual(a, b []string) bool {
@@ -525,110 +371,15 @@ func tagsEqual(a, b []string) bool {
 	return true
 }
 
-// Spec: S-010 | Req: B-009, B-010
+// SearchWithOptions performs filtered full-text search. Delegates through Backend.
+// Spec: S-010 | Req: B-009, B-010 | Fix: Backend wiring
 func SearchWithOptions(scope config.Scope, projectPath, query string, opts SearchOptions) ([]SearchResult, error) {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return nil, err
 	}
-
-	lowerQuery := strings.ToLower(query)
-	var results []SearchResult
-
-	now := time.Now()
-
-	for _, e := range idx.Entries {
-		// Apply filters
-		if opts.Tag != "" {
-			hasTag := false
-			for _, t := range e.Tags {
-				if t == opts.Tag {
-					hasTag = true
-					break
-				}
-			}
-			if !hasTag {
-				continue
-			}
-		}
-
-		if opts.TypeTag != "" {
-			typeTag := "type:" + opts.TypeTag
-			hasType := false
-			for _, t := range e.Tags {
-				if t == typeTag {
-					hasType = true
-					break
-				}
-			}
-			if !hasType {
-				continue
-			}
-		}
-
-		if opts.Since > 0 {
-			cutoff := now.Add(-opts.Since)
-			if e.UpdatedAt.Before(cutoff) {
-				continue
-			}
-		}
-
-		// Check match + compute rank
-		lowerKey := strings.ToLower(e.Key)
-		rank := -1
-
-		if lowerKey == lowerQuery {
-			rank = 0 // exact key match
-		} else if strings.Contains(lowerKey, lowerQuery) {
-			rank = 1 // key contains
-		} else {
-			data, readErr := os.ReadFile(entryPath(scope, projectPath, e.Key))
-			if readErr != nil {
-				continue
-			}
-			content := strings.ToLower(string(data))
-			if strings.Contains(content, lowerQuery) {
-				rank = 2 // body contains
-			}
-		}
-
-		if rank >= 0 {
-			snippet := ""
-			if rank <= 1 {
-				// For key matches, read body for snippet
-				data, readErr := os.ReadFile(entryPath(scope, projectPath, e.Key))
-				if readErr == nil {
-					snippet = extractSnippet(string(data), query)
-				}
-			} else {
-				data, _ := os.ReadFile(entryPath(scope, projectPath, e.Key))
-				snippet = extractSnippet(string(data), query)
-			}
-
-			results = append(results, SearchResult{
-				Entry:   e,
-				Snippet: snippet,
-				Rank:    rank,
-			})
-		}
-	}
-
-	// Sort results
-	if opts.Sort == "recent" {
-		sort.Slice(results, func(i, j int) bool {
-			return results[i].Entry.UpdatedAt.After(results[j].Entry.UpdatedAt)
-		})
-	} else {
-		// Default: relevance (by rank, then by UpdatedAt within same rank)
-		sort.Slice(results, func(i, j int) bool {
-			if results[i].Rank != results[j].Rank {
-				return results[i].Rank < results[j].Rank
-			}
-			return results[i].Entry.UpdatedAt.After(results[j].Entry.UpdatedAt)
-		})
-	}
-
-	return results, nil
+	defer b.Close()
+	return b.Search(query, opts)
 }
 
 // Spec: S-010 | Req: B-011
@@ -637,111 +388,35 @@ type TimelineDay struct {
 	Entries []Entry
 }
 
+// Timeline returns entries grouped by day. Delegates through Backend.
+// Spec: S-010 | Req: B-011 | Fix: Backend wiring
 func Timeline(scope config.Scope, projectPath string, days int) ([]TimelineDay, error) {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return nil, err
 	}
-
-	cutoff := time.Now().AddDate(0, 0, -days)
-
-	// Group by day
-	dayMap := make(map[string][]Entry)
-	for _, e := range idx.Entries {
-		if e.UpdatedAt.Before(cutoff) {
-			continue
-		}
-		dayKey := e.UpdatedAt.Format("2006-01-02")
-		dayMap[dayKey] = append(dayMap[dayKey], e)
-	}
-
-	// Sort days descending
-	var dayKeys []string
-	for k := range dayMap {
-		dayKeys = append(dayKeys, k)
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(dayKeys)))
-
-	var result []TimelineDay
-	for _, k := range dayKeys {
-		t, _ := time.Parse("2006-01-02", k)
-		entries := dayMap[k]
-		// Sort entries within day by UpdatedAt desc
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].UpdatedAt.After(entries[j].UpdatedAt)
-		})
-		result = append(result, TimelineDay{Date: t, Entries: entries})
-	}
-
-	return result, nil
+	defer b.Close()
+	return b.Timeline(days)
 }
 
-// Spec: S-010 | Req: B-012
+// StatsDetailed returns aggregate statistics. Delegates through Backend.
+// Spec: S-010 | Req: B-012 | Fix: Backend wiring
 func StatsDetailed(scope config.Scope, projectPath string) (StatsResult, error) {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return StatsResult{}, err
 	}
-
-	result := StatsResult{
-		PerEntry: make(map[string]int),
-	}
-	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
-
-	for _, e := range idx.Entries {
-		result.Total++
-		if e.Enabled {
-			result.Enabled++
-		}
-		if !e.LastReferenced.IsZero() && e.LastReferenced.Before(thirtyDaysAgo) {
-			result.Stale++
-		} else if e.LastReferenced.IsZero() && e.CreatedAt.Before(thirtyDaysAgo) {
-			result.Stale++
-		}
-
-		// Token estimation: chars/4
-		body, readErr := readBody(scope, projectPath, e.Key)
-		if readErr != nil {
-			continue
-		}
-		tokens := len(body) / 4
-		result.PerEntry[e.Key] = tokens
-		result.TotalTokens += tokens
-	}
-
-	return result, nil
+	defer b.Close()
+	return b.Stats()
 }
 
-// Spec: S-010 | Req: B-014
+// Compact returns a condensed view of all entries. Delegates through Backend.
+// Spec: S-010 | Req: B-014 | Fix: Backend wiring
 func Compact(scope config.Scope, projectPath string) ([]CompactEntry, error) {
-	idx, err := loadIndex(scope, projectPath)
+	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return nil, err
 	}
-
-	var entries []CompactEntry
-	for _, e := range idx.Entries {
-		body, readErr := readBody(scope, projectPath, e.Key)
-		firstLine := ""
-		if readErr == nil && body != "" {
-			lines := strings.SplitN(body, "\n", 2)
-			firstLine = strings.TrimSpace(lines[0])
-			if len(firstLine) > 80 {
-				firstLine = firstLine[:80] + "..."
-			}
-		}
-		entries = append(entries, CompactEntry{
-			Key:       e.Key,
-			Tags:      e.Tags,
-			FirstLine: firstLine,
-			UpdatedAt: e.UpdatedAt,
-		})
-	}
-
-	// Sort by UpdatedAt desc
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].UpdatedAt.After(entries[j].UpdatedAt)
-	})
-
-	return entries, nil
+	defer b.Close()
+	return b.Compact()
 }

@@ -51,19 +51,22 @@ func TestE2E_FullLifecycle(t *testing.T) {
 		t.Errorf("Show: expected body content, got %q", content)
 	}
 
-	idx, err := loadIndex(config.ScopeLocal, projectPath)
-	if err != nil {
-		t.Fatalf("loadIndex: %v", err)
-	}
-	var lr time.Time
-	for _, e := range idx.Entries {
-		if e.Key == "auth-learning" {
-			lr = e.LastReferenced
-			break
+	// Verify LastReferenced via Backend.Get (works for both flat and SQLite)
+	// Spec: S-013 | Fix: Backend wiring — use Backend instead of loadIndex
+	{
+		b, bErr := NewBackend(config.ScopeLocal, projectPath)
+		if bErr != nil {
+			t.Fatalf("NewBackend for LastReferenced check: %v", bErr)
 		}
-	}
-	if lr.IsZero() || lr.Before(before) {
-		t.Errorf("Show should update LastReferenced; got %v, want after %v", lr, before)
+		doc, gErr := b.Get("auth-learning")
+		b.Close()
+		if gErr != nil {
+			t.Fatalf("Backend.Get auth-learning: %v", gErr)
+		}
+		lr := doc.Entry.LastReferenced
+		if lr.IsZero() || lr.Before(before) {
+			t.Errorf("Show should update LastReferenced; got %v, want after %v", lr, before)
+		}
 	}
 
 	// 4. List with tag filter returns only matching entries
@@ -444,12 +447,13 @@ func TestE2E_EnableDisableWorkflow(t *testing.T) {
 		t.Error("SetEnabled on missing key should return error")
 	}
 
-	// 7. Verify Enabled flag is persisted correctly via List
-	idx, err := loadIndex(config.ScopeLocal, projectPath)
+	// 7. Verify Enabled flag is persisted correctly via List (works for both flat and SQLite)
+	// Spec: S-013 | Fix: Backend wiring — use List instead of loadIndex
+	allFinal, err := List(config.ScopeLocal, projectPath, "")
 	if err != nil {
-		t.Fatalf("loadIndex: %v", err)
+		t.Fatalf("List for enabled check: %v", err)
 	}
-	for _, e := range idx.Entries {
+	for _, e := range allFinal {
 		switch e.Key {
 		case "e1", "e2":
 			if !e.Enabled {

@@ -14,6 +14,10 @@ type Backend interface {
 	// Get returns the Document for the given key, or error if not found.
 	Get(key string) (Document, error)
 
+	// Show returns the full rendered content of the entry and updates LastReferenced.
+	// Spec: S-013 | Fix: Backend wiring
+	Show(key string) (string, error)
+
 	// List returns all entries optionally filtered by tag. Empty tag = all entries.
 	List(tag string) ([]Entry, error)
 
@@ -40,6 +44,15 @@ type Backend interface {
 
 	// SaveDocument upserts a Document, preserving created_at on update.
 	SaveDocument(doc Document) error
+
+	// Clean removes all entries and returns the count removed.
+	// Spec: S-013 | Fix: Backend wiring
+	Clean() (int, error)
+
+	// PutWithDedup inserts or updates an entry only if the content hash differs.
+	// Returns skipped=true if content and tags are identical to the existing entry.
+	// Spec: S-013 | Fix: Backend wiring
+	PutWithDedup(key, body string, tags []string, now time.Time) (skipped bool, err error)
 
 	// Close releases any held resources. Must be idempotent.
 	Close() error
