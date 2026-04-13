@@ -40,6 +40,7 @@ func init() {
 
 	// Subsystems
 	rootCmd.AddCommand(kbCmd)
+	rootCmd.AddCommand(dashboardCmd)
 	rootCmd.AddCommand(lifecycleCmd)
 	rootCmd.AddCommand(remoteCmd)
 	rootCmd.AddCommand(overrideCmd)

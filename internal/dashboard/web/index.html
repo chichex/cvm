@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CVM Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <span class="logo">CVM</span>
+    <nav>
+      <button data-tab="timeline" class="active">Timeline</button>
+      <button data-tab="session">Session</button>
+      <button data-tab="browser">Browser</button>
+      <button data-tab="stats">Stats</button>
+    </nav>
+    <div class="status-dot">
+      <div id="sse-dot" class="dot"></div>
+      <span id="sse-label">connecting</span>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ===== Timeline ===== -->
+    <section class="view active" data-tab="timeline">
+      <div class="toolbar">
+        <div id="timeline-scope" class="scope-toggle">
+          <button class="scope-btn active" data-scope="both">Both</button>
+          <button class="scope-btn" data-scope="global">Global</button>
+          <button class="scope-btn" data-scope="local">Local</button>
+        </div>
+        <span class="meta">Recent KB entries — auto-refreshes via SSE</span>
+      </div>
+      <div id="timeline-list" class="entry-list"></div>
+    </section>
+
+    <!-- ===== Session ===== -->
+    <section class="view" data-tab="session">
+      <div class="toolbar">
+        <select id="session-selector" title="Select session buffer"></select>
+        <span class="meta">Live session buffer — tool observations &amp; user prompts</span>
+      </div>
+      <div id="session-lines" class="session-container"></div>
+    </section>
+
+    <!-- ===== Browser ===== -->
+    <section class="view" data-tab="browser">
+      <div class="toolbar">
+        <input id="browser-q" type="text" placeholder="Search KB… (debounced 300ms)">
+        <input id="browser-tag" type="text" placeholder="Filter by tag">
+        <div id="browser-scope" class="scope-toggle">
+          <button class="scope-btn active" data-scope="both">Both</button>
+          <button class="scope-btn" data-scope="global">Global</button>
+          <button class="scope-btn" data-scope="local">Local</button>
+        </div>
+        <span id="browser-meta" class="meta"></span>
+      </div>
+      <div class="browser-layout">
+        <div id="browser-list" class="browser-list"></div>
+        <div id="browser-detail" class="browser-detail empty">
+          <span>Select an entry to view its full body</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Stats ===== -->
+    <section class="view" data-tab="stats">
+      <div class="stats-grid">
+
+        <!-- Active sessions -->
+        <div class="stat-card">
+          <h3>Active Sessions</h3>
+          <div id="stats-active-sessions" class="active-sessions-counter">—</div>
+          <div class="stat-row"><span class="label">session-buffer-* entries in local KB</span></div>
+        </div>
+
+        <!-- Global KB -->
+        <div class="stat-card">
+          <h3>Global KB</h3>
+          <div class="stat-row">
+            <span class="label">Total entries</span>
+            <span id="stats-global-total" class="value highlight">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="label">Enabled</span>
+            <span id="stats-global-enabled" class="value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="label">Stale (&gt;30d)</span>
+            <span id="stats-global-stale" class="value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="label">Total tokens</span>
+            <span id="stats-global-tokens" class="value">—</span>
+          </div>
+        </div>
+
+        <!-- Local KB -->
+        <div class="stat-card">
+          <h3>Local KB</h3>
+          <div class="stat-row">
+            <span class="label">Total entries</span>
+            <span id="stats-local-total" class="value highlight">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="label">Enabled</span>
+            <span id="stats-local-enabled" class="value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="label">Stale (&gt;30d)</span>
+            <span id="stats-local-stale" class="value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="label">Total tokens</span>
+            <span id="stats-local-tokens" class="value">—</span>
+          </div>
+        </div>
+
+        <!-- Global tags -->
+        <div class="stat-card">
+          <h3>Global Tags</h3>
+          <div id="stats-global-tags" class="tag-list">
+            <span style="color:var(--muted)">Loading…</span>
+          </div>
+        </div>
+
+        <!-- Local tags -->
+        <div class="stat-card">
+          <h3>Local Tags</h3>
+          <div id="stats-local-tags" class="tag-list">
+            <span style="color:var(--muted)">Loading…</span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
