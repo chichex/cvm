@@ -10,7 +10,6 @@
     "CVM_CONTEXT_MAX_TOKENS": "2000",
     "CVM_AUTOSUMMARY_ENABLED": "true",
     "CVM_AUTOSUMMARY_MODEL": "haiku",
-    "CVM_AUTOSUMMARY_MIN_TOOLS": "3",
     "CVM_AUTOSUMMARY_MAX_TOKENS": "500"
   },
   "permissions": {
@@ -65,8 +64,7 @@
         "matcher": "",
         "hooks": [
           { "type": "command", "command": "cvm lifecycle end" },
-          { "type": "command", "command": "bash ~/.claude/hooks/session-digest.sh" },
-          { "type": "command", "command": "bash ~/.claude/hooks/auto-summary.sh" }
+          { "type": "command", "command": "bash ~/.claude/hooks/session-summary.sh" }
         ]
       }
     ],
@@ -80,6 +78,12 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/tool-capture.sh" }
+        ]
+      },
       {
         "matcher": "Write|Edit",
         "hooks": [
