@@ -292,7 +292,8 @@ async function loadSession() {
     buffers.forEach(buf => {
       const opt = document.createElement('option');
       opt.value = buf.session_id;
-      opt.textContent = `${buf.session_id} (${buf.line_count} lines)`;
+      const started = buf.created_at ? new Date(buf.created_at).toLocaleTimeString() : '';
+      opt.textContent = `${buf.session_id.substring(0, 8)}… (${buf.line_count} lines, started ${started})`;
       if (buf.session_id === currentId) opt.selected = true;
       selector.appendChild(opt);
     });
@@ -301,6 +302,12 @@ async function loadSession() {
       state.sessionId = selector.value;
       fetchSessionDetail(state.sessionId);
     };
+  }
+
+  // Show project dir
+  const projectInfo = $('#session-project');
+  if (projectInfo && listData.project_dir) {
+    projectInfo.textContent = listData.project_dir;
   }
 
   fetchSessionDetail(state.sessionId || buffers[0].session_id);
@@ -334,6 +341,24 @@ async function fetchSessionDetail(id) {
   if (!data.found || !data.lines || data.lines.length === 0) {
     container.appendChild(el('div', 'session-empty', 'Buffer is empty.'));
     return;
+  }
+
+  // Render session metadata bar
+  const metaBar = $('#session-meta');
+  if (metaBar && data.found) {
+    const parts = [];
+    if (data.project_dir) parts.push(data.project_dir);
+    if (data.created_at) {
+      const started = new Date(data.created_at);
+      parts.push(`Started: ${started.toLocaleString()}`);
+      if (data.updated_at) {
+        const updated = new Date(data.updated_at);
+        const durationMin = Math.round((updated - started) / 60000);
+        parts.push(`Duration: ${durationMin}m`);
+      }
+    }
+    parts.push(`${data.line_count} events`);
+    metaBar.textContent = parts.join('  ·  ');
   }
 
   data.lines.forEach(line => {

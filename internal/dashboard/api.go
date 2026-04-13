@@ -205,22 +205,27 @@ type sessionLineJSON struct {
 }
 
 type sessionDetailResponse struct {
-	SessionID string            `json:"session_id"`
-	Key       string            `json:"key"`
-	Lines     []sessionLineJSON `json:"lines"`
-	LineCount int               `json:"line_count"`
-	Found     bool              `json:"found"`
+	SessionID  string            `json:"session_id"`
+	Key        string            `json:"key"`
+	Lines      []sessionLineJSON `json:"lines"`
+	LineCount  int               `json:"line_count"`
+	Found      bool              `json:"found"`
+	CreatedAt  string            `json:"created_at,omitempty"`
+	UpdatedAt  string            `json:"updated_at,omitempty"`
+	ProjectDir string            `json:"project_dir,omitempty"`
 }
 
 type sessionBufferSummary struct {
 	SessionID string `json:"session_id"`
 	Key       string `json:"key"`
 	LineCount int    `json:"line_count"`
+	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
 
 type sessionListResponse struct {
-	Buffers []sessionBufferSummary `json:"buffers"`
+	Buffers    []sessionBufferSummary `json:"buffers"`
+	ProjectDir string                `json:"project_dir"`
 }
 
 // handleSession serves GET /api/session
@@ -263,11 +268,14 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		}
 		lines := ParseSessionLines(doc.Body)
 		jsonOK(w, sessionDetailResponse{
-			SessionID: id,
-			Key:       key,
-			Lines:     lines,
-			LineCount: len(lines),
-			Found:     true,
+			SessionID:  id,
+			Key:        key,
+			Lines:      lines,
+			LineCount:  len(lines),
+			Found:      true,
+			CreatedAt:  doc.Entry.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:  doc.Entry.UpdatedAt.UTC().Format(time.RFC3339),
+			ProjectDir: s.cfg.ProjectPath,
 		})
 		return
 	}
@@ -290,6 +298,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 						SessionID: sid,
 						Key:       e.Key,
 						LineCount: lineCount,
+						CreatedAt: e.CreatedAt.UTC().Format(time.RFC3339),
 						UpdatedAt: e.UpdatedAt.UTC().Format(time.RFC3339),
 					})
 				}
@@ -299,7 +308,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	if buffers == nil {
 		buffers = []sessionBufferSummary{}
 	}
-	jsonOK(w, sessionListResponse{Buffers: buffers})
+	jsonOK(w, sessionListResponse{Buffers: buffers, ProjectDir: s.cfg.ProjectPath})
 }
 
 // countLines counts non-empty lines in a string.

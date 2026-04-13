@@ -316,6 +316,22 @@ main {
   flex: 1;
 }
 
+.session-meta-bar {
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.session-meta-bar:empty {
+  display: none;
+}
+
 .session-container {
   background: var(--bg);
   border: 1px solid var(--border);
