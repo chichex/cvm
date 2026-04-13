@@ -135,12 +135,16 @@ cvm restore --global    # only global
 cvm restore --local     # only local
 ```
 
-### Lifecycle (used by hooks)
+### Session (used by hooks)
 
 ```bash
-cvm lifecycle start    # session start: load context, detect tools
-cvm lifecycle end      # session end: cleanup + auto-run automation
-cvm lifecycle status   # show current session info
+cvm session start      # session start: create session file, detect tools
+cvm session end <uuid> # session end: generate summary + cleanup + auto-run automation
+cvm session status     # show active sessions
+cvm session append <uuid> --type <prompt|tool|agent> [--content ...] [--tool ...] [--agent-type ...]
+cvm session ls         # list all sessions (default: 20 most recent)
+cvm session show <uuid>  # show all events for a session
+cvm session gc         # delete closed sessions older than 30 days
 cvm automation status  # queued candidates summary
 cvm automation ls      # list candidate briefs
 cvm automation show <id>  # inspect a materialized brief

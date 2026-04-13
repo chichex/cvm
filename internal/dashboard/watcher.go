@@ -1,8 +1,9 @@
 // Spec: S-016
-// watcher.go — Background goroutine that polls the KB and emits change events.
+// watcher.go — Background goroutine that polls the KB and session files, emitting change events.
 package dashboard
 
 import (
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -26,8 +27,9 @@ type Event struct {
 	Data map[string]string
 }
 
-// Watcher polls the KB for changes and broadcasts events.
+// Watcher polls the KB and ~/.cvm/sessions/ for changes and broadcasts events.
 // Spec: S-016 | Req: I-002q, I-002r, I-002s, I-002u, I-INV-004
+// Spec: S-017 | Req: B-013
 type Watcher struct {
 	globalBack kb.Backend
 	localBack  kb.Backend
@@ -41,17 +43,22 @@ type Watcher struct {
 	// Spec: S-016 | Req: I-002u
 	globalSnapshot map[string]time.Time
 	localSnapshot  map[string]time.Time
+
+	// sessionSnapshot tracks session file mtimes: uuid -> mtime
+	// Spec: S-017 | Req: B-013
+	sessionSnapshot map[string]time.Time
 }
 
 // NewWatcher creates a new Watcher.
 func NewWatcher(global, local kb.Backend) *Watcher {
 	return &Watcher{
-		globalBack:     global,
-		localBack:      local,
-		subscribers:    make(map[chan Event]struct{}),
-		stopCh:         make(chan struct{}),
-		globalSnapshot: make(map[string]time.Time),
-		localSnapshot:  make(map[string]time.Time),
+		globalBack:      global,
+		localBack:       local,
+		subscribers:     make(map[chan Event]struct{}),
+		stopCh:          make(chan struct{}),
+		globalSnapshot:  make(map[string]time.Time),
+		localSnapshot:   make(map[string]time.Time),
+		sessionSnapshot: make(map[string]time.Time),
 	}
 }
 
@@ -126,8 +133,9 @@ func (w *Watcher) Stop() {
 	close(w.stopCh)
 }
 
-// checkChanges polls backends and broadcasts change events.
+// checkChanges polls backends and session files, broadcasting change events.
 // Spec: S-016 | Req: I-002r, I-002s, I-002u
+// Spec: S-017 | Req: B-013
 func (w *Watcher) checkChanges() {
 	if w.globalBack != nil {
 		w.checkBackend(w.globalBack, "global", w.globalSnapshot)
@@ -135,6 +143,9 @@ func (w *Watcher) checkChanges() {
 	if w.localBack != nil {
 		w.checkBackend(w.localBack, "local", w.localSnapshot)
 	}
+	// Poll ~/.cvm/sessions/ for session file mtime changes.
+	// Spec: S-017 | Req: B-013
+	w.checkSessionFiles()
 }
 
 // checkBackend compares the current snapshot with the stored one and emits events.
@@ -148,25 +159,17 @@ func (w *Watcher) checkBackend(b kb.Backend, scopeName string, snapshot map[stri
 	for _, e := range entries {
 		prev, seen := snapshot[e.Key]
 		if !seen {
-			// New entry
-			evtType := EventEntryAdded
-			if strings.HasPrefix(e.Key, "session-buffer-") {
-				evtType = EventSessionUpdated
-			}
+			// New entry — always emit entry_added for KB entries
 			w.broadcast(Event{
-				Type: evtType,
-				Data: map[string]string{"key": e.Key, "scope": scopeName, "session_id": strings.TrimPrefix(e.Key, "session-buffer-")},
+				Type: EventEntryAdded,
+				Data: map[string]string{"key": e.Key, "scope": scopeName},
 			})
 			snapshot[e.Key] = e.UpdatedAt
 		} else if e.UpdatedAt.After(prev) {
 			// Updated entry
-			evtType := EventEntryAdded
-			if strings.HasPrefix(e.Key, "session-buffer-") {
-				evtType = EventSessionUpdated
-			}
 			w.broadcast(Event{
-				Type: evtType,
-				Data: map[string]string{"key": e.Key, "scope": scopeName, "session_id": strings.TrimPrefix(e.Key, "session-buffer-")},
+				Type: EventEntryAdded,
+				Data: map[string]string{"key": e.Key, "scope": scopeName},
 			})
 			snapshot[e.Key] = e.UpdatedAt
 		}
@@ -183,3 +186,45 @@ func (w *Watcher) checkBackend(b kb.Backend, scopeName string, snapshot map[stri
 		}
 	}
 }
+
+// checkSessionFiles polls ~/.cvm/sessions/ for mtime changes and emits EventSessionUpdated.
+// Spec: S-017 | Req: B-013
+func (w *Watcher) checkSessionFiles() {
+	dir := sessionsDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// Directory may not exist yet — not an error
+		return
+	}
+
+	current := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		uuid := strings.TrimSuffix(e.Name(), ".jsonl")
+		current[uuid] = struct{}{}
+
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		mtime := info.ModTime()
+		prev, seen := w.sessionSnapshot[uuid]
+		if !seen || mtime.After(prev) {
+			w.broadcast(Event{
+				Type: EventSessionUpdated,
+				Data: map[string]string{"session_id": uuid, "file": e.Name()},
+			})
+			w.sessionSnapshot[uuid] = mtime
+		}
+	}
+
+	// Remove stale entries from snapshot
+	for uuid := range w.sessionSnapshot {
+		if _, ok := current[uuid]; !ok {
+			delete(w.sessionSnapshot, uuid)
+		}
+	}
+}
+

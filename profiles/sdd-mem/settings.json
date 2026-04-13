@@ -32,7 +32,7 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "cvm lifecycle start" },
+          { "type": "command", "command": "bash ~/.claude/hooks/session-start.sh" },
           { "type": "command", "command": "bash ~/.claude/hooks/check-tools.sh" },
           { "type": "command", "command": "bash ~/.claude/hooks/context-inject.sh" }
         ]
@@ -64,8 +64,7 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "cvm lifecycle end" },
-          { "type": "command", "command": "bash ~/.claude/hooks/session-summary.sh" }
+          { "type": "command", "command": "bash ~/.claude/hooks/session-end.sh" }
         ]
       }
     ],
@@ -80,15 +79,9 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Write|Edit",
+        "matcher": "Bash|Write|Edit|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/hooks/tool-observe.sh" }
-        ]
-      },
-      {
-        "matcher": "NotebookEdit",
-        "hooks": [
-          { "type": "command", "command": "bash ~/.claude/hooks/tool-capture.sh" }
         ]
       },
       {

@@ -273,8 +273,8 @@ Las reglas en `rules/` se aplican automaticamente:
 
 ## Sesion
 
-- Al iniciar sesion se ejecuta `cvm lifecycle start` automaticamente (hook)
-- Al cerrar sesion se ejecuta `cvm lifecycle end` automaticamente (hook)
+- Al iniciar sesion se ejecuta `cvm session start` automaticamente (hook)
+- Al cerrar sesion se ejecuta `cvm session end` automaticamente (hook)
 - **On-the-fly learning**: hook `UserPromptSubmit`
 - **Captura pasiva**: hook `SubagentStop`
 - **Post-compaction**: hook `SessionStart` (matcher: compact)

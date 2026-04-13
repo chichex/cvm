@@ -1,7 +1,9 @@
 # S-011: Realtime Session Capture — hooks over transcripts
 
+> **SUPERSEDED by S-017 (session-system). This spec is retained for historical reference.**
+
 **Version:** 0.1.0  
-**Status:** implemented  
+**Status:** superseded  
 **Validación:** manual + integration tests  
 **Origen:** Sesión de debugging sdd-mem auto-summary (2026-04-13). El approach de parsear transcripts JSONL internos de Claude Code es frágil: format changes, SIGPIPE, reverse-engineering del project dir naming.
 

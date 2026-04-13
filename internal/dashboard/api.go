@@ -3,14 +3,22 @@
 package dashboard
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/kb"
+	"github.com/chichex/cvm/internal/session"
 )
 
 // jsonError writes a JSON error response.
@@ -197,39 +205,115 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 
 // --- Session ---
 
-type sessionLineJSON struct {
-	Timestamp string `json:"timestamp"`
-	Type      string `json:"type"`
-	Tool      string `json:"tool,omitempty"`
-	Content   string `json:"content"`
+
+// sessionsDir returns the path to ~/.cvm/sessions/.
+// Spec: S-017 | Req: I-002, I-004
+func sessionsDir() string {
+	return filepath.Join(config.CvmHome(), "sessions")
+}
+
+// dashboardSessionEvent mirrors session.SessionEvent for JSON parsing within the dashboard.
+// We duplicate the struct to avoid circular import from session → dashboard.
+// Spec: S-017 | Req: C-001, C-002, C-003
+type dashboardSessionEvent = session.SessionEvent
+
+// readSessionStartEvent reads the first JSONL line of a session file and parses it.
+// Spec: S-017 | Req: C-002
+func readSessionStartEvent(path string) (*dashboardSessionEvent, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20)
+	if !scanner.Scan() {
+		return nil, os.ErrInvalid
+	}
+	var ev dashboardSessionEvent
+	if err := json.Unmarshal(scanner.Bytes(), &ev); err != nil {
+		return nil, err
+	}
+	return &ev, nil
+}
+
+// readAllSessionEvents reads all JSONL lines from a session file, skipping invalid lines.
+// Spec: S-017 | Req: I-008, E-011
+func readAllSessionEvents(path string) []dashboardSessionEvent {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var events []dashboardSessionEvent
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var ev dashboardSessionEvent
+		if json.Unmarshal([]byte(line), &ev) == nil {
+			events = append(events, ev)
+		}
+	}
+	return events
+}
+
+// sessionHasEndEvent checks if the last valid JSON line of a session file is an end event.
+func sessionHasEndEvent(events []dashboardSessionEvent) bool {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type == "end" {
+			return true
+		}
+	}
+	return false
+}
+
+// sessionIsPIDAlive checks if a PID is alive and the process name contains "claude".
+// Spec: S-017 | Req: I-010
+func sessionIsPIDAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	// Send signal 0 to check process existence (Unix only)
+	if err := syscall.Kill(pid, 0); err != nil {
+		return false
+	}
+	// Check process name contains "claude". Spec: S-017 | Req: I-010
+	psOut, psErr := execPsComm(pid)
+	if psErr != nil {
+		// Fallback: Linux /proc/<pid>/comm
+		out, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
+		if err != nil {
+			return false
+		}
+		return strings.Contains(strings.ToLower(strings.TrimSpace(string(out))), "claude")
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(psOut)), "claude")
+}
+
+// execPsComm runs `ps -p <pid> -o comm=` and returns stdout.
+func execPsComm(pid int) (string, error) {
+	cmd := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "comm=")
+	out, err := cmd.Output()
+	return string(out), err
 }
 
 type sessionDetailResponse struct {
-	SessionID  string            `json:"session_id"`
-	Key        string            `json:"key"`
-	Lines      []sessionLineJSON `json:"lines"`
-	LineCount  int               `json:"line_count"`
-	Found      bool              `json:"found"`
-	CreatedAt  string            `json:"created_at,omitempty"`
-	UpdatedAt  string            `json:"updated_at,omitempty"`
-	ProjectDir string            `json:"project_dir,omitempty"`
-}
-
-type sessionBufferSummary struct {
-	SessionID string `json:"session_id"`
-	Key       string `json:"key"`
-	LineCount int    `json:"line_count"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-type sessionListResponse struct {
-	Buffers    []sessionBufferSummary `json:"buffers"`
-	ProjectDir string                `json:"project_dir"`
+	SessionID  string                   `json:"session_id"`
+	Key        string                   `json:"key"`
+	Events     []dashboardSessionEvent  `json:"events"`
+	EventCount int                      `json:"event_count"`
+	Found      bool                     `json:"found"`
+	StartedAt  string                   `json:"started_at,omitempty"`
+	ProjectDir string                   `json:"project_dir,omitempty"`
 }
 
 // handleSession serves GET /api/session
-// Spec: S-016 | Req: I-002e, I-002f, I-002g, B-006, B-007
+// Reads from ~/.cvm/sessions/ JSONL files instead of local KB.
+// Spec: S-017 | Req: B-011, B-012, C-007
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -237,78 +321,102 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := r.URL.Query().Get("id")
-
-	// Work with local backend (session buffers live in local KB)
-	localB := s.localBack
+	dir := sessionsDir()
 
 	if id != "" {
-		// Specific session buffer
-		key := "session-buffer-" + id
-		if localB == nil {
-			jsonOK(w, sessionDetailResponse{
-				SessionID: id,
-				Key:       key,
-				Lines:     []sessionLineJSON{},
-				LineCount: 0,
-				Found:     false,
-			})
-			return
+		// Specific session file — try exact match first, then prefix
+		path := filepath.Join(dir, id+".jsonl")
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			// Try prefix resolution
+			entries, rdErr := os.ReadDir(dir)
+			if rdErr != nil {
+				jsonOK(w, sessionDetailResponse{SessionID: id, Found: false, Events: []dashboardSessionEvent{}})
+				return
+			}
+			var matches []string
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
+					name := strings.TrimSuffix(e.Name(), ".jsonl")
+					if strings.HasPrefix(name, id) {
+						matches = append(matches, name)
+					}
+				}
+			}
+			if len(matches) == 1 {
+				path = filepath.Join(dir, matches[0]+".jsonl")
+				id = matches[0]
+			} else {
+				jsonOK(w, sessionDetailResponse{SessionID: id, Found: false, Events: []dashboardSessionEvent{}})
+				return
+			}
 		}
-		doc, err := localB.Get(key)
-		if err != nil {
-			// Not found
-			jsonOK(w, sessionDetailResponse{
-				SessionID: id,
-				Key:       key,
-				Lines:     []sessionLineJSON{},
-				LineCount: 0,
-				Found:     false,
-			})
-			return
+		events := readAllSessionEvents(path)
+		startedAt := ""
+		projectDir := ""
+		if len(events) > 0 && events[0].Type == "start" {
+			startedAt = events[0].Timestamp
+			projectDir = events[0].Project
 		}
-		lines := ParseSessionLines(doc.Body)
+		if events == nil {
+			events = []dashboardSessionEvent{}
+		}
 		jsonOK(w, sessionDetailResponse{
 			SessionID:  id,
-			Key:        key,
-			Lines:      lines,
-			LineCount:  len(lines),
+			Key:        id + ".jsonl",
+			Events:     events,
+			EventCount: len(events),
 			Found:      true,
-			CreatedAt:  doc.Entry.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:  doc.Entry.UpdatedAt.UTC().Format(time.RFC3339),
-			ProjectDir: s.cfg.ProjectPath,
+			StartedAt:  startedAt,
+			ProjectDir: projectDir,
 		})
 		return
 	}
 
-	// List all active session buffers
-	var buffers []sessionBufferSummary
-	if localB != nil {
-		entries, err := localB.List("")
-		if err == nil {
-			for _, e := range entries {
-				if strings.HasPrefix(e.Key, "session-buffer-") {
-					sid := strings.TrimPrefix(e.Key, "session-buffer-")
-					// Get body to count lines
-					doc, err := localB.Get(e.Key)
-					lineCount := 0
-					if err == nil {
-						lineCount = countLines(doc.Body)
-					}
-					buffers = append(buffers, sessionBufferSummary{
-						SessionID: sid,
-						Key:       e.Key,
-						LineCount: lineCount,
-						CreatedAt: e.CreatedAt.UTC().Format(time.RFC3339),
-						UpdatedAt: e.UpdatedAt.UTC().Format(time.RFC3339),
-					})
-				}
-			}
+	// List all session files
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		jsonOK(w, map[string]interface{}{"sessions": []interface{}{}, "project_dir": s.cfg.ProjectPath})
+		return
+	}
+	type sessionSummary struct {
+		SessionID  string `json:"session_id"`
+		Key        string `json:"key"`
+		EventCount int    `json:"event_count"`
+		StartedAt  string `json:"started_at"`
+		ProjectDir string `json:"project_dir"`
+		Active     bool   `json:"active"`
+	}
+	var result []sessionSummary
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
 		}
+		uuid := strings.TrimSuffix(e.Name(), ".jsonl")
+		path := filepath.Join(dir, e.Name())
+		events := readAllSessionEvents(path)
+		startedAt := ""
+		projectDir := ""
+		if len(events) > 0 && events[0].Type == "start" {
+			startedAt = events[0].Timestamp
+			projectDir = events[0].Project
+		}
+		active := len(events) > 0 && !sessionHasEndEvent(events)
+		if active && len(events) > 0 {
+			active = sessionIsPIDAlive(events[0].PID)
+		}
+		result = append(result, sessionSummary{
+			SessionID:  uuid,
+			Key:        e.Name(),
+			EventCount: len(events),
+			StartedAt:  startedAt,
+			ProjectDir: projectDir,
+			Active:     active,
+		})
 	}
-	if buffers == nil {
-		buffers = []sessionBufferSummary{}
+	if result == nil {
+		result = []sessionSummary{}
 	}
-	jsonOK(w, sessionListResponse{Buffers: buffers, ProjectDir: s.cfg.ProjectPath})
+	jsonOK(w, map[string]interface{}{"sessions": result, "project_dir": s.cfg.ProjectPath})
 }
 
 // countLines counts non-empty lines in a string.
@@ -516,8 +624,7 @@ type sessionCardJSON struct {
 	Knowledge  []knowledgeEntryJSON `json:"knowledge"`
 
 	// Active-only fields
-	LineCount int              `json:"line_count,omitempty"`
-	Lines     []sessionLineJSON `json:"lines,omitempty"`
+	LineCount int `json:"line_count,omitempty"`
 
 	// Summarized-only fields
 	SummaryBody string `json:"summary_body,omitempty"`
@@ -529,8 +636,8 @@ type sessionsResponse struct {
 }
 
 // handleSessions serves GET /api/sessions
-// Returns active session buffers (local KB) + completed summaries (global KB),
-// each correlated with knowledge entries created during their timeframe.
+// Returns active sessions from ~/.cvm/sessions/*.jsonl + completed summaries from global KB.
+// Spec: S-017 | Req: B-012, C-007, I-004, I-005
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -539,53 +646,72 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	var cards []sessionCardJSON
 
-	// --- Active buffers from local KB ---
-	if s.localBack != nil {
-		entries, err := s.localBack.List("")
-		if err == nil {
-			for _, e := range entries {
-				if !strings.HasPrefix(e.Key, "session-buffer-") {
-					continue
-				}
-				sid := strings.TrimPrefix(e.Key, "session-buffer-")
-				doc, err := s.localBack.Get(e.Key)
-				lines := []sessionLineJSON{}
-				if err == nil {
-					lines = ParseSessionLines(doc.Body)
-				}
-				tags := e.Tags
-				if tags == nil {
-					tags = []string{}
-				}
-				// Mark as stale if last activity was >1h ago
-				status := "active"
-				if time.Since(e.UpdatedAt) > time.Hour {
-					status = "stale"
-				}
-				card := sessionCardJSON{
-					ID:         sid,
-					Key:        e.Key,
-					Status:     status,
-					Scope:      "local",
-					CreatedAt:  e.CreatedAt.UTC().Format(time.RFC3339),
-					UpdatedAt:  e.UpdatedAt.UTC().Format(time.RFC3339),
-					ProjectDir: s.cfg.ProjectPath,
-					LineCount:  len(lines),
-					Lines:      lines,
-					Knowledge:  []knowledgeEntryJSON{},
-				}
-				cards = append(cards, card)
+	// --- Active sessions from ~/.cvm/sessions/*.jsonl ---
+	// Spec: S-017 | Req: B-012, C-007, I-004
+	dir := sessionsDir()
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+				continue
 			}
+			uuid := strings.TrimSuffix(e.Name(), ".jsonl")
+			path := filepath.Join(dir, e.Name())
+
+			events := readAllSessionEvents(path)
+			if len(events) == 0 || events[0].Type != "start" {
+				continue
+			}
+			startEv := events[0]
+
+			// Only include sessions without an end event and with a live PID
+			if sessionHasEndEvent(events) {
+				continue
+			}
+			if !sessionIsPIDAlive(startEv.PID) {
+				continue
+			}
+
+			startedAt := startEv.Timestamp
+			updatedAt := startedAt
+			// Use last event timestamp as "updated_at"
+			if len(events) > 0 {
+				updatedAt = events[len(events)-1].Timestamp
+			}
+
+			finfo, ferr := e.Info()
+			if ferr == nil {
+				updatedAt = finfo.ModTime().UTC().Format(time.RFC3339)
+			}
+
+			card := sessionCardJSON{
+				ID:         uuid,
+				Key:        e.Name(),
+				Status:     "active",
+				Scope:      "local",
+				CreatedAt:  startedAt,
+				UpdatedAt:  updatedAt,
+				ProjectDir: startEv.Project,
+				LineCount:  len(events),
+				Knowledge:  []knowledgeEntryJSON{},
+			}
+			cards = append(cards, card)
 		}
 	}
 
 	// --- Completed summaries from global KB ---
+	// Recognize both "session-summary-*" (new, S-017) and "session-*" (legacy) key patterns.
+	// Spec: S-017 | Req: I-005
 	if s.globalBack != nil {
 		entries, err := s.globalBack.List("")
 		if err == nil {
 			for _, e := range entries {
-				// session summaries: key starts with "session-" but NOT "session-buffer-"
-				if !strings.HasPrefix(e.Key, "session-") || strings.HasPrefix(e.Key, "session-buffer-") {
+				// Recognize new "session-summary-*" keys and legacy "session-*" keys.
+				// Exclude "session-buffer-*" which was the old active buffer pattern.
+				isNewSummary := strings.HasPrefix(e.Key, "session-summary-")
+				isLegacySummary := strings.HasPrefix(e.Key, "session-") &&
+					!strings.HasPrefix(e.Key, "session-summary-") &&
+					!strings.HasPrefix(e.Key, "session-buffer-")
+				if !isNewSummary && !isLegacySummary {
 					continue
 				}
 				// Must have "summary" in tags to be a completed session
@@ -781,16 +907,24 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	globalStats := buildScopeStats(s.globalBack)
 	localStats := buildScopeStats(s.localBack)
 
-	// Count active sessions — entries with key prefix "session-buffer-" in local
-	// Spec: S-016 | Req: I-002n
+	// Count active sessions from ~/.cvm/sessions/*.jsonl (open files with live PID).
+	// Spec: S-017 | Req: B-011, C-007, I-004, I-006
 	activeSessions := 0
-	if s.localBack != nil {
-		entries, err := s.localBack.List("")
-		if err == nil {
-			for _, e := range entries {
-				if strings.HasPrefix(e.Key, "session-buffer-") {
-					activeSessions++
-				}
+	if sessEntries, err := os.ReadDir(sessionsDir()); err == nil {
+		for _, e := range sessEntries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+				continue
+			}
+			path := filepath.Join(sessionsDir(), e.Name())
+			events := readAllSessionEvents(path)
+			if len(events) == 0 || events[0].Type != "start" {
+				continue
+			}
+			if sessionHasEndEvent(events) {
+				continue
+			}
+			if sessionIsPIDAlive(events[0].PID) {
+				activeSessions++
 			}
 		}
 	}

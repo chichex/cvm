@@ -1,14 +1,14 @@
-#!/bin/bash
-# Spec: S-011 | Req: B-003 | SubagentStop: agent capture + Key Learnings extraction
-# Appends agent summary to session buffer, then extracts Key Learnings from stdout.
-# MUST complete in < 500ms for capture portion (I-002).
+#!/usr/bin/env bash
+# Spec: S-017 | Req: B-004, B-014 | SubagentStop: agent capture + Key Learnings extraction
+# Appends agent summary via cvm session append, then extracts Key Learnings from stdout.
+# MUST complete in < 500ms for capture portion (I-001).
 
 set -euo pipefail
 
-# Read hook input from stdin (shared by both B-003 capture and Key Learnings logic)
+# Read hook input from stdin (shared by both B-004 capture and Key Learnings logic)
 INPUT=$(cat)
 
-# --- B-003: Capture agent summary to session buffer ---
+# --- B-004, B-014: Capture agent summary via cvm session append ---
 session_id=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || true
 
 if [ -z "$session_id" ]; then
@@ -30,28 +30,11 @@ if isinstance(msg, list):
     texts = [b.get('text','') for b in msg if isinstance(b,dict) and b.get('type')=='text']
     msg = ' '.join(texts)
 msg = str(msg).strip()
-print(msg[:200])
+print(msg[:300])
 " 2>/dev/null) || last_msg=""
 
-  if [ -n "$last_msg" ]; then
-    timestamp=$(date +%H:%M)
-    new_line="[${timestamp}] AGENT(${agent_type}): ${last_msg}"
-    buffer_key="session-buffer-${session_id}"
-
-    existing=$(cvm kb show "$buffer_key" --local 2>/dev/null | sed '1,/^$/d' || true)
-
-    if [ -n "$existing" ]; then
-      line_count=$(echo "$existing" | wc -l | tr -d ' ')
-      if [ "$line_count" -ge 500 ]; then
-        existing=$(echo "$existing" | tail -n 499)
-      fi
-      new_body="${existing}
-${new_line}"
-    else
-      new_body="$new_line"
-    fi
-
-    cvm kb put "$buffer_key" --body "$new_body" --tag "session-buffer" --local 2>/dev/null || true
+  if [ -n "$session_id" ] && [ -n "$last_msg" ]; then
+    cvm session append "$session_id" --type agent --agent-type "$agent_type" --content "$last_msg" 2>/dev/null || true
   fi
 fi
 
