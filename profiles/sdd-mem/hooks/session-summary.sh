@@ -47,7 +47,8 @@ ${buffer}
 
 summary=""
 if command -v claude &>/dev/null; then
-  summary=$(echo "$prompt" | claude -p --model haiku 2>/dev/null) || summary=""
+  MODEL="${CVM_AUTOSUMMARY_MODEL:-haiku}"
+  summary=$(echo "$prompt" | claude -p --model "$MODEL" 2>/dev/null) || summary=""
 fi
 
 # E-003: claude -p failed

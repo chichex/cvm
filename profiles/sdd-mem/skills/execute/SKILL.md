@@ -43,13 +43,14 @@ Para cada wave del plan:
 
 NO avanzar si la validacion de la wave actual no pasa.
 
-## Paso 5: Verificacion dual
+## Paso 5: Verificacion multi
 
 Invocar internamente `/verify`:
 
 1. **Agente Opus**: verificar cada requisito de la spec contra el codigo
-2. **Codex** (solo si esta disponible — verificar con `codex exec "echo ok" 2>/dev/null`, timeout 10s): verificar conformance spec vs implementacion en paralelo con Opus
-3. Consolidar: si hay dual verify, resolver discrepancias. Si solo Opus, reportar que no hubo second opinion.
+2. **Codex** (si disponible): verificar conformance en paralelo con Opus
+3. **Gemini** (si disponible): verificar conformance en paralelo con Opus y Codex
+4. Consolidar: resolver discrepancias segun la matriz de consenso de `/verify`.
 4. Si VERIFIED: continuar
 5. Si NOT VERIFIED: corregir issues, re-verificar (max 2 intentos)
 
@@ -61,7 +62,7 @@ Invocar internamente `/verify`:
 4. Verificar todos los behaviors de la spec implementados
 5. Verificar todos los edge cases manejados
 
-Actualizar spec status a "implemented" (o "verified" si la dual verification paso).
+Actualizar spec status a "implemented" (o "verified" si la verificacion paso).
 
 ## Paso 7: Cerrar el loop
 
@@ -80,11 +81,11 @@ Actualizar spec status a "implemented" (o "verified" si la dual verification pas
 - Seguir el plan derivado de la spec
 - Validar entre waves
 - Usar la estrategia de validacion definida en la spec
-- Ejecutar verificacion dual (Opus + Codex) antes de cerrar
+- Ejecutar verificacion multi (Opus + Codex + Gemini si disponibles) antes de cerrar
 
 ## MUST NOT DO
 - NO ejecutar sin spec aprobada
 - NO cambiar la spec sin aprobacion
-- NO saltear la verificacion dual
+- NO saltear la verificacion multi
 - NO agregar features fuera del scope de la spec
 - NO hacer commit sin pasar validacion final

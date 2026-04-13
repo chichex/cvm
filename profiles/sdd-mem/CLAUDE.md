@@ -36,14 +36,14 @@ Diagnosticar → Buscar spec existente → Si hay spec: verificar drift
 **2. Feature request** ("quiero que...", "necesito...", "agregar...")
 ```
 Crear spec → Codex valida spec → Elegir estrategia de validacion
-→ Si TDD aplica: generar tests (fallan) → Implementar (tests pasan) → Dual verify
-→ Si TDD no aplica: Implementar → Generar tests post-impl → Dual verify
+→ Si TDD aplica: generar tests (fallan) → Implementar (tests pasan) → Multi verify
+→ Si TDD no aplica: Implementar → Generar tests post-impl → Multi verify
 ```
 
 **3. Behavior change** ("cambiar...", "modificar como...", "ahora deberia...")
 ```
 Buscar spec existente → Actualizar spec (version bump) → Codex valida cambios
-→ Propagar: contratos → tests → codigo → Dual verify
+→ Propagar: contratos → tests → codigo → Multi verify
 ```
 
 **4. Refactor** ("limpiar...", "refactorear...", "reorganizar...")
