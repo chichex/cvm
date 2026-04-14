@@ -256,7 +256,7 @@ func TestE2E_SearchRankingWithFilters(t *testing.T) {
 		t.Errorf("expected at least 3 infra results for 'cache', got %d", len(results))
 	}
 
-	// --- Filter 2: type=gotcha — only entries with tag type:gotcha
+	// --- Filter 2: type=gotcha — only entries with tag gotcha
 	results, err = SearchWithOptions(config.ScopeLocal, projectPath, "cache", SearchOptions{TypeTag: "gotcha"})
 	if err != nil {
 		t.Fatalf("SearchWithOptions type=gotcha: %v", err)

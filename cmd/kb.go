@@ -373,6 +373,7 @@ var kbMigrateTagsCmd = &cobra.Command{
 
 		deletedUntyped := 0
 		deletedBuffer := 0
+		failures := 0
 
 		for _, e := range entries {
 			// Delete session-buffer-* residues
@@ -382,6 +383,7 @@ var kbMigrateTagsCmd = &cobra.Command{
 				} else {
 					if err := b.Remove(e.Key); err != nil {
 						fmt.Printf("warning: failed to delete %s: %v\n", e.Key, err)
+						failures++
 						continue
 					}
 				}
@@ -403,6 +405,7 @@ var kbMigrateTagsCmd = &cobra.Command{
 				} else {
 					if err := b.Remove(e.Key); err != nil {
 						fmt.Printf("warning: failed to delete %s: %v\n", e.Key, err)
+						failures++
 						continue
 					}
 				}
@@ -410,14 +413,18 @@ var kbMigrateTagsCmd = &cobra.Command{
 			}
 		}
 
-		if deletedUntyped == 0 && deletedBuffer == 0 {
+		if deletedUntyped == 0 && deletedBuffer == 0 && failures == 0 {
 			fmt.Println("No changes needed")
 		} else {
 			prefix := ""
 			if dryRun {
 				prefix = "[dry-run] "
 			}
-			fmt.Printf("%sDeleted %d untyped entries, removed %d session-buffer entries\n", prefix, deletedUntyped, deletedBuffer)
+			fmt.Printf("%sDeleted %d untyped entries, removed %d session-buffer entries", prefix, deletedUntyped, deletedBuffer)
+			if failures > 0 {
+				fmt.Printf(" (%d failures)", failures)
+			}
+			fmt.Println()
 		}
 		return nil
 	},

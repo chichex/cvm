@@ -100,11 +100,12 @@ for e in entries[:max_entries * 2]:  # read extra in case some fail
         except Exception:
             pass
 
-    # Extract type from tags
+    # Extract type from tags (bare tags: learning, gotcha, decision, discovery, session)
+    type_tags = {'decision', 'learning', 'gotcha', 'discovery', 'session'}
     entry_type = ''
     for t in tags:
-        if t.startswith('type:'):
-            entry_type = t[5:]
+        if t in type_tags:
+            entry_type = t
             break
     if not entry_type and tags:
         entry_type = tags[0]

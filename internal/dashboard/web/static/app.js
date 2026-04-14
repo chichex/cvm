@@ -83,6 +83,16 @@ function renderScopeBadge(scope) {
   return el('span', `badge badge-${scope}`, scope);
 }
 
+// ---- URL hash helpers ----
+
+// Spec: S-019 | Req: C-004b — parse tag from URL hash (e.g. #knowledge?tag=learning)
+function parseHash() {
+  const raw = window.location.hash.replace('#', '') || 'sessions';
+  const [tab, qs] = raw.split('?');
+  const params = new URLSearchParams(qs || '');
+  return { tab: tab || 'sessions', tag: params.get('tag') || '' };
+}
+
 // ---- Tab navigation ----
 
 function initTabs() {
@@ -93,12 +103,15 @@ function initTabs() {
   });
 
   window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '') || 'sessions';
-    if (hash !== state.tab) switchTab(hash, false);
+    const parsed = parseHash();
+    if (parsed.tab !== state.tab) switchTab(parsed.tab, false);
   });
 
-  const initial = window.location.hash.replace('#', '') || 'sessions';
-  switchTab(initial, false);
+  const parsed = parseHash();
+  if (parsed.tag) {
+    state.knowledgeTag = parsed.tag;
+  }
+  switchTab(parsed.tab, false);
 }
 
 function switchTab(tab, updateHash = true) {
@@ -427,6 +440,8 @@ function initKnowledge() {
 
   const tagInput = $('#knowledge-tag');
   if (tagInput) {
+    // Restore tag from URL or state on init
+    if (state.knowledgeTag) tagInput.value = state.knowledgeTag;
     tagInput.addEventListener('change', () => {
       state.knowledgeTag = tagInput.value;
       loadKnowledge();
@@ -580,7 +595,7 @@ function renderScopeStats(scope, stats) {
       tagsEl.appendChild(el('div', 'tag-section-title', 'Topics'));
       sortedTopics.forEach(([tag, count]) => {
         const row = el('div', 'tag-row tag-row-clickable');
-        row.appendChild(el('span', 'tag-name', tag));
+        row.appendChild(el('span', 'badge badge-default', tag));
         row.appendChild(el('span', 'tag-count', String(count)));
         row.addEventListener('click', () => filterByTag(tag));
         tagsEl.appendChild(row);
@@ -592,17 +607,12 @@ function renderScopeStats(scope, stats) {
   }
 }
 
-// Spec: S-019 | Req: C-004 — click tag to filter in Browser
+// Spec: S-019 | Req: C-004 — click tag to filter in Knowledge tab
 function filterByTag(tag) {
-  window.location.hash = '#knowledge';
-  setTimeout(() => {
-    const tagInput = $('#knowledge-tag');
-    if (tagInput) {
-      tagInput.value = tag;
-      state.knowledgeTag = tag;
-      loadKnowledge();
-    }
-  }, 50);
+  state.knowledgeTag = tag;
+  const tagInput = $('#knowledge-tag');
+  if (tagInput) tagInput.value = tag;
+  window.location.hash = `#knowledge?tag=${encodeURIComponent(tag)}`;
 }
 
 // ---- Stats auto-refresh ----

@@ -822,8 +822,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		entries, err := s.globalBack.List("")
 		if err == nil {
 			for _, e := range entries {
-				isLegacySummary := strings.HasPrefix(e.Key, "session-summary-") ||
-					strings.HasPrefix(e.Key, "session-")
+				isLegacySummary := strings.HasPrefix(e.Key, "session-")
 				if !isLegacySummary {
 					continue
 				}

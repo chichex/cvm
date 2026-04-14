@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | **ID** | S-019 |
-| **Version** | 0.3.0 |
+| **Version** | 0.3.1 |
 | **Status** | implemented |
 | **Validation Strategy** | tests post-impl + manual browser testing |
 | **Related Specs** | S-010 (sdd-mem, tag system), S-016 (dashboard) |
