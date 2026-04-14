@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+input=$(cat)
+cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd')
+used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
+
+# Colors
+CYAN='\033[36m'
+GREEN='\033[32m'
+RED='\033[31m'
+BLUE='\033[1;34m'
+YELLOW='\033[33m'
+MAGENTA='\033[35m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+# Shorten home directory to ~
+home="$HOME"
+short_cwd="${cwd/#$home/~}"
+
+# Git branch and dirty status
+git_info=""
+if git_branch=$(GIT_OPTIONAL_LOCKS=0 git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null); then
+  if ! GIT_OPTIONAL_LOCKS=0 git -C "$cwd" diff --quiet 2>/dev/null || ! GIT_OPTIONAL_LOCKS=0 git -C "$cwd" diff --cached --quiet 2>/dev/null; then
+    dirty=" ${YELLOW}*${RESET}"
+  else
+    dirty=""
+  fi
+  diff_stats=$(GIT_OPTIONAL_LOCKS=0 git -C "$cwd" diff --numstat 2>/dev/null; GIT_OPTIONAL_LOCKS=0 git -C "$cwd" diff --cached --numstat 2>/dev/null)
+  if [ -n "$diff_stats" ]; then
+    added=$(echo "$diff_stats" | awk '{s+=$1} END {printf "%d", s+0}')
+    deleted=$(echo "$diff_stats" | awk '{s+=$2} END {printf "%d", s+0}')
+    diff_info=" ${GREEN}+${added}${RESET} ${RED}-${deleted}${RESET}"
+  else
+    diff_info=""
+  fi
+  git_info=" ${BLUE}(${RED}${git_branch}${BLUE})${RESET}${dirty}${diff_info}"
+fi
+
+# Context usage with color based on percentage
+ctx_info=""
+if [ -n "$used" ]; then
+  pct=$(echo "$used" | awk '{printf "%d", $1+0.5}')
+  if [ "$pct" -ge 75 ]; then
+    ctx_color="$RED"
+  elif [ "$pct" -ge 50 ]; then
+    ctx_color="$YELLOW"
+  else
+    ctx_color="$DIM"
+  fi
+  ctx_info=" ${ctx_color}[ctx:${pct}%]${RESET}"
+fi
+
+# Session token usage (input/output)
+tok_info=""
+in_tok=$(echo "$input" | jq -r '.context_window.total_input_tokens // empty')
+out_tok=$(echo "$input" | jq -r '.context_window.total_output_tokens // empty')
+if [ -n "$in_tok" ] && [ -n "$out_tok" ]; then
+  fmt_tok() {
+    local t=$1
+    if [ "$t" -ge 1000000 ]; then
+      printf "%.1fM" "$(echo "$t / 1000000" | bc -l)"
+    elif [ "$t" -ge 1000 ]; then
+      printf "%.0fK" "$(echo "$t / 1000" | bc -l)"
+    else
+      printf "%d" "$t"
+    fi
+  }
+  tok_info=" ${DIM}[in:$(fmt_tok "$in_tok") out:$(fmt_tok "$out_tok")]${RESET}"
+fi
+
+# Rate limit usage (5h window)
+rate_info=""
+rate_5h=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
+if [ -n "$rate_5h" ]; then
+  rate_pct=$(echo "$rate_5h" | awk '{printf "%d", $1+0.5}')
+  if [ "$rate_pct" -ge 75 ]; then
+    rate_color="$RED"
+  elif [ "$rate_pct" -ge 50 ]; then
+    rate_color="$YELLOW"
+  else
+    rate_color="$DIM"
+  fi
+  rate_info=" ${rate_color}[quota:${rate_pct}%]${RESET}"
+fi
+
+# CVM active profile
+cvm_info=""
+if command -v cvm &>/dev/null; then
+  profile=$(cvm global current 2>/dev/null)
+  if [ -n "$profile" ] && [ "$profile" != "(vanilla)" ]; then
+    cvm_info=" ${MAGENTA}[${profile}]${RESET}"
+  fi
+fi
+
+printf '%b' "${GREEN}>${RESET} ${CYAN}${short_cwd}${RESET}${git_info}${cvm_info}${tok_info}${rate_info}${ctx_info}\n"
