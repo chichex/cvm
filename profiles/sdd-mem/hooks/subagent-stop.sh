@@ -80,9 +80,9 @@ while IFS= read -r line; do
 
   # Link entry to current session. Spec: S-017 | Req: B-016
   if [ -n "$session_id" ]; then
-    cvm kb put "$KEY" --body "$BODY" --tag "learning,auto-captured" --session-id "$session_id" 2>/dev/null || true
+    cvm kb put "$KEY" --body "$BODY" --type learning --tag "auto-captured" --session-id "$session_id" 2>/dev/null || true
   else
-    cvm kb put "$KEY" --body "$BODY" --tag "learning,auto-captured" 2>/dev/null || true
+    cvm kb put "$KEY" --body "$BODY" --type learning --tag "auto-captured" 2>/dev/null || true
   fi
   COUNT=$((COUNT + 1))
 done <<< "$LEARNINGS"

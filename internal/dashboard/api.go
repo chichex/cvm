@@ -822,9 +822,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		entries, err := s.globalBack.List("")
 		if err == nil {
 			for _, e := range entries {
-				isLegacySummary := strings.HasPrefix(e.Key, "session-summary-") ||
-					(strings.HasPrefix(e.Key, "session-") &&
-						!strings.HasPrefix(e.Key, "session-buffer-"))
+				isLegacySummary := strings.HasPrefix(e.Key, "session-")
 				if !isLegacySummary {
 					continue
 				}
@@ -899,12 +897,14 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 // --- Stats ---
 
+// Spec: S-019 | Req: C-002
 type scopeStatsJSON struct {
 	Total       int            `json:"total"`
 	Enabled     int            `json:"enabled"`
 	Stale       int            `json:"stale"`
 	TotalTokens int            `json:"total_tokens"`
-	ByTag       map[string]int `json:"by_tag"`
+	ByType      map[string]int `json:"by_type"`
+	ByTopic     map[string]int `json:"by_topic"`
 }
 
 type statsResponse struct {
@@ -921,8 +921,9 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Spec: S-019 | Req: C-002
 	buildScopeStats := func(b kb.Backend) scopeStatsJSON {
-		zero := scopeStatsJSON{ByTag: map[string]int{}}
+		zero := scopeStatsJSON{ByType: map[string]int{}, ByTopic: map[string]int{}}
 		if b == nil {
 			return zero
 		}
@@ -931,13 +932,19 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			return zero
 		}
 
-		// Build by_tag from all entries
-		byTag := make(map[string]int)
+		byType := make(map[string]int)
+		byTopic := make(map[string]int)
 		entries, err := b.List("")
 		if err == nil {
 			for _, e := range entries {
 				for _, t := range e.Tags {
-					byTag[t]++
+					switch kb.ClassifyTag(t) {
+					case "type":
+						byType[t]++
+					case "topic":
+						byTopic[t]++
+					// "internal" tags are excluded
+					}
 				}
 			}
 		}
@@ -947,7 +954,8 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			Enabled:     stats.Enabled,
 			Stale:       stats.Stale,
 			TotalTokens: stats.TotalTokens,
-			ByTag:       byTag,
+			ByType:      byType,
+			ByTopic:     byTopic,
 		}
 	}
 

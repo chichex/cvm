@@ -112,7 +112,7 @@ func TestKbSearch_Happy(t *testing.T) {
 	_, cleanup := setupTempKB(t)
 	defer cleanup()
 
-	putEntry(t, "arch-decision-api", "Chose REST over gRPC for API design", []string{"decision", "type:decision"})
+	putEntry(t, "arch-decision-api", "Chose REST over gRPC for API design", []string{"decision"})
 	putEntry(t, "api-gateway-notes", "Notes about the API gateway setup", []string{"learning"})
 	putEntry(t, "unrelated-entry", "Nothing about apis here", []string{"gotcha"})
 
@@ -151,8 +151,8 @@ func TestKbSearch_FilterByType(t *testing.T) {
 	_, cleanup := setupTempKB(t)
 	defer cleanup()
 
-	putEntry(t, "bug-fix-2026", "Found a nasty bug", []string{"type:gotcha"})
-	putEntry(t, "arch-v2", "Architecture decision v2", []string{"type:decision"})
+	putEntry(t, "bug-fix-2026", "Found a nasty bug", []string{"gotcha"})
+	putEntry(t, "arch-v2", "Architecture decision v2", []string{"decision"})
 
 	result := handleKbSearch(rawArgs(t, map[string]interface{}{"query": "a", "type": "gotcha"}))
 	if result.IsError {
@@ -314,7 +314,7 @@ func TestKbGet_Happy(t *testing.T) {
 	_, cleanup := setupTempKB(t)
 	defer cleanup()
 
-	putEntry(t, "my-decision", "Usamos flat files por simplicidad", []string{"decision", "type:decision"})
+	putEntry(t, "my-decision", "Usamos flat files por simplicidad", []string{"decision"})
 
 	result := handleKbGet(rawArgs(t, map[string]interface{}{"key": "my-decision"}))
 	if result.IsError {

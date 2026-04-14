@@ -61,18 +61,16 @@ function formatTokens(n) {
 
 // ---- Badge helpers ----
 
+// Spec: S-019 | Req: C-003d
 const TAG_COLORS = {
   learning: 'badge-learning',
   gotcha: 'badge-gotcha',
   decision: 'badge-decision',
   session: 'badge-session',
-  summary: 'badge-summary',
-  'spec-gap': 'badge-spec-gap',
 };
 
 function badgeClass(tag) {
-  const base = tag.replace(/^type:/, '');
-  return TAG_COLORS[base] || 'badge-default';
+  return TAG_COLORS[tag] || 'badge-default';
 }
 
 function renderBadge(tag) {
@@ -85,6 +83,16 @@ function renderScopeBadge(scope) {
   return el('span', `badge badge-${scope}`, scope);
 }
 
+// ---- URL hash helpers ----
+
+// Spec: S-019 | Req: C-004b — parse tag from URL hash (e.g. #knowledge?tag=learning)
+function parseHash() {
+  const raw = window.location.hash.replace('#', '') || 'sessions';
+  const [tab, qs] = raw.split('?');
+  const params = new URLSearchParams(qs || '');
+  return { tab: tab || 'sessions', tag: params.get('tag') || '' };
+}
+
 // ---- Tab navigation ----
 
 function initTabs() {
@@ -95,12 +103,15 @@ function initTabs() {
   });
 
   window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '') || 'sessions';
-    if (hash !== state.tab) switchTab(hash, false);
+    const parsed = parseHash();
+    if (parsed.tab !== state.tab) switchTab(parsed.tab, false);
   });
 
-  const initial = window.location.hash.replace('#', '') || 'sessions';
-  switchTab(initial, false);
+  const parsed = parseHash();
+  if (parsed.tag) {
+    state.knowledgeTag = parsed.tag;
+  }
+  switchTab(parsed.tab, false);
 }
 
 function switchTab(tab, updateHash = true) {
@@ -429,6 +440,8 @@ function initKnowledge() {
 
   const tagInput = $('#knowledge-tag');
   if (tagInput) {
+    // Restore tag from URL or state on init
+    if (state.knowledgeTag) tagInput.value = state.knowledgeTag;
     tagInput.addEventListener('change', () => {
       state.knowledgeTag = tagInput.value;
       loadKnowledge();
@@ -559,17 +572,47 @@ function renderScopeStats(scope, stats) {
   if (staleEl) staleEl.textContent = stats.stale || 0;
   if (tokensEl) tokensEl.textContent = formatTokens(stats.total_tokens || 0);
 
-  if (tagsEl && stats.by_tag) {
+  // Spec: S-019 | Req: C-003, C-004
+  if (tagsEl) {
     tagsEl.innerHTML = '';
-    const sorted = Object.entries(stats.by_tag).sort((a, b) => b[1] - a[1]);
-    sorted.forEach(([tag, count]) => {
-      const row = el('div', 'tag-row');
-      row.appendChild(el('span', 'tag-name', tag));
-      row.appendChild(el('span', 'tag-count', String(count)));
-      tagsEl.appendChild(row);
-    });
-    if (!sorted.length) tagsEl.appendChild(el('span', '', 'No tags'));
+    const byType = stats.by_type || {};
+    const byTopic = stats.by_topic || {};
+    const sortedTypes = Object.entries(byType).sort((a, b) => b[1] - a[1]);
+    const sortedTopics = Object.entries(byTopic).sort((a, b) => b[1] - a[1]);
+
+    if (sortedTypes.length) {
+      tagsEl.appendChild(el('div', 'tag-section-title', 'Types'));
+      sortedTypes.forEach(([tag, count]) => {
+        const row = el('div', 'tag-row tag-row-clickable');
+        const badge = el('span', `badge ${badgeClass(tag)}`, tag);
+        row.appendChild(badge);
+        row.appendChild(el('span', 'tag-count', String(count)));
+        row.addEventListener('click', () => filterByTag(tag));
+        tagsEl.appendChild(row);
+      });
+    }
+    if (sortedTopics.length) {
+      tagsEl.appendChild(el('div', 'tag-section-title', 'Topics'));
+      sortedTopics.forEach(([tag, count]) => {
+        const row = el('div', 'tag-row tag-row-clickable');
+        row.appendChild(el('span', 'badge badge-default', tag));
+        row.appendChild(el('span', 'tag-count', String(count)));
+        row.addEventListener('click', () => filterByTag(tag));
+        tagsEl.appendChild(row);
+      });
+    }
+    if (!sortedTypes.length && !sortedTopics.length) {
+      tagsEl.appendChild(el('span', '', 'No tags'));
+    }
   }
+}
+
+// Spec: S-019 | Req: C-004 — click tag to filter in Knowledge tab
+function filterByTag(tag) {
+  state.knowledgeTag = tag;
+  const tagInput = $('#knowledge-tag');
+  if (tagInput) tagInput.value = tag;
+  window.location.hash = `#knowledge?tag=${encodeURIComponent(tag)}`;
 }
 
 // ---- Stats auto-refresh ----

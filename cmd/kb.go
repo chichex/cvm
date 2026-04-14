@@ -47,7 +47,7 @@ var kbPutCmd = &cobra.Command{
 			if err := kb.ValidateType(typeTag); err != nil {
 				return err
 			}
-			tags = append(tags, "type:"+typeTag)
+			tags = append(tags, typeTag)
 		}
 		// If session-id provided, skip dedup and write directly with session linking.
 		// Otherwise use dedup as before. Spec: S-017 | Req: C-010, B-015
@@ -352,8 +352,86 @@ var kbCompactCmd = &cobra.Command{
 	},
 }
 
+// Spec: S-019 | Req: C-005
+var kbMigrateTagsCmd = &cobra.Command{
+	Use:   "migrate-tags",
+	Short: "Clean up KB: remove entries without a type tag and session-buffer residues",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		scope, projectPath := kbScope(cmd)
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+		b, err := kb.NewBackend(scope, projectPath)
+		if err != nil {
+			return err
+		}
+		defer b.Close()
+
+		entries, err := b.List("")
+		if err != nil {
+			return err
+		}
+
+		deletedUntyped := 0
+		deletedBuffer := 0
+		failures := 0
+
+		for _, e := range entries {
+			// Delete session-buffer-* residues
+			if strings.HasPrefix(e.Key, "session-buffer-") {
+				if dryRun {
+					fmt.Printf("[dry-run] would delete session-buffer entry: %s\n", e.Key)
+				} else {
+					if err := b.Remove(e.Key); err != nil {
+						fmt.Printf("warning: failed to delete %s: %v\n", e.Key, err)
+						failures++
+						continue
+					}
+				}
+				deletedBuffer++
+				continue
+			}
+
+			// Check if entry has at least one type tag
+			hasType := false
+			for _, tag := range e.Tags {
+				if kb.ClassifyTag(tag) == "type" {
+					hasType = true
+					break
+				}
+			}
+			if !hasType {
+				if dryRun {
+					fmt.Printf("[dry-run] would delete untyped entry: %s (tags: %v)\n", e.Key, e.Tags)
+				} else {
+					if err := b.Remove(e.Key); err != nil {
+						fmt.Printf("warning: failed to delete %s: %v\n", e.Key, err)
+						failures++
+						continue
+					}
+				}
+				deletedUntyped++
+			}
+		}
+
+		if deletedUntyped == 0 && deletedBuffer == 0 && failures == 0 {
+			fmt.Println("No changes needed")
+		} else {
+			prefix := ""
+			if dryRun {
+				prefix = "[dry-run] "
+			}
+			fmt.Printf("%sDeleted %d untyped entries, removed %d session-buffer entries", prefix, deletedUntyped, deletedBuffer)
+			if failures > 0 {
+				fmt.Printf(" (%d failures)", failures)
+			}
+			fmt.Println()
+		}
+		return nil
+	},
+}
+
 func init() {
-	for _, c := range []*cobra.Command{kbPutCmd, kbLsCmd, kbRmCmd, kbShowCmd, kbEnableCmd, kbDisableCmd, kbSearchCmd, kbCleanCmd, kbTimelineCmd, kbStatsCmd, kbCompactCmd} {
+	for _, c := range []*cobra.Command{kbPutCmd, kbLsCmd, kbRmCmd, kbShowCmd, kbEnableCmd, kbDisableCmd, kbSearchCmd, kbCleanCmd, kbTimelineCmd, kbStatsCmd, kbCompactCmd, kbMigrateTagsCmd} {
 		c.Flags().Bool("local", false, "Use local KB (default: global)")
 	}
 	kbPutCmd.Flags().String("body", "", "Entry body content")
@@ -383,4 +461,6 @@ func init() {
 	kbCmd.AddCommand(kbTimelineCmd)
 	kbCmd.AddCommand(kbStatsCmd)
 	kbCmd.AddCommand(kbCompactCmd)
+	kbMigrateTagsCmd.Flags().Bool("dry-run", false, "Print changes without applying them")
+	kbCmd.AddCommand(kbMigrateTagsCmd)
 }
