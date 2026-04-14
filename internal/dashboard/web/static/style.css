@@ -674,6 +674,50 @@ main {
   border: 1px solid rgba(78, 201, 144, 0.3);
 }
 
+.retro--error {
+  color: #e06050;
+  background: rgba(224, 96, 80, 0.1);
+  border: 1px solid rgba(224, 96, 80, 0.3);
+}
+.session-card__retro-raw-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  margin-left: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.session-card__retro-raw-toggle:hover {
+  background: var(--surface);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.session-card__retro-raw {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.session-card__retro-error {
+  margin-top: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #e06050;
+  opacity: 0.8;
+}
+
 .session-card__knowledge-toggle {
   background: none;
   border: 1px solid var(--border);
