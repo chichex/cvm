@@ -9,7 +9,9 @@ import "time"
 // Spec: S-013 | Req: I-001
 type Backend interface {
 	// Put inserts or updates an entry. now is injectable for deterministic tests.
-	Put(key, body string, tags []string, now time.Time) error
+	// sessionID links the entry to a session; empty string means no session link.
+	// Spec: S-017 | Req: C-010
+	Put(key, body string, tags []string, now time.Time, sessionID string) error
 
 	// Get returns the Document for the given key, or error if not found.
 	Get(key string) (Document, error)

@@ -193,8 +193,10 @@ async function loadSessions() {
 
 function renderSessionCard(session) {
   const isActive = session.status === 'active';
-  const isStale = session.status === 'stale';
+  const isEnded = session.status === 'ended';
+  const isLegacy = session.status === 'legacy';
   const isSummarized = session.status === 'summarized';
+  const isStale = session.status === 'stale';
 
   let cardClass = 'session-card';
   if (isActive) cardClass += ' session-card--active';

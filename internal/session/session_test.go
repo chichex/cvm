@@ -50,7 +50,7 @@ func appendLineToFile(t *testing.T, path string, ev SessionEvent) {
 	f.Write(line)
 }
 
-// TestTruncate verifies content truncation by type. Spec: S-017 | Req: C-004 | Type: happy
+// TestTruncate verifies content truncation by type. Spec: S-017 | Req: C-006 | Type: happy
 func TestTruncate(t *testing.T) {
 	// prompt: 300 runes
 	longPrompt := strings.Repeat("あ", 310)
@@ -102,7 +102,7 @@ func TestReadLastLine(t *testing.T) {
 }
 
 // TestStartCreatesFile verifies Start creates the session file with correct start event.
-// Spec: S-017 | Req: B-001 | Type: happy
+// Spec: S-017 | Req: B-001, C-004 | Type: happy
 func TestStartCreatesFile(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
@@ -110,7 +110,7 @@ func TestStartCreatesFile(t *testing.T) {
 	defer func() { sessionsDir = origDir }()
 
 	uuid := "test-start-uuid-0001"
-	err := Start(uuid, "/projects/myapp", "sdd-mem", 99999)
+	err := Start(uuid, "/projects/myapp", "sdd-mem")
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -134,46 +134,21 @@ func TestStartCreatesFile(t *testing.T) {
 	if ev.Project != "/projects/myapp" {
 		t.Errorf("expected project=/projects/myapp, got %q", ev.Project)
 	}
-	if ev.PID != 99999 {
-		t.Errorf("expected pid=99999, got %d", ev.PID)
-	}
+	// Spec: S-017 | Req: I-005 — no PID field in start event.
 	if ev.Tools == nil {
 		t.Error("expected tools to be set")
 	}
 }
 
-// TestStartUsesGetppidWhenPIDZero verifies os.Getppid() is used when pid=0.
-// Spec: S-017 | Req: B-001, C-002 | Type: happy
-func TestStartUsesGetppidWhenPIDZero(t *testing.T) {
-	dir := overrideSessionsDirForTest(t)
-	origDir := sessionsDir
-	sessionsDir = func() string { return dir }
-	defer func() { sessionsDir = origDir }()
-
-	uuid := "test-ppid-uuid-0001"
-	err := Start(uuid, "/proj", "default", 0)
-	if err != nil {
-		t.Fatalf("Start failed: %v", err)
-	}
-
-	ev, err := readStartEvent(filepath.Join(dir, uuid+".jsonl"))
-	if err != nil {
-		t.Fatalf("readStartEvent: %v", err)
-	}
-	if ev.PID != os.Getppid() {
-		t.Errorf("expected pid=%d (getppid), got %d", os.Getppid(), ev.PID)
-	}
-}
-
 // TestStartGeneratesUUIDWhenEmpty verifies UUID is generated when sessionID is empty.
-// Spec: S-017 | Req: C-006 | Type: happy
+// Spec: S-017 | Req: C-007 | Type: happy
 func TestStartGeneratesUUIDWhenEmpty(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
 	sessionsDir = func() string { return dir }
 	defer func() { sessionsDir = origDir }()
 
-	err := Start("", "/proj", "default", 12345)
+	err := Start("", "/proj", "default")
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -189,7 +164,7 @@ func TestStartGeneratesUUIDWhenEmpty(t *testing.T) {
 }
 
 // TestAppendAddsEvents verifies events are appended with correct truncation.
-// Spec: S-017 | Req: B-002, B-003, B-004, C-004 | Type: happy
+// Spec: S-017 | Req: B-002, B-003, B-004, C-006 | Type: happy
 func TestAppendAddsEvents(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
@@ -199,7 +174,7 @@ func TestAppendAddsEvents(t *testing.T) {
 	uuid := "test-append-uuid-0001"
 	path := writeSession(t, dir, uuid, SessionEvent{
 		Type: "start", Timestamp: time.Now().Format(time.RFC3339),
-		SessionID: uuid, Project: "/proj", PID: 12345,
+		SessionID: uuid, Project: "/proj",
 	})
 
 	// Prompt event
@@ -240,7 +215,7 @@ func TestAppendAddsEvents(t *testing.T) {
 }
 
 // TestAppendTruncation verifies truncation limits are enforced.
-// Spec: S-017 | Req: C-004 | Type: edge
+// Spec: S-017 | Req: C-006 | Type: edge
 func TestAppendTruncation(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
@@ -249,7 +224,7 @@ func TestAppendTruncation(t *testing.T) {
 
 	uuid := "test-trunc-uuid-0001"
 	path := writeSession(t, dir, uuid, SessionEvent{
-		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid, PID: 12345,
+		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid,
 	})
 
 	longContent := strings.Repeat("a", 400)
@@ -306,7 +281,7 @@ func TestAppendNoopOnEndedSession(t *testing.T) {
 
 	uuid := "test-ended-uuid-0001"
 	path := writeSession(t, dir, uuid, SessionEvent{
-		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid, PID: 12345,
+		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid,
 	})
 	appendLineToFile(t, path, SessionEvent{
 		Type: "end", Timestamp: time.Now().Format(time.RFC3339), Reason: "normal",
@@ -348,13 +323,12 @@ func TestEndAppendsEndEvent(t *testing.T) {
 
 	uuid := "test-end-uuid-0001"
 	path := writeSession(t, dir, uuid, SessionEvent{
-		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid, Project: "/proj", PID: 12345,
+		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid, Project: "/proj",
 	})
-	// Add some events to meet the threshold (we'll skip actual LLM by disabling autosummary).
 	_ = path
 
-	// Disable autosummary for this test.
-	t.Setenv("CVM_AUTOSUMMARY_ENABLED", "false")
+	// Disable retro for this test.
+	t.Setenv("CVM_SESSION_RETRO_ENABLED", "false")
 
 	err := End(uuid)
 	if err != nil {
@@ -374,9 +348,9 @@ func TestEndAppendsEndEvent(t *testing.T) {
 	}
 }
 
-// TestEndSkipsSummaryOnShortSession verifies E-003: < 3 events → no summary.
+// TestEndSkipsRetroOnShortSession verifies E-003: < 3 events -> no retro.
 // Spec: S-017 | Req: E-003 | Type: edge
-func TestEndSkipsSummaryOnShortSession(t *testing.T) {
+func TestEndSkipsRetroOnShortSession(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
 	sessionsDir = func() string { return dir }
@@ -384,14 +358,15 @@ func TestEndSkipsSummaryOnShortSession(t *testing.T) {
 
 	uuid := "test-short-uuid-0001"
 	path := writeSession(t, dir, uuid, SessionEvent{
-		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid, PID: 12345,
+		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid,
 	})
-	// Only 2 events: start + 1 append = 2 events total (< 3, no summary)
+	// Only 2 events: start + 1 append = 2 events total (< 3, no retro)
 	appendLineToFile(t, path, SessionEvent{
 		Type: "prompt", Timestamp: time.Now().Format(time.RFC3339), Content: "hi",
 	})
 
-	t.Setenv("CVM_AUTOSUMMARY_ENABLED", "true")
+	// Retro enabled but session is too short — retro MUST be skipped.
+	t.Setenv("CVM_SESSION_RETRO_ENABLED", "true")
 
 	err := End(uuid)
 	if err != nil {
@@ -403,12 +378,13 @@ func TestEndSkipsSummaryOnShortSession(t *testing.T) {
 	if last.Type != "end" {
 		t.Errorf("expected end event, got %q", last.Type)
 	}
-	if last.SummaryKey != "" {
-		t.Errorf("expected empty summary_key (short session), got %q", last.SummaryKey)
+	// No SummaryKey field — spec C-005 removed it.
+	if last.Reason != "normal" {
+		t.Errorf("expected reason=normal for short session, got %q", last.Reason)
 	}
 }
 
-// TestGCDeletesOldClosedFiles verifies GC removes old closed sessions, keeps active ones.
+// TestGCDeletesOldClosedFiles verifies GC fallback removes old closed sessions by mtime.
 // Spec: S-017 | Req: B-010 | Type: happy
 func TestGCDeletesOldClosedFiles(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
@@ -421,7 +397,7 @@ func TestGCDeletesOldClosedFiles(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		uuid := fmt.Sprintf("old-closed-%04d", i)
 		path := filepath.Join(dir, uuid+".jsonl")
-		ev := SessionEvent{Type: "start", Timestamp: oldTime.Format(time.RFC3339), SessionID: uuid, PID: 1}
+		ev := SessionEvent{Type: "start", Timestamp: oldTime.Format(time.RFC3339), SessionID: uuid}
 		endEv := SessionEvent{Type: "end", Timestamp: oldTime.Format(time.RFC3339), Reason: "normal"}
 		line1, _ := json.Marshal(ev)
 		line2, _ := json.Marshal(endEv)
@@ -433,15 +409,16 @@ func TestGCDeletesOldClosedFiles(t *testing.T) {
 	// Create 1 recent closed session (should not be deleted).
 	recentUUID := "recent-closed-0001"
 	recentPath := filepath.Join(dir, recentUUID+".jsonl")
-	ev := SessionEvent{Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: recentUUID, PID: 1}
+	ev := SessionEvent{Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: recentUUID}
 	endEv := SessionEvent{Type: "end", Timestamp: time.Now().Format(time.RFC3339), Reason: "normal"}
 	line1, _ := json.Marshal(ev)
 	line2, _ := json.Marshal(endEv)
 	os.WriteFile(recentPath, append(append(line1, '\n'), append(line2, '\n')...), 0644)
 
-	err := GC(30 * 24 * time.Hour)
+	// gcFallback uses mtime when SQLite is unavailable (no sessions table in temp dir).
+	err := gcFallback(30 * 24 * time.Hour)
 	if err != nil {
-		t.Fatalf("GC: %v", err)
+		t.Fatalf("gcFallback: %v", err)
 	}
 
 	// 3 old should be deleted.
@@ -458,7 +435,7 @@ func TestGCDeletesOldClosedFiles(t *testing.T) {
 	}
 }
 
-// TestResolvePrefix verifies UUID prefix matching. Spec: S-017 | Req: E-009 | Type: happy
+// TestResolvePrefix verifies UUID prefix matching. Spec: S-017 | Req: E-007 | Type: happy
 func TestResolvePrefix(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
@@ -479,7 +456,7 @@ func TestResolvePrefix(t *testing.T) {
 }
 
 // TestResolvePrefixAmbiguous verifies ambiguous prefix returns error.
-// Spec: S-017 | Req: E-009 | Type: error
+// Spec: S-017 | Req: E-007 | Type: error
 func TestResolvePrefixAmbiguous(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
@@ -502,7 +479,7 @@ func TestResolvePrefixAmbiguous(t *testing.T) {
 }
 
 // TestConcurrentAppends verifies file locking prevents corruption under concurrent writes.
-// Spec: S-017 | Req: E-008, I-007 | Type: edge
+// Spec: S-017 | Req: E-006, I-007 | Type: edge
 func TestConcurrentAppends(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
@@ -511,7 +488,7 @@ func TestConcurrentAppends(t *testing.T) {
 
 	uuid := "test-concurrent-uuid-0001"
 	path := writeSession(t, dir, uuid, SessionEvent{
-		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid, PID: 12345,
+		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid,
 	})
 
 	const goroutines = 20
@@ -541,39 +518,33 @@ func TestConcurrentAppends(t *testing.T) {
 	}
 }
 
-// TestOrphanDetection verifies that sessions with dead PIDs are detected as orphans.
-// Spec: S-017 | Req: E-007 | Type: edge
-func TestOrphanDetection(t *testing.T) {
+// TestNoPIDInStartEvent verifies I-005: no PID field in start event.
+// Spec: S-017 | Req: I-005, C-004 | Type: happy
+func TestNoPIDInStartEvent(t *testing.T) {
 	dir := overrideSessionsDirForTest(t)
 	origDir := sessionsDir
 	sessionsDir = func() string { return dir }
 	defer func() { sessionsDir = origDir }()
 
-	// Create a session with a dead PID (PID 1 won't be named "claude" in tests).
-	uuid := "test-orphan-uuid-0001"
-	path := writeSession(t, dir, uuid, SessionEvent{
-		Type: "start", Timestamp: time.Now().Format(time.RFC3339), SessionID: uuid, PID: 99999999,
-	})
-
-	cleanOrphans()
-
-	// The orphan session should now have an end event.
-	if !hasEndEvent(path) {
-		t.Error("expected orphan session to have an end event after cleanOrphans")
+	uuid := "test-nopid-uuid-0001"
+	if err := Start(uuid, "/proj", "default"); err != nil {
+		t.Fatalf("Start failed: %v", err)
 	}
 
-	events, _ := readAllEvents(path)
-	last := events[len(events)-1]
-	if last.Type != "end" {
-		t.Errorf("expected end event, got %q", last.Type)
+	path := filepath.Join(dir, uuid+".jsonl")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading session file: %v", err)
 	}
-	if last.Reason != "orphan" {
-		t.Errorf("expected reason=orphan, got %q", last.Reason)
+
+	// Verify raw JSON does not contain "pid" field.
+	if strings.Contains(string(data), `"pid"`) {
+		t.Errorf("start event MUST NOT contain 'pid' field, got: %s", string(data))
 	}
 }
 
 // TestDetectTools verifies detectTools returns a non-nil map with known tools.
-// Spec: S-017 | Req: C-002 | Type: happy
+// Spec: S-017 | Req: C-004 | Type: happy
 func TestDetectTools(t *testing.T) {
 	tools := detectTools()
 	if tools == nil {
@@ -588,7 +559,7 @@ func TestDetectTools(t *testing.T) {
 }
 
 // TestReadAllEventsSkipsInvalidLines verifies I-008: invalid JSON lines are skipped.
-// Spec: S-017 | Req: I-008, E-011 | Type: edge
+// Spec: S-017 | Req: I-008 | Type: edge
 func TestReadAllEventsSkipsInvalidLines(t *testing.T) {
 	f, err := os.CreateTemp("", "session-*.jsonl")
 	if err != nil {

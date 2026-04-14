@@ -28,8 +28,9 @@ func NewFlatBackend(scope config.Scope, projectPath string) *FlatBackend {
 }
 
 // Put inserts or updates an entry. The now parameter is used as the timestamp.
-// Spec: S-013 | Req: I-001b
-func (f *FlatBackend) Put(key, body string, tags []string, now time.Time) error {
+// sessionID is accepted for interface compatibility but silently ignored — flat files have no session_id column.
+// Spec: S-013 | Req: I-001b | Spec: S-017 | Req: C-010
+func (f *FlatBackend) Put(key, body string, tags []string, now time.Time, sessionID string) error {
 	return putWithTime(f.scope, f.projectPath, key, body, tags, now)
 }
 
@@ -489,7 +490,7 @@ func (f *FlatBackend) PutWithDedup(key, body string, tags []string, now time.Tim
 		}
 	}
 	// No duplicate — delegate to Put
-	return false, f.Put(key, body, tags, now)
+	return false, f.Put(key, body, tags, now, "")
 }
 
 // Close is a no-op for the flat-file backend.

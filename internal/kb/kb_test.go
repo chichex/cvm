@@ -27,7 +27,7 @@ func setupTestKB(t *testing.T) string {
 
 func seedEntry(t *testing.T, projectPath, key, body string, tags []string) {
 	t.Helper()
-	if err := Put(config.ScopeLocal, projectPath, key, body, tags); err != nil {
+	if err := Put(config.ScopeLocal, projectPath, key, body, tags, ""); err != nil {
 		t.Fatalf("seedEntry(%q): %v", key, err)
 	}
 }

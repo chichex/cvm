@@ -25,7 +25,7 @@ var kbCmd = &cobra.Command{
 	Short: "Manage knowledge base entries",
 }
 
-// Spec: S-010 | Req: B-008, B-013
+// Spec: S-010 | Req: B-008, B-013 | Spec: S-017 | Req: C-010
 var kbPutCmd = &cobra.Command{
 	Use:   "put <key>",
 	Short: "Create or update a KB entry",
@@ -36,6 +36,7 @@ var kbPutCmd = &cobra.Command{
 		body, _ := cmd.Flags().GetString("body")
 		tagsStr, _ := cmd.Flags().GetString("tag")
 		typeTag, _ := cmd.Flags().GetString("type")
+		sessionID, _ := cmd.Flags().GetString("session-id")
 		var tags []string
 		if tagsStr != "" {
 			for _, t := range strings.Split(tagsStr, ",") {
@@ -48,14 +49,23 @@ var kbPutCmd = &cobra.Command{
 			}
 			tags = append(tags, "type:"+typeTag)
 		}
-		skipped, err := kb.PutWithDedup(scope, projectPath, key, body, tags)
-		if err != nil {
-			return err
-		}
-		if skipped {
-			fmt.Printf("Skipped KB entry %q (identical content)\n", key)
-		} else {
+		// If session-id provided, skip dedup and write directly with session linking.
+		// Otherwise use dedup as before. Spec: S-017 | Req: C-010, B-015
+		if sessionID != "" {
+			if err := kb.Put(scope, projectPath, key, body, tags, sessionID); err != nil {
+				return err
+			}
 			fmt.Printf("Saved KB entry %q (%s)\n", key, scope)
+		} else {
+			skipped, err := kb.PutWithDedup(scope, projectPath, key, body, tags)
+			if err != nil {
+				return err
+			}
+			if skipped {
+				fmt.Printf("Skipped KB entry %q (identical content)\n", key)
+			} else {
+				fmt.Printf("Saved KB entry %q (%s)\n", key, scope)
+			}
 		}
 		return nil
 	},
@@ -349,6 +359,7 @@ func init() {
 	kbPutCmd.Flags().String("body", "", "Entry body content")
 	kbPutCmd.Flags().String("tag", "", "Comma-separated tags")
 	kbPutCmd.Flags().String("type", "", "Entry type: "+strings.Join(kb.ValidTypes, "|"))
+	kbPutCmd.Flags().String("session-id", "", "Link entry to a session UUID (Spec: S-017 | Req: C-010)")
 	kbLsCmd.Flags().String("tag", "", "Filter by tag")
 	kbCleanCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 

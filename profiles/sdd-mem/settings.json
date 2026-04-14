@@ -8,8 +8,8 @@
     "SDD_SPECS_DIR": "specs",
     "CVM_CONTEXT_ENTRY_COUNT": "10",
     "CVM_CONTEXT_MAX_TOKENS": "2000",
-    "CVM_AUTOSUMMARY_ENABLED": "true",
-    "CVM_AUTOSUMMARY_MODEL": "haiku",
+    "CVM_SESSION_RETRO_ENABLED": "true",
+    "CVM_SESSION_RETRO_MODEL": "haiku",
     "CVM_OBSERVE_TOOLS": "Bash,Write,Edit"
   },
   "permissions": {
