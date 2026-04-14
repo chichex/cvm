@@ -331,6 +331,12 @@ func openGlobalDB() (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("sessions schema: %w", err)
 	}
+	// Ensure entries.session_id column exists (idempotent migration). Spec: S-017 | Req: C-002, C-002a
+	var hasCol int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('entries') WHERE name='session_id'").Scan(&hasCol); err == nil && hasCol == 0 {
+		db.Exec("ALTER TABLE entries ADD COLUMN session_id TEXT")
+		db.Exec("CREATE INDEX IF NOT EXISTS idx_entries_session_id ON entries(session_id)")
+	}
 	return db, nil
 }
 

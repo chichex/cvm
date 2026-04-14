@@ -125,11 +125,8 @@ Cada skill gestiona sus propios pasos, validaciones, y gates.
 ### Knowledge
 | Skill | Proposito |
 |-------|-----------|
-| `/learn` | Guardar insight en KB |
-| `/decide` | Registrar decision de diseno |
-| `/gotcha` | Registrar trampa encontrada |
 | `/recall` | Buscar contexto en KB |
-| `/retro` | Revision de fin de sesion (incluye session summary) |
+| `/retro` | Unico mecanismo de captura de conocimiento (learnings, decisions, gotchas). Mid-session y end-session |
 
 ### Meta
 | Skill | Proposito |
@@ -197,24 +194,14 @@ No es necesario buscar manualmente el contexto que ya fue inyectado — consulta
 
 **On-the-fly learning (automatico):**
 El hook `UserPromptSubmit` inyecta el protocolo de learning con self-check obligatorio.
-
-Self-check despues de cada interaccion significativa:
-- ¿Tome una decision de diseno? → `cvm kb put` con tag `decision`
-- ¿Resolvi un bug o encontre la causa? → `cvm kb put` con tag `learning`
-- ¿Algo no funciono como esperaba? → `cvm kb put` con tag `gotcha`
-- ¿El usuario confirmo o rechazo un approach? → `cvm kb put` con tag `decision`
-- ¿Descubri un gap en un spec? → `cvm kb put` con tag `spec-gap`
-
-Si la respuesta a cualquiera es SI → guardar AHORA, no despues.
+Cuando el self-check detecta insights no capturados → ejecutar `/retro` con scope `mid-session`.
+`/retro` es el UNICO mecanismo de captura. No usar `cvm kb put` directamente para learnings.
 
 **Captura pasiva de subagents:**
-El hook `SubagentStop` captura automaticamente secciones `## Key Learnings:` del output de subagents y las persiste en KB.
+El hook `SubagentStop` captura automaticamente secciones `## Key Learnings:` del output de subagents y las persiste en KB con `--session-id`.
 
-**Session summary (obligatorio):**
-Antes de cerrar la sesion:
-```
-cvm kb put "session-summary-YYYYMMDD" --body "Goal: ... | Accomplished: ... | Specs written/updated: ... | Discoveries: ... | Next: ..." --tag "session,summary"
-```
+**Session end (automatico):**
+Al cerrar la sesion, `cvm session end` ejecuta un retro final via `claude -p --model haiku` que analiza los eventos y captura insights faltantes. No se genera un "session summary" — el conocimiento queda como KB entries linkeadas a la sesion.
 
 **Comandos disponibles:**
 - `cvm kb put <key> --body "..." --tag "a,b"` — guardar entry global

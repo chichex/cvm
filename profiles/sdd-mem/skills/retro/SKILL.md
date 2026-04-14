@@ -35,19 +35,15 @@ Para cada item candidato, buscar en KB con `cvm kb search "<terminos>"`.
 Si ya existe una entry equivalente, descartarlo o actualizar la existente si aporta info nueva.
 
 ### Paso 4: Persistir
-Para cada item, ejecutar directamente:
+Para cada item, ejecutar directamente con session linking:
 ```bash
-cvm kb put "<key>" --body "<body>" --tag "<tipo>,<area>" [--local]
+cvm kb put "<key>" --body "<body>" --tag "<tipo>,<area>" --session-id "$SESSION_ID" [--local]
 ```
+El `$SESSION_ID` se obtiene del contexto de sesion inyectado por los hooks.
 NO pedir confirmacion. Persistir todo lo que pase el filtro de calidad.
+NO generar un "session summary" — el conocimiento queda como entries linkeadas a la sesion.
 
-### Paso 5: Session summary
-Siempre persistir un resumen de sesion:
-```bash
-cvm kb put "session-summary-YYYYMMDD" --body "Goal: ... | Accomplished: ... | Discoveries: ... | Next: ..." --tag "session,summary"
-```
-
-### Paso 6: Reporte
+### Paso 5: Reporte
 Mostrar un resumen breve de lo que se guardo:
 ```
 Retro completada:

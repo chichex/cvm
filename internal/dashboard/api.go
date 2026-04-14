@@ -284,6 +284,19 @@ func openGlobalDB() (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	// Ensure sessions table + entries.session_id exist (idempotent). Spec: S-017 | Req: C-002a
+	db.Exec(`CREATE TABLE IF NOT EXISTS sessions (
+		id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'active',
+		project TEXT NOT NULL, profile TEXT NOT NULL DEFAULT '',
+		started_at TEXT NOT NULL, ended_at TEXT,
+		jsonl_path TEXT NOT NULL, event_count INTEGER NOT NULL DEFAULT 0
+	)`)
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status)")
+	var hasCol int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('entries') WHERE name='session_id'").Scan(&hasCol); err == nil && hasCol == 0 {
+		db.Exec("ALTER TABLE entries ADD COLUMN session_id TEXT")
+		db.Exec("CREATE INDEX IF NOT EXISTS idx_entries_session_id ON entries(session_id)")
+	}
 	return db, nil
 }
 
