@@ -560,29 +560,12 @@ func End(sessionID string) error {
 		retroEvents = append(retroEvents, events[len(events)-999:]...)
 	}
 
-	// Determine whether to generate retro. Spec: S-017 | Req: B-005, B-006, E-003, I-009
-	retroEnabled := os.Getenv("CVM_SESSION_RETRO_ENABLED") != "false"
-	model := os.Getenv("CVM_SESSION_RETRO_MODEL")
-	if model == "" {
-		model = "haiku"
-	}
-
-	reason := "normal"
-
-	// E-003: skip retro on short sessions (< 3 events)
-	if retroEnabled && len(events) >= 3 {
-		if retroErr := generateRetro(sessionID, retroEvents, model); retroErr != nil {
-			// E-004: retro failure -> warn, continue with reason=error
-			fmt.Fprintf(os.Stderr, "warning: retro pass failed: %v\n", retroErr)
-			reason = "error"
-		}
-	}
-
-	// Append end event under lock. Check for concurrent end (E-008).
+	// CLOSE FIRST: mark session as ended in JSONL + SQLite before retro.
+	// Hooks have a timeout; retro (claude -p) can take 30s+. Close eagerly.
 	endEv := SessionEvent{
 		Type:      "end",
 		Timestamp: time.Now().Format(time.RFC3339),
-		Reason:    reason,
+		Reason:    "normal",
 	}
 	err = appendEvent(path, endEv)
 	if err == errAlreadyEnded {
@@ -596,16 +579,32 @@ func End(sessionID string) error {
 	// Update SQLite: status='ended', ended_at=now. Spec: S-017 | Req: B-005
 	db, dbErr = openGlobalDB()
 	if dbErr == nil {
-		defer db.Close()
 		_, sqlErr := db.Exec(`UPDATE sessions SET status = 'ended', ended_at = ? WHERE id = ?`,
 			endEv.Timestamp, sessionID)
 		if sqlErr != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to update session status: %v\n", sqlErr)
 		}
+		db.Close()
 	}
 
 	// Cleanup learning-pulse. Spec: S-017 | Req: B-005
 	_ = os.Remove(filepath.Join(config.CvmHome(), "learning-pulse"))
+
+	fmt.Fprintf(os.Stderr, "cvm session ended\n")
+
+	// Retro runs AFTER close so hook timeout doesn't prevent session from ending.
+	// Spec: S-017 | Req: B-005, B-006, E-003, I-009
+	retroEnabled := os.Getenv("CVM_SESSION_RETRO_ENABLED") != "false"
+	model := os.Getenv("CVM_SESSION_RETRO_MODEL")
+	if model == "" {
+		model = "haiku"
+	}
+
+	if retroEnabled && len(events) >= 3 {
+		if retroErr := generateRetro(sessionID, retroEvents, model); retroErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: retro pass failed: %v\n", retroErr)
+		}
+	}
 
 	// Automation integration. Spec: S-017 | Req: B-005
 	projectPath := ""

@@ -10,7 +10,16 @@ if [ -z "$session_id" ]; then
   exit 0
 fi
 
-cvm session end "$session_id" 2>/dev/null || \
-  echo "[session-end] warning: cvm session end failed" >&2
+# Use full path in case PATH is incomplete in hook context
+CVM="${HOME}/go/bin/cvm"
+if command -v cvm &>/dev/null; then
+  CVM="cvm"
+fi
+
+# Run in background — hooks have a short timeout and cvm session end
+# runs retro (claude -p) which can take 30s+. The End() function marks
+# the session as ended BEFORE running retro, so even if the background
+# process is killed, the session is properly closed.
+nohup "$CVM" session end "$session_id" >/dev/null 2>&1 &
 
 exit 0

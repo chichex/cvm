@@ -13,10 +13,15 @@ fi
 # Extract project from cwd (hooks run in the project directory)
 project="$(pwd)"
 
-# Extract profile from cvm state
-profile=$(cvm profile 2>/dev/null | grep -m1 "Local:" | awk '{print $2}' || echo "unknown")
+# Use full path in case PATH is incomplete in hook context
+CVM="${HOME}/go/bin/cvm"
+if command -v cvm &>/dev/null; then
+  CVM="cvm"
+fi
 
-cvm session start --session-id "$session_id" --project "$project" --profile "$profile" 2>/dev/null || \
+profile=$("$CVM" profile 2>/dev/null | grep -m1 "Local:" | awk '{print $2}' || echo "unknown")
+
+"$CVM" session start --session-id "$session_id" --project "$project" --profile "$profile" 2>/dev/null || \
   echo "[session-start] warning: cvm session start failed" >&2
 
 exit 0
