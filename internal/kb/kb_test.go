@@ -58,40 +58,36 @@ func TestValidateType(t *testing.T) {
 	}
 }
 
-// --- B-008: PutWithOptions type tag ---
+// --- S-019: ClassifyTag ---
 
-func TestPutWithOptions_TypeTag(t *testing.T) {
-	projectPath := setupTestKB(t)
-
-	err := PutWithOptions(config.ScopeLocal, projectPath, "test-type", "body", []string{"tag1"}, "learning")
-	if err != nil {
-		t.Fatalf("PutWithOptions: %v", err)
+func TestClassifyTag(t *testing.T) {
+	tests := []struct {
+		tag  string
+		want string
+	}{
+		{"learning", "type"},
+		{"gotcha", "type"},
+		{"decision", "type"},
+		{"discovery", "type"},
+		{"session", "type"},
+		{"cvm", "topic"},
+		{"backend", "topic"},
+		{"infra", "topic"},
+		{"auto-captured", "internal"},
+		{"session-buffer", "internal"},
+		{"session-buffer-abc123", "internal"},
+		{"s013", "internal"},
+		{"s017", "internal"},
+		{"type:learning", "internal"},
+		{"type:gotcha", "internal"},
 	}
-
-	entries, err := List(config.ScopeLocal, projectPath, "")
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(entries))
-	}
-
-	found := false
-	for _, tag := range entries[0].Tags {
-		if tag == "type:learning" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected tag 'type:learning', got tags: %v", entries[0].Tags)
-	}
-}
-
-func TestPutWithOptions_InvalidType(t *testing.T) {
-	projectPath := setupTestKB(t)
-	err := PutWithOptions(config.ScopeLocal, projectPath, "test", "body", nil, "invalid")
-	if err == nil {
-		t.Error("expected error for invalid type")
+	for _, tt := range tests {
+		t.Run(tt.tag, func(t *testing.T) {
+			got := ClassifyTag(tt.tag)
+			if got != tt.want {
+				t.Errorf("ClassifyTag(%q) = %q, want %q", tt.tag, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -244,7 +240,7 @@ func TestSearchWithOptions_TagFilter(t *testing.T) {
 func TestSearchWithOptions_TypeFilter(t *testing.T) {
 	projectPath := setupTestKB(t)
 
-	seedEntry(t, projectPath, "typed-entry", "some content", []string{"type:learning", "kb"})
+	seedEntry(t, projectPath, "typed-entry", "some content", []string{"learning", "kb"})
 	seedEntry(t, projectPath, "untyped-entry", "some content too", []string{"kb"})
 
 	results, err := SearchWithOptions(config.ScopeLocal, projectPath, "content", SearchOptions{TypeTag: "learning"})

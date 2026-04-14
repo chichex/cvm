@@ -232,8 +232,6 @@ main {
 .badge-gotcha     { background: var(--badge-gotcha);    color: var(--orange); }
 .badge-decision   { background: var(--badge-decision);  color: var(--green); }
 .badge-session    { background: var(--badge-session);   color: var(--purple); }
-.badge-summary    { background: #2a2a3a; color: var(--pink); }
-.badge-spec-gap   { background: #3a2a1a; color: var(--yellow); }
 .badge-default    { background: var(--badge-default);   color: var(--muted); }
 .badge-global     { background: #1a2a1a; color: var(--teal); }
 .badge-local      { background: #2a1a2a; color: var(--pink); }
@@ -409,6 +407,16 @@ main {
   overflow-y: auto;
 }
 
+/* Spec: S-019 | Req: C-003, C-004 */
+.tag-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
 .tag-row {
   display: flex;
   justify-content: space-between;
@@ -416,6 +424,8 @@ main {
   padding: 2px 0;
   font-size: 12px;
 }
+.tag-row-clickable { cursor: pointer; border-radius: 4px; padding: 2px 4px; }
+.tag-row-clickable:hover { background: var(--surface); }
 .tag-row .tag-name { color: var(--muted); font-family: var(--font-mono); }
 .tag-row .tag-count {
   font-family: var(--font-mono);

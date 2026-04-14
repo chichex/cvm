@@ -17,12 +17,12 @@ import (
 func TestE2E_FullLifecycle(t *testing.T) {
 	projectPath := setupTestKB(t)
 
-	// 1. Put entries with explicit types
-	if err := PutWithOptions(config.ScopeLocal, projectPath, "db-decision", "Use PostgreSQL for persistence", []string{"infra"}, "decision"); err != nil {
-		t.Fatalf("PutWithOptions db-decision: %v", err)
+	// 1. Put entries with explicit types (bare tags, no type: prefix)
+	if err := Put(config.ScopeLocal, projectPath, "db-decision", "Use PostgreSQL for persistence", []string{"infra", "decision"}, ""); err != nil {
+		t.Fatalf("Put db-decision: %v", err)
 	}
-	if err := PutWithOptions(config.ScopeLocal, projectPath, "auth-learning", "JWT expiry must be validated server-side", []string{"security"}, "learning"); err != nil {
-		t.Fatalf("PutWithOptions auth-learning: %v", err)
+	if err := Put(config.ScopeLocal, projectPath, "auth-learning", "JWT expiry must be validated server-side", []string{"security", "learning"}, ""); err != nil {
+		t.Fatalf("Put auth-learning: %v", err)
 	}
 	seedEntry(t, projectPath, "readme-note", "Project readme needs updating", []string{"docs"})
 
@@ -216,12 +216,12 @@ func TestE2E_DedupWorkflow(t *testing.T) {
 func TestE2E_SearchRankingWithFilters(t *testing.T) {
 	projectPath := setupTestKB(t)
 
-	// Seed entries: mix of types, tags, and matching terms
-	if err := PutWithOptions(config.ScopeLocal, projectPath, "cache", "Cache invalidation strategy document", []string{"infra"}, "decision"); err != nil {
+	// Seed entries: mix of types, tags, and matching terms (bare tags)
+	if err := Put(config.ScopeLocal, projectPath, "cache", "Cache invalidation strategy document", []string{"infra", "decision"}, ""); err != nil {
 		t.Fatalf("seed cache: %v", err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if err := PutWithOptions(config.ScopeLocal, projectPath, "cache-gotcha", "Cache must be invalidated on write", []string{"infra"}, "gotcha"); err != nil {
+	if err := Put(config.ScopeLocal, projectPath, "cache-gotcha", "Cache must be invalidated on write", []string{"infra", "gotcha"}, ""); err != nil {
 		t.Fatalf("seed cache-gotcha: %v", err)
 	}
 	time.Sleep(5 * time.Millisecond)
@@ -229,7 +229,7 @@ func TestE2E_SearchRankingWithFilters(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 	seedEntry(t, projectPath, "db-schema", "Database schema has no cache mention", []string{"db"})
 	time.Sleep(5 * time.Millisecond)
-	if err := PutWithOptions(config.ScopeLocal, projectPath, "session-log", "Session log about cache usage patterns", []string{"infra"}, "learning"); err != nil {
+	if err := Put(config.ScopeLocal, projectPath, "session-log", "Session log about cache usage patterns", []string{"infra", "learning"}, ""); err != nil {
 		t.Fatalf("seed session-log: %v", err)
 	}
 	time.Sleep(5 * time.Millisecond)

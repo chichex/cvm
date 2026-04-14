@@ -61,18 +61,16 @@ function formatTokens(n) {
 
 // ---- Badge helpers ----
 
+// Spec: S-019 | Req: C-003d
 const TAG_COLORS = {
   learning: 'badge-learning',
   gotcha: 'badge-gotcha',
   decision: 'badge-decision',
   session: 'badge-session',
-  summary: 'badge-summary',
-  'spec-gap': 'badge-spec-gap',
 };
 
 function badgeClass(tag) {
-  const base = tag.replace(/^type:/, '');
-  return TAG_COLORS[base] || 'badge-default';
+  return TAG_COLORS[tag] || 'badge-default';
 }
 
 function renderBadge(tag) {
@@ -559,17 +557,52 @@ function renderScopeStats(scope, stats) {
   if (staleEl) staleEl.textContent = stats.stale || 0;
   if (tokensEl) tokensEl.textContent = formatTokens(stats.total_tokens || 0);
 
-  if (tagsEl && stats.by_tag) {
+  // Spec: S-019 | Req: C-003, C-004
+  if (tagsEl) {
     tagsEl.innerHTML = '';
-    const sorted = Object.entries(stats.by_tag).sort((a, b) => b[1] - a[1]);
-    sorted.forEach(([tag, count]) => {
-      const row = el('div', 'tag-row');
-      row.appendChild(el('span', 'tag-name', tag));
-      row.appendChild(el('span', 'tag-count', String(count)));
-      tagsEl.appendChild(row);
-    });
-    if (!sorted.length) tagsEl.appendChild(el('span', '', 'No tags'));
+    const byType = stats.by_type || {};
+    const byTopic = stats.by_topic || {};
+    const sortedTypes = Object.entries(byType).sort((a, b) => b[1] - a[1]);
+    const sortedTopics = Object.entries(byTopic).sort((a, b) => b[1] - a[1]);
+
+    if (sortedTypes.length) {
+      tagsEl.appendChild(el('div', 'tag-section-title', 'Types'));
+      sortedTypes.forEach(([tag, count]) => {
+        const row = el('div', 'tag-row tag-row-clickable');
+        const badge = el('span', `badge ${badgeClass(tag)}`, tag);
+        row.appendChild(badge);
+        row.appendChild(el('span', 'tag-count', String(count)));
+        row.addEventListener('click', () => filterByTag(tag));
+        tagsEl.appendChild(row);
+      });
+    }
+    if (sortedTopics.length) {
+      tagsEl.appendChild(el('div', 'tag-section-title', 'Topics'));
+      sortedTopics.forEach(([tag, count]) => {
+        const row = el('div', 'tag-row tag-row-clickable');
+        row.appendChild(el('span', 'tag-name', tag));
+        row.appendChild(el('span', 'tag-count', String(count)));
+        row.addEventListener('click', () => filterByTag(tag));
+        tagsEl.appendChild(row);
+      });
+    }
+    if (!sortedTypes.length && !sortedTopics.length) {
+      tagsEl.appendChild(el('span', '', 'No tags'));
+    }
   }
+}
+
+// Spec: S-019 | Req: C-004 — click tag to filter in Browser
+function filterByTag(tag) {
+  window.location.hash = '#knowledge';
+  setTimeout(() => {
+    const tagInput = $('#knowledge-tag');
+    if (tagInput) {
+      tagInput.value = tag;
+      state.knowledgeTag = tag;
+      loadKnowledge();
+    }
+  }, 50);
 }
 
 // ---- Stats auto-refresh ----

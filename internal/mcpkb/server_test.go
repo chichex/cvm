@@ -151,8 +151,8 @@ func TestKbSearch_FilterByType(t *testing.T) {
 	_, cleanup := setupTempKB(t)
 	defer cleanup()
 
-	putEntry(t, "bug-fix-2026", "Found a nasty bug", []string{"type:gotcha"})
-	putEntry(t, "arch-v2", "Architecture decision v2", []string{"type:decision"})
+	putEntry(t, "bug-fix-2026", "Found a nasty bug", []string{"gotcha"})
+	putEntry(t, "arch-v2", "Architecture decision v2", []string{"decision"})
 
 	result := handleKbSearch(rawArgs(t, map[string]interface{}{"query": "a", "type": "gotcha"}))
 	if result.IsError {

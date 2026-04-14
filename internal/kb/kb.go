@@ -24,6 +24,31 @@ func ValidateType(t string) error {
 	return fmt.Errorf("invalid type %q: must be one of %s", t, strings.Join(ValidTypes, ", "))
 }
 
+// Spec: S-019 | Req: B-001, B-002, B-003
+var TypeTags = ValidTypes
+
+var InternalTags = []string{"auto-captured", "session-buffer"}
+
+func ClassifyTag(tag string) string {
+	for _, t := range InternalTags {
+		if tag == t || strings.HasPrefix(tag, t+"-") {
+			return "internal"
+		}
+	}
+	if strings.HasPrefix(tag, "type:") {
+		return "internal"
+	}
+	if matched, _ := filepath.Match("s[0-9][0-9][0-9]", tag); matched {
+		return "internal"
+	}
+	for _, t := range TypeTags {
+		if tag == t {
+			return "type"
+		}
+	}
+	return "topic"
+}
+
 // Spec: S-010 | Req: B-009, B-010
 type SearchOptions struct {
 	Tag     string
@@ -330,23 +355,6 @@ func readBody(scope config.Scope, projectPath, key string) (string, error) {
 func bodyHash(body string) string {
 	h := sha256.Sum256([]byte(body))
 	return fmt.Sprintf("%x", h[:8])
-}
-
-// PutWithOptions validates the type tag and calls Put. Delegates through Backend.
-// Spec: S-010 | Req: B-008 | Fix: Backend wiring
-func PutWithOptions(scope config.Scope, projectPath, key, body string, tags []string, typeTag string) error {
-	if typeTag != "" {
-		if err := ValidateType(typeTag); err != nil {
-			return err
-		}
-		tags = append(tags, "type:"+typeTag)
-	}
-	b, err := NewBackend(scope, projectPath)
-	if err != nil {
-		return err
-	}
-	defer b.Close()
-	return b.Put(key, body, tags, time.Now(), "")
 }
 
 // PutWithDedup inserts or updates only if the content hash differs. Delegates through Backend.

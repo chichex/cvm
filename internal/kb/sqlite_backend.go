@@ -318,7 +318,7 @@ func (s *SQLiteBackend) Search(query string, opts SearchOptions) ([]SearchResult
 	}
 	if opts.TypeTag != "" {
 		baseQuery += ` AND EXISTS (SELECT 1 FROM json_each(e.tags) WHERE value = ?)`
-		args = append(args, "type:"+opts.TypeTag)
+		args = append(args, opts.TypeTag)
 	}
 	// Spec: S-013 | Req: B-009 — since filter
 	if opts.Since > 0 {
@@ -412,7 +412,7 @@ func (s *SQLiteBackend) searchLike(query string, opts SearchOptions) ([]SearchRe
 	}
 	if opts.TypeTag != "" {
 		likeQuery += ` AND EXISTS (SELECT 1 FROM json_each(e.tags) WHERE value = ?)`
-		args = append(args, "type:"+opts.TypeTag)
+		args = append(args, opts.TypeTag)
 	}
 	if opts.Since > 0 {
 		cutoff := time.Now().Add(-opts.Since).UTC().Format(time.RFC3339Nano)

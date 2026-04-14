@@ -156,7 +156,7 @@ func (f *FlatBackend) Search(query string, opts SearchOptions) ([]SearchResult, 
 		if opts.TypeTag != "" {
 			found := false
 			for _, t := range e.Tags {
-				if t == "type:"+opts.TypeTag {
+				if t == opts.TypeTag {
 					found = true
 					break
 				}
