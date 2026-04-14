@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(npm *)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(codex *)",
+      "Bash(gemini *)",
+      "Bash(which *)",
+      "Bash(chmod +x *)",
+      "Bash(cat *)",
+      "Bash(echo *)",
+      "Bash(open *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(rm /tmp/cvm-*)"
+    ],
+    "defaultMode": "default"
+  }
+}
