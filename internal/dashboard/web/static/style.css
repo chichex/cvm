@@ -202,6 +202,13 @@ main {
 }
 .entry-card:hover { border-color: var(--accent); }
 .entry-card.expanded { border-color: var(--accent); background: #1a1a2a; }
+/* Spec: S-020 | Req: C-003d, NF-002 — highlight animation */
+.entry-card.highlight-entry {
+  border-color: var(--teal);
+  background: rgba(148, 226, 213, 0.08);
+  box-shadow: 0 0 0 1px var(--teal);
+  transition: border-color 0.5s, background 0.5s, box-shadow 0.5s;
+}
 
 .entry-header {
   display: flex;
@@ -238,6 +245,8 @@ main {
 .badge-active     { background: #0d2b1a; color: var(--green); }
 .badge-stale      { background: #2a2a1a; color: var(--yellow); }
 .badge-summarized { background: #0d1f3a; color: var(--accent); }
+/* Spec: S-020 | Req: C-004b */
+.badge--session   { background: #1a2a3d; color: var(--teal); font-family: var(--font-mono); font-size: 10px; }
 
 .entry-meta {
   display: flex;
@@ -696,6 +705,9 @@ main {
   border-radius: var(--radius-sm);
   padding: 6px 10px;
 }
+/* Spec: S-020 | Req: B-001 — clickable pills */
+.knowledge-pill--clickable { cursor: pointer; transition: border-color 0.15s; }
+.knowledge-pill--clickable:hover { border-color: var(--accent); }
 
 .knowledge-pill__header {
   display: flex;

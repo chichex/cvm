@@ -15,6 +15,7 @@ const state = {
 
 let debounceTimer = null;
 let statsRefreshTimer = null;
+let navThrottleUntil = 0; // Spec: S-020 | Req: E-005 — leading-edge throttle
 
 // ---- DOM helpers ----
 
@@ -81,6 +82,14 @@ function renderBadge(tag) {
 
 function renderScopeBadge(scope) {
   return el('span', `badge badge-${scope}`, scope);
+}
+
+// Spec: S-020 | Req: C-004
+function renderSessionBadge(sessionId) {
+  const label = sessionId.length > 8 ? sessionId.substring(0, 8) + '\u2026' : sessionId;
+  const badge = el('span', 'badge badge--session', label);
+  badge.title = sessionId;
+  return badge;
 }
 
 // ---- URL hash helpers ----
@@ -326,8 +335,9 @@ function renderSessionCard(session) {
   return card;
 }
 
+// Spec: S-020 | Req: B-001, I-004
 function renderKnowledgePill(entry) {
-  const pill = el('div', 'knowledge-pill');
+  const pill = el('div', 'knowledge-pill knowledge-pill--clickable');
 
   const header = el('div', 'knowledge-pill__header');
   header.appendChild(el('span', 'entry-key', entry.key));
@@ -341,6 +351,12 @@ function renderKnowledgePill(entry) {
       pill.appendChild(el('div', 'knowledge-pill__preview', preview.substring(0, 120)));
     }
   }
+
+  // Click on individual pill navigates to Knowledge tab (B-001)
+  pill.addEventListener('click', (e) => {
+    e.stopPropagation();
+    navigateToKnowledgeEntry(entry.key);
+  });
 
   return pill;
 }
@@ -450,6 +466,10 @@ async function loadKnowledge() {
     header.appendChild(el('span', 'entry-key', entry.key));
     (entry.tags || []).forEach(tag => header.appendChild(renderBadge(tag)));
     header.appendChild(renderScopeBadge(entry.scope));
+    // Spec: S-020 | Req: B-002 — session origin badge
+    if (entry.session_id) {
+      header.appendChild(renderSessionBadge(entry.session_id));
+    }
     card.appendChild(header);
 
     const metaEl = el('div', 'entry-meta');
@@ -485,6 +505,10 @@ function showKnowledgeDetail(entry) {
 
   const tagsRow = el('div', 'entry-header');
   (entry.tags || []).forEach(tag => tagsRow.appendChild(renderBadge(tag)));
+  // Spec: S-020 | Req: B-002
+  if (entry.session_id) {
+    tagsRow.appendChild(renderSessionBadge(entry.session_id));
+  }
   panel.appendChild(tagsRow);
 
   panel.appendChild(el('div', 'detail-body', entry.body || ''));
@@ -561,6 +585,65 @@ function filterByTag(tag) {
   const tagInput = $('#knowledge-tag');
   if (tagInput) tagInput.value = tag;
   window.location.hash = `#knowledge?tag=${encodeURIComponent(tag)}`;
+}
+
+// Spec: S-020 | Req: C-003 — cross-tab navigation from session card to Knowledge tab
+async function navigateToKnowledgeEntry(key) {
+  // Leading-edge throttle (E-005)
+  const now = Date.now();
+  if (now < navThrottleUntil) return;
+  navThrottleUntil = now + 300;
+
+  // Reset filters so the target entry is visible (C-003b)
+  state.knowledgeQuery = '';
+  state.knowledgeTag = '';
+  state.knowledgeScope = 'both';
+  const qInput = $('#knowledge-q');
+  if (qInput) qInput.value = '';
+  const tagInput = $('#knowledge-tag');
+  if (tagInput) tagInput.value = '';
+  $$('#knowledge-scope .scope-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.scope === 'both');
+  });
+
+  // Switch tab UI without triggering auto-load (we'll load manually below)
+  state.tab = 'knowledge';
+  window.location.hash = 'knowledge';
+  $$('nav button[data-tab]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === 'knowledge');
+  });
+  $$('.view[data-tab]').forEach(view => {
+    view.classList.toggle('active', view.dataset.tab === 'knowledge');
+  });
+
+  // Single load of knowledge entries
+  await loadKnowledge();
+
+  // Find and select the entry card (C-003c)
+  const cards = $$('#knowledge-list .entry-card');
+  let found = false;
+  cards.forEach(card => {
+    const keyEl = card.querySelector('.entry-key');
+    if (keyEl && keyEl.textContent === key) {
+      found = true;
+      card.classList.add('expanded');
+      card.classList.add('highlight-entry');
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      card.click(); // triggers showKnowledgeDetail
+      // Remove highlight after 2s (C-003f)
+      setTimeout(() => card.classList.remove('highlight-entry'), 2000);
+    }
+  });
+
+  // E-001: entry was deleted between load
+  if (!found) {
+    const panel = $('#knowledge-detail');
+    if (panel) {
+      panel.classList.remove('empty');
+      panel.innerHTML = '';
+      panel.appendChild(el('div', 'empty-state', 'Entry not found'));
+    }
+  }
 }
 
 // ---- Stats auto-refresh ----

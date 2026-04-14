@@ -235,7 +235,7 @@ func (s *SQLiteBackend) Put(key, body string, tags []string, now time.Time, sess
 // Get returns the Document for a key.
 func (s *SQLiteBackend) Get(key string) (Document, error) {
 	row := s.db.QueryRow(`
-		SELECT key, body, tags, enabled, created_at, updated_at, last_referenced
+		SELECT key, body, tags, enabled, created_at, updated_at, last_referenced, session_id
 		FROM entries WHERE key = ?`, key)
 	doc, err := scanDocument(row)
 	if err == sql.ErrNoRows {
@@ -250,11 +250,11 @@ func (s *SQLiteBackend) List(tag string) ([]Entry, error) {
 	var err error
 
 	if tag == "" {
-		rows, err = s.db.Query(`SELECT key, body, tags, enabled, created_at, updated_at, last_referenced FROM entries`)
+		rows, err = s.db.Query(`SELECT key, body, tags, enabled, created_at, updated_at, last_referenced, session_id FROM entries`)
 	} else {
 		// Filter by tag via JSON array containment
 		rows, err = s.db.Query(`
-			SELECT e.key, e.body, e.tags, e.enabled, e.created_at, e.updated_at, e.last_referenced
+			SELECT e.key, e.body, e.tags, e.enabled, e.created_at, e.updated_at, e.last_referenced, e.session_id
 			FROM entries e, json_each(e.tags) je
 			WHERE je.value = ?
 			GROUP BY e.key`, tag)
@@ -303,7 +303,7 @@ func (s *SQLiteBackend) Search(query string, opts SearchOptions) ([]SearchResult
 	// Build FTS5 query — join with entries for filtering
 	// Spec: S-013 | Req: B-008 — FTS5 MATCH with BM25 ranking
 	baseQuery := `
-		SELECT e.key, e.body, e.tags, e.enabled, e.created_at, e.updated_at, e.last_referenced,
+		SELECT e.key, e.body, e.tags, e.enabled, e.created_at, e.updated_at, e.last_referenced, e.session_id,
 		       rank
 		FROM entries_fts f
 		JOIN entries e ON e.rowid = f.rowid
@@ -341,16 +341,16 @@ func (s *SQLiteBackend) Search(query string, opts SearchOptions) ([]SearchResult
 	var results []SearchResult
 	for rows.Next() {
 		var (
-			key, body, tagsJSON     string
-			enabledInt              int
-			createdStr, updatedStr  string
-			lastRefStr              sql.NullString
-			rank                    float64
+			key, body, tagsJSON        string
+			enabledInt                 int
+			createdStr, updatedStr     string
+			lastRefStr, sessionIDStr   sql.NullString
+			rank                       float64
 		)
-		if err := rows.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr, &rank); err != nil {
+		if err := rows.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr, &sessionIDStr, &rank); err != nil {
 			return nil, err
 		}
-		e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr)
+		e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr, sessionIDStr)
 		if err != nil {
 			continue
 		}
@@ -401,7 +401,7 @@ func (s *SQLiteBackend) Search(query string, opts SearchOptions) ([]SearchResult
 func (s *SQLiteBackend) searchLike(query string, opts SearchOptions) ([]SearchResult, error) {
 	likePattern := "%" + strings.ReplaceAll(query, "%", "\\%") + "%"
 
-	likeQuery := `SELECT e.key, e.body, e.tags, e.enabled, e.created_at, e.updated_at, e.last_referenced
+	likeQuery := `SELECT e.key, e.body, e.tags, e.enabled, e.created_at, e.updated_at, e.last_referenced, e.session_id
 		FROM entries e
 		WHERE (LOWER(e.key) LIKE LOWER(?) OR LOWER(e.body) LIKE LOWER(?))`
 	args := []interface{}{likePattern, likePattern}
@@ -432,12 +432,12 @@ func (s *SQLiteBackend) searchLike(query string, opts SearchOptions) ([]SearchRe
 		var key, body, tagsJSON string
 		var enabledInt int
 		var createdStr, updatedStr string
-		var lastRefStr sql.NullString
+		var lastRefStr, sessionIDStr sql.NullString
 
-		if err := rows.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr); err != nil {
+		if err := rows.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr, &sessionIDStr); err != nil {
 			return nil, err
 		}
-		e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr)
+		e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr, sessionIDStr)
 		if err != nil {
 			continue
 		}
@@ -480,7 +480,7 @@ func (s *SQLiteBackend) Timeline(days int) ([]TimelineDay, error) {
 	cutoff := time.Now().AddDate(0, 0, -days).UTC().Format(time.RFC3339Nano)
 
 	rows, err := s.db.Query(`
-		SELECT key, body, tags, enabled, created_at, updated_at, last_referenced
+		SELECT key, body, tags, enabled, created_at, updated_at, last_referenced, session_id
 		FROM entries
 		WHERE updated_at >= ?
 		ORDER BY updated_at DESC`, cutoff)
@@ -627,7 +627,7 @@ func (s *SQLiteBackend) SetEnabled(key string, enabled bool) error {
 // Spec: S-013 | Req: B-017
 func (s *SQLiteBackend) LoadDocuments() ([]Document, error) {
 	rows, err := s.db.Query(`
-		SELECT key, body, tags, enabled, created_at, updated_at, last_referenced FROM entries`)
+		SELECT key, body, tags, enabled, created_at, updated_at, last_referenced, session_id FROM entries`)
 	if err != nil {
 		return nil, fmt.Errorf("load documents: %w", err)
 	}
@@ -664,16 +664,22 @@ func (s *SQLiteBackend) SaveDocument(doc Document) error {
 		lastRefStr = &s
 	}
 
+	var sessionIDVal interface{}
+	if doc.Entry.SessionID != "" {
+		sessionIDVal = doc.Entry.SessionID
+	}
+
 	_, err = s.db.Exec(`
-		INSERT INTO entries (key, body, tags, enabled, created_at, updated_at, last_referenced)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO entries (key, body, tags, enabled, created_at, updated_at, last_referenced, session_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET
 			body = excluded.body,
 			tags = excluded.tags,
 			enabled = excluded.enabled,
 			updated_at = excluded.updated_at,
-			last_referenced = excluded.last_referenced
-	`, doc.Entry.Key, doc.Body, string(tagsJSON), enabledInt, createdStr, updatedStr, lastRefStr)
+			last_referenced = excluded.last_referenced,
+			session_id = excluded.session_id
+	`, doc.Entry.Key, doc.Body, string(tagsJSON), enabledInt, createdStr, updatedStr, lastRefStr, sessionIDVal)
 	return err
 }
 
@@ -783,35 +789,37 @@ type scanner interface {
 	Scan(dest ...interface{}) error
 }
 
+// Spec: S-020 | Req: C-001c
 func scanDocument(s scanner) (Document, error) {
 	var key, body, tagsJSON string
 	var enabledInt int
 	var createdStr, updatedStr string
-	var lastRefStr sql.NullString
+	var lastRefStr, sessionIDStr sql.NullString
 
-	if err := s.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr); err != nil {
+	if err := s.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr, &sessionIDStr); err != nil {
 		return Document{}, err
 	}
 
-	e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr)
+	e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr, sessionIDStr)
 	if err != nil {
 		return Document{}, err
 	}
 	return Document{Entry: e, Body: body}, nil
 }
 
+// Spec: S-020 | Req: C-001c
 func scanEntries(rows *sql.Rows) ([]Entry, error) {
 	var entries []Entry
 	for rows.Next() {
 		var key, body, tagsJSON string
 		var enabledInt int
 		var createdStr, updatedStr string
-		var lastRefStr sql.NullString
+		var lastRefStr, sessionIDStr sql.NullString
 
-		if err := rows.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr); err != nil {
+		if err := rows.Scan(&key, &body, &tagsJSON, &enabledInt, &createdStr, &updatedStr, &lastRefStr, &sessionIDStr); err != nil {
 			return nil, err
 		}
-		e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr)
+		e, err := parseEntry(key, tagsJSON, enabledInt, createdStr, updatedStr, lastRefStr, sessionIDStr)
 		if err != nil {
 			continue
 		}
@@ -820,7 +828,8 @@ func scanEntries(rows *sql.Rows) ([]Entry, error) {
 	return entries, rows.Err()
 }
 
-func parseEntry(key, tagsJSON string, enabledInt int, createdStr, updatedStr string, lastRefStr sql.NullString) (Entry, error) {
+// Spec: S-020 | Req: C-001d
+func parseEntry(key, tagsJSON string, enabledInt int, createdStr, updatedStr string, lastRefStr, sessionIDStr sql.NullString) (Entry, error) {
 	var tags []string
 	if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
 		tags = nil
@@ -843,6 +852,11 @@ func parseEntry(key, tagsJSON string, enabledInt int, createdStr, updatedStr str
 		}
 	}
 
+	var sessionID string
+	if sessionIDStr.Valid {
+		sessionID = sessionIDStr.String
+	}
+
 	return Entry{
 		Key:            key,
 		Tags:           tags,
@@ -850,5 +864,6 @@ func parseEntry(key, tagsJSON string, enabledInt int, createdStr, updatedStr str
 		CreatedAt:      createdAt,
 		UpdatedAt:      updatedAt,
 		LastReferenced: lastReferenced,
+		SessionID:      sessionID,
 	}, nil
 }
