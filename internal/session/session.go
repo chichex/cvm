@@ -750,6 +750,18 @@ If nothing new to capture, output: []
 		return nil
 	}
 
+	// Strip markdown code fences if present (claude sometimes wraps JSON in ```json ... ```)
+	jsonStr := outputStr
+	if strings.HasPrefix(jsonStr, "```") {
+		if idx := strings.Index(jsonStr, "\n"); idx != -1 {
+			jsonStr = jsonStr[idx+1:]
+		}
+		if strings.HasSuffix(jsonStr, "```") {
+			jsonStr = strings.TrimSuffix(jsonStr, "```")
+		}
+		jsonStr = strings.TrimSpace(jsonStr)
+	}
+
 	// Parse JSON array output. Spec: S-017 | Req: B-005
 	type retroEntry struct {
 		Key  string   `json:"key"`
@@ -758,7 +770,7 @@ If nothing new to capture, output: []
 	}
 	var entries []retroEntry
 	// Spec: S-021 | Req: C-003, B-005 — on parse failure, persist error summary with raw output
-	if err := json.Unmarshal([]byte(outputStr), &entries); err != nil {
+	if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
 		summary := RetroSummary{
 			Error:     fmt.Sprintf("parsing retro output: %v", err),
 			RawOutput: rawOutput,
