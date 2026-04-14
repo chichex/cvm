@@ -24,6 +24,16 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// RetroSummary holds structured stats about a retro run.
+// Spec: S-021 | Req: C-002
+type RetroSummary struct {
+	EntriesFound     int    `json:"entries_found"`
+	EntriesPersisted int    `json:"entries_persisted"`
+	EntriesSkipped   int    `json:"entries_skipped"`
+	Error            string `json:"error,omitempty"`
+	RawOutput        string `json:"raw_output"`
+}
+
 // SessionEvent is the base struct for all JSONL lines.
 // Spec: S-017 | Req: C-003, C-004, C-005
 type SessionEvent struct {
@@ -347,6 +357,11 @@ func openGlobalDB() (*sql.DB, error) {
 		}
 		db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)")
 	}
+	// Ensure sessions.retro_summary column exists (idempotent migration). Spec: S-021 | Req: C-001, E-004
+	var hasRetroSummaryCol int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='retro_summary'").Scan(&hasRetroSummaryCol); err == nil && hasRetroSummaryCol == 0 {
+		db.Exec("ALTER TABLE sessions ADD COLUMN retro_summary TEXT")
+	}
 	return db, nil
 }
 
@@ -634,8 +649,38 @@ func End(sessionID string) error {
 	return nil
 }
 
+// truncateRunes truncates s to maxRunes runes and appends suffix if truncated.
+// Spec: S-021 | Req: C-003, E-002, E-003, E-007, I-004
+func truncateRunes(s string, maxRunes int, suffix string) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + suffix
+}
+
+// persistRetroSummary saves the RetroSummary JSON to the parent session row (best-effort).
+// Spec: S-021 | Req: C-003, E-006, I-003
+func persistRetroSummary(sessionID string, summary RetroSummary) {
+	data, err := json.Marshal(summary)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to marshal retro summary: %v\n", err)
+		return
+	}
+	db, dbErr := openGlobalDB()
+	if dbErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to persist retro summary: %v\n", dbErr)
+		return
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE sessions SET retro_summary = ? WHERE id = ?", string(data), sessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to persist retro summary: %v\n", err)
+	}
+}
+
 // generateRetro calls claude CLI with the retro prompt and persists results to KB with session_id.
 // Spec: S-017 | Req: B-005, C-009, C-009a
+// Spec: S-021 | Req: C-003
 func generateRetro(sessionID string, events []SessionEvent, model string) error {
 	// Build events text for prompt. Spec: S-017 | Req: C-009a
 	var sb strings.Builder
@@ -684,12 +729,24 @@ If nothing new to capture, output: []
 	cmd.Env = append(os.Environ(), "CVM_PARENT_SESSION_ID="+sessionID)
 	cmd.Stdin = strings.NewReader(promptText)
 	out, err := cmd.Output()
+
+	// Spec: S-021 | Req: C-003, B-004 — on claude failure, persist error summary
 	if err != nil {
+		summary := RetroSummary{
+			Error: fmt.Sprintf("claude invocation failed: %v", err),
+		}
+		persistRetroSummary(sessionID, summary)
 		return fmt.Errorf("claude invocation failed: %w", err)
 	}
 
 	outputStr := strings.TrimSpace(string(out))
+	// Spec: S-021 | Req: C-003, E-002, I-004 — truncate raw output to 10000 runes
+	rawOutput := truncateRunes(outputStr, 10000, " [truncated]")
+
+	// Spec: S-021 | Req: B-003 — empty stdout: persist summary with zeros
 	if outputStr == "" {
+		summary := RetroSummary{RawOutput: rawOutput}
+		persistRetroSummary(sessionID, summary)
 		return nil
 	}
 
@@ -700,19 +757,42 @@ If nothing new to capture, output: []
 		Tags []string `json:"tags"`
 	}
 	var entries []retroEntry
+	// Spec: S-021 | Req: C-003, B-005 — on parse failure, persist error summary with raw output
 	if err := json.Unmarshal([]byte(outputStr), &entries); err != nil {
+		summary := RetroSummary{
+			Error:     fmt.Sprintf("parsing retro output: %v", err),
+			RawOutput: rawOutput,
+		}
+		persistRetroSummary(sessionID, summary)
 		return fmt.Errorf("parsing retro output: %w", err)
 	}
 
-	// Persist each entry with session_id. Spec: S-017 | Req: B-005, C-010
+	// Persist each entry with session_id, tracking stats. Spec: S-017 | Req: B-005, C-010
+	// Spec: S-021 | Req: C-002, B-001, E-001, I-002
+	entriesFound := len(entries)
+	entriesPersisted := 0
+	entriesSkipped := 0
 	for _, entry := range entries {
 		if entry.Key == "" {
+			entriesSkipped++
 			continue
 		}
 		if putErr := kb.Put(config.ScopeGlobal, "", entry.Key, entry.Body, entry.Tags, sessionID); putErr != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to put retro entry %q: %v\n", entry.Key, putErr)
+			entriesSkipped++
+		} else {
+			entriesPersisted++
 		}
 	}
+
+	// Spec: S-021 | Req: C-003, B-001, B-002
+	summary := RetroSummary{
+		EntriesFound:     entriesFound,
+		EntriesPersisted: entriesPersisted,
+		EntriesSkipped:   entriesSkipped,
+		RawOutput:        rawOutput,
+	}
+	persistRetroSummary(sessionID, summary)
 
 	return nil
 }

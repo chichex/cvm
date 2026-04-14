@@ -307,6 +307,11 @@ func openGlobalDB() (*sql.DB, error) {
 		}
 		db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)")
 	}
+	// Spec: S-021 | Req: C-001, E-004 — idempotent migration for retro_summary
+	var hasRetroSummaryCol int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='retro_summary'").Scan(&hasRetroSummaryCol); err == nil && hasRetroSummaryCol == 0 {
+		db.Exec("ALTER TABLE sessions ADD COLUMN retro_summary TEXT")
+	}
 	return db, nil
 }
 
@@ -646,6 +651,15 @@ type retroSessionJSON struct {
 	EndedAt   string `json:"ended_at,omitempty"`
 }
 
+// Spec: S-021 | Req: C-004
+type retroSummaryJSON struct {
+	EntriesFound     int    `json:"entries_found"`
+	EntriesPersisted int    `json:"entries_persisted"`
+	EntriesSkipped   int    `json:"entries_skipped"`
+	Error            string `json:"error,omitempty"`
+	RawOutput        string `json:"raw_output"`
+}
+
 type sessionCardJSON struct {
 	// Common fields
 	ID         string               `json:"id"`
@@ -667,6 +681,9 @@ type sessionCardJSON struct {
 
 	// Spec: S-018 | Req: C-006 — nested retro session
 	RetroSession *retroSessionJSON `json:"retro_session,omitempty"`
+
+	// Spec: S-021 | Req: C-004 — retro summary stats
+	RetroSummary *retroSummaryJSON `json:"retro_summary,omitempty"`
 }
 
 type sessionsResponse struct {
@@ -691,9 +708,10 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	db, dbErr := openGlobalDB()
 	if dbErr == nil {
 		// Query top-level sessions only (parent_session_id IS NULL). Spec: S-018 | Req: I-001
+		// Spec: S-021 | Req: C-004 — include retro_summary in SELECT
 		rows, err := db.Query(`
 			SELECT s.id, s.status, s.project, s.profile, s.started_at, s.ended_at,
-			       s.jsonl_path, s.event_count, COUNT(e.key) as kb_entries
+			       s.jsonl_path, s.event_count, COUNT(e.key) as kb_entries, s.retro_summary
 			FROM sessions s
 			LEFT JOIN entries e ON e.session_id = s.id
 			WHERE s.parent_session_id IS NULL
@@ -707,8 +725,9 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 					endedAt                                  sql.NullString
 					jsonlPath                                string
 					eventCount, kbEntries                    int
+					retroSummaryRaw                          sql.NullString // Spec: S-021 | Req: C-004
 				)
-				if rows.Scan(&id, &status, &project, &profile, &startedAt, &endedAt, &jsonlPath, &eventCount, &kbEntries) != nil {
+				if rows.Scan(&id, &status, &project, &profile, &startedAt, &endedAt, &jsonlPath, &eventCount, &kbEntries, &retroSummaryRaw) != nil {
 					continue
 				}
 
@@ -737,6 +756,15 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 						EventCount: fmt.Sprintf("%d", eventCount),
 					},
 				}
+
+				// Spec: S-021 | Req: C-004, E-005 — parse retro_summary JSON, leave nil if NULL or invalid
+				if retroSummaryRaw.Valid && retroSummaryRaw.String != "" {
+					var rs retroSummaryJSON
+					if json.Unmarshal([]byte(retroSummaryRaw.String), &rs) == nil {
+						card.RetroSummary = &rs
+					}
+				}
+
 				cards = append(cards, card)
 			}
 			rows.Close()

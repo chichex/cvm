@@ -279,16 +279,61 @@ function renderSessionCard(session) {
     card.appendChild(summaryEl);
   }
 
-  // --- Retro session indicator (Spec: S-018 | Req: B-004) ---
+  // --- Retro session indicator (Spec: S-018 | Req: B-004, Spec: S-021 | Req: C-005) ---
   if (session.retro_session) {
     const retro = session.retro_session;
     const retroEl = el('div', 'session-card__retro');
     const isRetroActive = retro.status === 'active';
-    const retroIcon = isRetroActive ? '⟳' : '✓';
-    const retroLabel = isRetroActive ? 'Summarizing…' : 'Retro complete';
-    const retroBadge = el('span', `session-card__retro-badge ${isRetroActive ? 'retro--active' : 'retro--done'}`,
-      `${retroIcon} ${retroLabel}`);
-    retroEl.appendChild(retroBadge);
+    const rs = session.retro_summary;
+
+    if (isRetroActive) {
+      // Retro still running
+      const retroBadge = el('span', 'session-card__retro-badge retro--active', '\u27F3 Summarizing\u2026');
+      retroEl.appendChild(retroBadge);
+    } else if (rs && !rs.error) {
+      // Retro completed with summary, no error — Spec: S-021 | Req: B-007, B-008
+      const label = rs.entries_found > 0
+        ? `\u2713 Retro: ${rs.entries_found} found, ${rs.entries_persisted} persisted`
+        : '\u2713 Retro: no new learnings';
+      const retroBadge = el('span', 'session-card__retro-badge retro--done', label);
+      retroEl.appendChild(retroBadge);
+    } else if (rs && rs.error) {
+      // Retro completed with error — Spec: S-021 | Req: B-009
+      const retroBadge = el('span', 'session-card__retro-badge retro--error', '\u26A0 Retro failed');
+      retroEl.appendChild(retroBadge);
+      const errorDetail = el('div', 'session-card__retro-error');
+      errorDetail.textContent = rs.error;
+      errorDetail.style.display = 'none';
+      retroEl.appendChild(errorDetail);
+      retroBadge.style.cursor = 'pointer';
+      retroBadge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = errorDetail.style.display !== 'none';
+        errorDetail.style.display = isOpen ? 'none' : 'block';
+      });
+    } else {
+      // No summary (backward compat pre-S-021) — Spec: S-021 | Req: E-005
+      const retroBadge = el('span', 'session-card__retro-badge retro--done', '\u2713 Retro complete');
+      retroEl.appendChild(retroBadge);
+    }
+
+    // Spec: S-021 | Req: B-010 — raw_output expandable section
+    if (rs && rs.raw_output) {
+      const toggleBtn = el('button', 'session-card__retro-raw-toggle', 'Show raw output');
+      const rawPre = el('pre', 'session-card__retro-raw');
+      rawPre.textContent = rs.raw_output;
+      rawPre.style.display = 'none';
+      rawPre.style.overflowX = 'auto';
+      toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = rawPre.style.display !== 'none';
+        rawPre.style.display = isOpen ? 'none' : 'block';
+        toggleBtn.textContent = isOpen ? 'Show raw output' : 'Hide raw output';
+      });
+      retroEl.appendChild(toggleBtn);
+      retroEl.appendChild(rawPre);
+    }
+
     card.appendChild(retroEl);
   }
 
