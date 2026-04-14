@@ -514,7 +514,9 @@ func End(sessionID string) error {
 	// Compaction for retro only (read-time, file not rewritten). Spec: S-017 | Req: B-005
 	retroEvents := events
 	if len(events) > 1000 {
-		retroEvents = append(events[:1], events[len(events)-999:]...)
+		retroEvents = make([]SessionEvent, 0, 1000)
+		retroEvents = append(retroEvents, events[0])
+		retroEvents = append(retroEvents, events[len(events)-999:]...)
 	}
 
 	// Determine whether to generate retro. Spec: S-017 | Req: B-005, B-006, E-003, I-009

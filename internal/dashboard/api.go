@@ -287,6 +287,18 @@ func openGlobalDB() (*sql.DB, error) {
 	return db, nil
 }
 
+// querySessionStatus returns the status of a session from SQLite. Spec: S-017 | Req: I-005
+func querySessionStatus(sessionID string) (string, error) {
+	db, err := openGlobalDB()
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+	var status string
+	err = db.QueryRow("SELECT status FROM sessions WHERE id = ?", sessionID).Scan(&status)
+	return status, err
+}
+
 type sessionDetailResponse struct {
 	SessionID  string                   `json:"session_id"`
 	Key        string                   `json:"key"`
@@ -386,8 +398,13 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 			startedAt = events[0].Timestamp
 			projectDir = events[0].Project
 		}
-		// Active if no end event. Spec: S-017 | Req: I-005 — no PID checking.
-		active := len(events) > 0 && !sessionHasEndEvent(events)
+		// Active: check SQLite first, fallback to JSONL. Spec: S-017 | Req: I-005
+		active := false
+		if dbStatus, err := querySessionStatus(uuid); err == nil {
+			active = dbStatus == "active"
+		} else {
+			active = len(events) > 0 && !sessionHasEndEvent(events)
+		}
 		result = append(result, sessionSummary{
 			SessionID:  uuid,
 			Key:        e.Name(),
@@ -608,7 +625,8 @@ type sessionCardJSON struct {
 	Knowledge  []knowledgeEntryJSON `json:"knowledge"`
 
 	// Active-only fields
-	LineCount int `json:"line_count,omitempty"`
+	LineCount  int `json:"line_count,omitempty"`
+	KBEntries  int `json:"kb_entries,omitempty"` // Spec: S-017 | Req: C-008
 
 	// Summarized-only fields
 	SummaryBody string `json:"summary_body,omitempty"`
@@ -673,6 +691,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 					UpdatedAt:  updatedAt,
 					ProjectDir: project,
 					LineCount:  eventCount,
+					KBEntries:  kbEntries,
 					Knowledge:  []knowledgeEntryJSON{},
 					Meta: &sessionMetaJSON{
 						ProjectDir: project,

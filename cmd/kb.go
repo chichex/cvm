@@ -49,21 +49,23 @@ var kbPutCmd = &cobra.Command{
 			}
 			tags = append(tags, "type:"+typeTag)
 		}
-		skipped, err := kb.PutWithDedup(scope, projectPath, key, body, tags)
-		if err != nil {
-			return err
-		}
-		if skipped {
-			fmt.Printf("Skipped KB entry %q (identical content)\n", key)
-		} else {
-			// If session-id provided, re-put with session linking (dedup doesn't support session_id)
-			// Spec: S-017 | Req: C-010, B-015
-			if sessionID != "" {
-				if err := kb.Put(scope, projectPath, key, body, tags, sessionID); err != nil {
-					return err
-				}
+		// If session-id provided, skip dedup and write directly with session linking.
+		// Otherwise use dedup as before. Spec: S-017 | Req: C-010, B-015
+		if sessionID != "" {
+			if err := kb.Put(scope, projectPath, key, body, tags, sessionID); err != nil {
+				return err
 			}
 			fmt.Printf("Saved KB entry %q (%s)\n", key, scope)
+		} else {
+			skipped, err := kb.PutWithDedup(scope, projectPath, key, body, tags)
+			if err != nil {
+				return err
+			}
+			if skipped {
+				fmt.Printf("Skipped KB entry %q (identical content)\n", key)
+			} else {
+				fmt.Printf("Saved KB entry %q (%s)\n", key, scope)
+			}
 		}
 		return nil
 	},
