@@ -33,6 +33,11 @@ mkdir -p "$INSTALL_DIR"
 cp "$TMP/cvm" "$INSTALL_DIR/cvm"
 chmod +x "$INSTALL_DIR/cvm"
 
+# Ad-hoc codesign on macOS to prevent Gatekeeper from killing the binary
+if [ "$OS" = "darwin" ]; then
+  codesign --sign - --force "$INSTALL_DIR/cvm" 2>/dev/null || true
+fi
+
 echo "Installed cvm v${VERSION} to $INSTALL_DIR/cvm"
 
 # Check if INSTALL_DIR is in PATH

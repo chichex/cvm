@@ -25,6 +25,10 @@ brews:
     license: MIT
     install: |
       bin.install "cvm"
+    post_install: |
+      if OS.mac?
+        system "codesign", "--sign", "-", "--force", "#{bin}/cvm"
+      end
     test: |
       system "#{bin}/cvm", "--version"
 

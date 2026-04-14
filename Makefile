@@ -8,6 +8,9 @@ build:
 
 install: build
 	cp bin/cvm /usr/local/bin/cvm
+ifeq ($(shell uname -s),Darwin)
+	codesign --sign - --force /usr/local/bin/cvm
+endif
 
 uninstall:
 	rm -f /usr/local/bin/cvm
