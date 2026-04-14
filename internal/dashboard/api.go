@@ -289,13 +289,23 @@ func openGlobalDB() (*sql.DB, error) {
 		id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'active',
 		project TEXT NOT NULL, profile TEXT NOT NULL DEFAULT '',
 		started_at TEXT NOT NULL, ended_at TEXT,
-		jsonl_path TEXT NOT NULL, event_count INTEGER NOT NULL DEFAULT 0
+		jsonl_path TEXT NOT NULL, event_count INTEGER NOT NULL DEFAULT 0,
+		parent_session_id TEXT
 	)`)
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)")
 	var hasCol int
 	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('entries') WHERE name='session_id'").Scan(&hasCol); err == nil && hasCol == 0 {
 		db.Exec("ALTER TABLE entries ADD COLUMN session_id TEXT")
 		db.Exec("CREATE INDEX IF NOT EXISTS idx_entries_session_id ON entries(session_id)")
+	}
+	// Spec: S-018 | Req: C-001, E-004 — idempotent migration for parent_session_id
+	var hasParentCol int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='parent_session_id'").Scan(&hasParentCol); err == nil && hasParentCol == 0 {
+		if _, err := db.Exec("ALTER TABLE sessions ADD COLUMN parent_session_id TEXT"); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to add parent_session_id column: %v\n", err)
+		}
+		db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)")
 	}
 	return db, nil
 }
@@ -625,6 +635,14 @@ type sessionMetaJSON struct {
 	TimeRange  string `json:"time_range,omitempty"`
 }
 
+// Spec: S-018 | Req: C-006
+type retroSessionJSON struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	StartedAt string `json:"started_at"`
+	EndedAt   string `json:"ended_at,omitempty"`
+}
+
 type sessionCardJSON struct {
 	// Common fields
 	ID         string               `json:"id"`
@@ -643,6 +661,9 @@ type sessionCardJSON struct {
 
 	// Summarized-only fields
 	SummaryBody string `json:"summary_body,omitempty"`
+
+	// Spec: S-018 | Req: C-006 — nested retro session
+	RetroSession *retroSessionJSON `json:"retro_session,omitempty"`
 }
 
 type sessionsResponse struct {
@@ -663,13 +684,16 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	// --- Sessions from SQLite sessions table (C-008 query) ---
 	// Spec: S-017 | Req: B-011, C-008, I-005
+	// Spec: S-018 | Req: C-006, B-002, B-003, I-001
 	db, dbErr := openGlobalDB()
 	if dbErr == nil {
+		// Query top-level sessions only (parent_session_id IS NULL). Spec: S-018 | Req: I-001
 		rows, err := db.Query(`
 			SELECT s.id, s.status, s.project, s.profile, s.started_at, s.ended_at,
 			       s.jsonl_path, s.event_count, COUNT(e.key) as kb_entries
 			FROM sessions s
 			LEFT JOIN entries e ON e.session_id = s.id
+			WHERE s.parent_session_id IS NULL
 			GROUP BY s.id
 			ORDER BY s.started_at DESC
 		`)
@@ -689,7 +713,6 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 				if endedAt.Valid {
 					updatedAt = endedAt.String
 				} else if jsonlPath != "" {
-					// Use JSONL file mtime as updated_at while active.
 					if fi, err := os.Stat(jsonlPath); err == nil {
 						updatedAt = fi.ModTime().UTC().Format(time.RFC3339)
 					}
@@ -715,6 +738,80 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			}
 			rows.Close()
 		}
+
+		// Spec: S-018 | Req: B-002, C-006, E-003 — attach child retro sessions to parents
+		childRows, childErr := db.Query(`
+			SELECT id, status, started_at, ended_at, parent_session_id
+			FROM sessions
+			WHERE parent_session_id IS NOT NULL
+			ORDER BY started_at DESC
+		`)
+		if childErr == nil {
+			// Build map: parent_session_id → most recent child (E-003)
+			retroMap := map[string]*retroSessionJSON{}
+			for childRows.Next() {
+				var childID, childStatus, childStartedAt, parentID string
+				var childEndedAt sql.NullString
+				if childRows.Scan(&childID, &childStatus, &childStartedAt, &childEndedAt, &parentID) != nil {
+					continue
+				}
+				if _, exists := retroMap[parentID]; exists {
+					continue // keep only the most recent (first row due to ORDER BY DESC)
+				}
+				retro := &retroSessionJSON{
+					ID:        childID,
+					Status:    childStatus,
+					StartedAt: childStartedAt,
+				}
+				if childEndedAt.Valid {
+					retro.EndedAt = childEndedAt.String
+				}
+				retroMap[parentID] = retro
+			}
+			childRows.Close()
+			for i := range cards {
+				if retro, ok := retroMap[cards[i].ID]; ok {
+					cards[i].RetroSession = retro
+				}
+			}
+		}
+
+		// Spec: S-018 | Req: B-003, I-003 — populate knowledge entries per session
+		kbRows, kbErr := db.Query(`
+			SELECT key, body, tags, created_at, updated_at, session_id
+			FROM entries
+			WHERE session_id IS NOT NULL AND session_id != ''
+		`)
+		if kbErr == nil {
+			knowledgeMap := map[string][]knowledgeEntryJSON{}
+			for kbRows.Next() {
+				var key, body, tagsJSON, createdAt, updatedAt, sessionID string
+				if kbRows.Scan(&key, &body, &tagsJSON, &createdAt, &updatedAt, &sessionID) != nil {
+					continue
+				}
+				var tags []string
+				if json.Unmarshal([]byte(tagsJSON), &tags) != nil {
+					tags = []string{}
+				}
+				knowledgeMap[sessionID] = append(knowledgeMap[sessionID], knowledgeEntryJSON{
+					Key:           key,
+					Tags:          tags,
+					Scope:         "global",
+					CreatedAt:     createdAt,
+					UpdatedAt:     updatedAt,
+					Body:          body,
+					TokenEstimate: len(body) / 4,
+				})
+			}
+			kbRows.Close()
+			for i := range cards {
+				if entries, ok := knowledgeMap[cards[i].ID]; ok {
+					cards[i].Knowledge = entries
+					cards[i].KBEntries = len(entries)
+				}
+			}
+		}
+
 		db.Close()
 	}
 

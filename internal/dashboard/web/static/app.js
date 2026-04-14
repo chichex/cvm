@@ -259,7 +259,20 @@ function renderSessionCard(session) {
     card.appendChild(summaryEl);
   }
 
-  // --- Knowledge section ---
+  // --- Retro session indicator (Spec: S-018 | Req: B-004) ---
+  if (session.retro_session) {
+    const retro = session.retro_session;
+    const retroEl = el('div', 'session-card__retro');
+    const isRetroActive = retro.status === 'active';
+    const retroIcon = isRetroActive ? '⟳' : '✓';
+    const retroLabel = isRetroActive ? 'Summarizing…' : 'Retro complete';
+    const retroBadge = el('span', `session-card__retro-badge ${isRetroActive ? 'retro--active' : 'retro--done'}`,
+      `${retroIcon} ${retroLabel}`);
+    retroEl.appendChild(retroBadge);
+    card.appendChild(retroEl);
+  }
+
+  // --- Knowledge section (Spec: S-018 | Req: B-005) ---
   const knowledge = session.knowledge || [];
   if (knowledge.length > 0) {
     const kSection = el('div', 'session-card__knowledge');

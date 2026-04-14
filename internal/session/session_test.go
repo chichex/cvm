@@ -110,7 +110,7 @@ func TestStartCreatesFile(t *testing.T) {
 	defer func() { sessionsDir = origDir }()
 
 	uuid := "test-start-uuid-0001"
-	err := Start(uuid, "/projects/myapp", "sdd-mem")
+	err := Start(uuid, "/projects/myapp", "sdd-mem", "")
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestStartGeneratesUUIDWhenEmpty(t *testing.T) {
 	sessionsDir = func() string { return dir }
 	defer func() { sessionsDir = origDir }()
 
-	err := Start("", "/proj", "default")
+	err := Start("", "/proj", "default", "")
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -527,7 +527,7 @@ func TestNoPIDInStartEvent(t *testing.T) {
 	defer func() { sessionsDir = origDir }()
 
 	uuid := "test-nopid-uuid-0001"
-	if err := Start(uuid, "/proj", "default"); err != nil {
+	if err := Start(uuid, "/proj", "default", ""); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 

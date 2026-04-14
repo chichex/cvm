@@ -21,7 +21,13 @@ fi
 
 profile=$("$CVM" profile 2>/dev/null | grep -m1 "Local:" | awk '{print $2}' || echo "unknown")
 
-"$CVM" session start --session-id "$session_id" --project "$project" --profile "$profile" 2>/dev/null || \
+# Spec: S-018 | Req: C-005 — propagate parent session ID if set
+parent_args=()
+if [ -n "${CVM_PARENT_SESSION_ID:-}" ]; then
+  parent_args=(--parent-session-id "$CVM_PARENT_SESSION_ID")
+fi
+
+"$CVM" session start --session-id "$session_id" --project "$project" --profile "$profile" "${parent_args[@]}" 2>/dev/null || \
   echo "[session-start] warning: cvm session start failed" >&2
 
 exit 0

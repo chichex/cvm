@@ -632,6 +632,29 @@ main {
   padding-top: 8px;
 }
 
+/* Retro session indicator — Spec: S-018 */
+.session-card__retro {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+.session-card__retro-badge {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+.retro--active {
+  color: #f0c040;
+  background: rgba(240, 192, 64, 0.1);
+  border: 1px solid rgba(240, 192, 64, 0.3);
+}
+.retro--done {
+  color: #4ec990;
+  background: rgba(78, 201, 144, 0.1);
+  border: 1px solid rgba(78, 201, 144, 0.3);
+}
+
 .session-card__knowledge-toggle {
   background: none;
   border: 1px solid var(--border);

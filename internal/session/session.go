@@ -292,16 +292,18 @@ func resolvePrefix(prefix string) (string, error) {
 // Spec: S-017 | Req: C-001, C-002a
 const sessionsSchema = `
 CREATE TABLE IF NOT EXISTS sessions (
-    id          TEXT PRIMARY KEY,
-    status      TEXT NOT NULL DEFAULT 'active',
-    project     TEXT NOT NULL,
-    profile     TEXT NOT NULL DEFAULT '',
-    started_at  TEXT NOT NULL,
-    ended_at    TEXT,
-    jsonl_path  TEXT NOT NULL,
-    event_count INTEGER NOT NULL DEFAULT 0
+    id                  TEXT PRIMARY KEY,
+    status              TEXT NOT NULL DEFAULT 'active',
+    project             TEXT NOT NULL,
+    profile             TEXT NOT NULL DEFAULT '',
+    started_at          TEXT NOT NULL,
+    ended_at            TEXT,
+    jsonl_path          TEXT NOT NULL,
+    event_count         INTEGER NOT NULL DEFAULT 0,
+    parent_session_id   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
 `
 
 // openGlobalDB opens the global KB SQLite database directly and ensures
@@ -337,6 +339,14 @@ func openGlobalDB() (*sql.DB, error) {
 		db.Exec("ALTER TABLE entries ADD COLUMN session_id TEXT")
 		db.Exec("CREATE INDEX IF NOT EXISTS idx_entries_session_id ON entries(session_id)")
 	}
+	// Ensure sessions.parent_session_id column exists (idempotent migration). Spec: S-018 | Req: C-001, E-004
+	var hasParentCol int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='parent_session_id'").Scan(&hasParentCol); err == nil && hasParentCol == 0 {
+		if _, err := db.Exec("ALTER TABLE sessions ADD COLUMN parent_session_id TEXT"); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to add parent_session_id column: %v\n", err)
+		}
+		db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)")
+	}
 	return db, nil
 }
 
@@ -356,7 +366,8 @@ func generateUUID() string {
 
 // Start creates a new session file with a start event and inserts into SQLite sessions table.
 // Spec: S-017 | Req: B-001, C-001, C-004, I-005
-func Start(sessionID, project, profileName string) error {
+// Spec: S-018 | Req: C-003
+func Start(sessionID, project, profileName, parentSessionID string) error {
 	// Ensure sessions dir exists. Spec: S-017 | Req: I-008
 	if err := os.MkdirAll(sessionsDir(), 0755); err != nil {
 		return fmt.Errorf("creating sessions dir: %w", err)
@@ -420,13 +431,18 @@ func Start(sessionID, project, profileName string) error {
 	}
 
 	// INSERT into sessions table. Spec: S-017 | Req: B-001, C-001
+	// Spec: S-018 | Req: C-003 — persist parent_session_id
 	db, dbErr := openGlobalDB()
 	if dbErr == nil {
 		defer db.Close()
+		var parentID interface{}
+		if parentSessionID != "" {
+			parentID = parentSessionID
+		}
 		_, sqlErr := db.Exec(`
-			INSERT OR IGNORE INTO sessions (id, status, project, profile, started_at, jsonl_path, event_count)
-			VALUES (?, 'active', ?, ?, ?, ?, 0)
-		`, sessionID, project, profileName, ev.Timestamp, path)
+			INSERT OR IGNORE INTO sessions (id, status, project, profile, started_at, jsonl_path, event_count, parent_session_id)
+			VALUES (?, 'active', ?, ?, ?, ?, 0, ?)
+		`, sessionID, project, profileName, ev.Timestamp, path, parentID)
 		if sqlErr != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to insert session into db: %v\n", sqlErr)
 		}
@@ -664,6 +680,8 @@ If nothing new to capture, output: []
 </already_captured>`, eventsText, existingEntries)
 
 	cmd := exec.Command("claude", "-p", "--model", model)
+	// Spec: S-018 | Req: C-004 — propagate parent session ID so child session links back
+	cmd.Env = append(os.Environ(), "CVM_PARENT_SESSION_ID="+sessionID)
 	cmd.Stdin = strings.NewReader(promptText)
 	out, err := cmd.Output()
 	if err != nil {

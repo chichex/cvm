@@ -8,3 +8,4 @@
 | S-015 | tool-observation | superseded | 0.1.0 | manual + integration tests | specs/tool-observation.spec.md | Superseded by S-017 |
 | S-016 | dashboard | draft | 0.1.0 | manual + browser testing | specs/dashboard.spec.md |
 | S-017 | session-system | approved | 0.4.0 | TDD + manual | specs/session-system.spec.md |
+| S-018 | nested-retro-sessions | draft | 0.1.0 | tests post-impl + manual | specs/nested-retro-sessions.spec.md |

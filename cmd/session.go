@@ -29,6 +29,7 @@ var sessionStartCmd = &cobra.Command{
 		sessionID, _ := cmd.Flags().GetString("session-id")
 		project, _ := cmd.Flags().GetString("project")
 		profileName, _ := cmd.Flags().GetString("profile")
+		parentSessionID, _ := cmd.Flags().GetString("parent-session-id")
 
 		// Default project to cwd if not provided.
 		if project == "" {
@@ -39,7 +40,7 @@ var sessionStartCmd = &cobra.Command{
 			}
 		}
 
-		return session.Start(sessionID, project, profileName)
+		return session.Start(sessionID, project, profileName, parentSessionID)
 	},
 }
 
@@ -159,10 +160,11 @@ func parseGCDuration(s string) (time.Duration, error) {
 }
 
 func init() {
-	// Start flags. Spec: S-017 | Req: C-007
+	// Start flags. Spec: S-017 | Req: C-007 | S-018 | Req: C-002
 	sessionStartCmd.Flags().String("session-id", "", "UUID of the session (generated if omitted)")
 	sessionStartCmd.Flags().String("project", "", "Absolute path to project dir (defaults to cwd)")
 	sessionStartCmd.Flags().String("profile", "", "Active CVM profile name")
+	sessionStartCmd.Flags().String("parent-session-id", "", "Parent session UUID (for child/retro sessions)")
 
 	// Append flags. Spec: S-017 | Req: C-006
 	sessionAppendCmd.Flags().String("type", "", "Event type: prompt, tool, or agent (required)")
