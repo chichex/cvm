@@ -27,7 +27,7 @@ if [ -n "${CVM_PARENT_SESSION_ID:-}" ]; then
   parent_args=(--parent-session-id "$CVM_PARENT_SESSION_ID")
 fi
 
-"$CVM" session start --session-id "$session_id" --project "$project" --profile "$profile" "${parent_args[@]}" 2>/dev/null || \
+"$CVM" session start --session-id "$session_id" --project "$project" --profile "$profile" ${parent_args[@]+"${parent_args[@]}"} 2>/dev/null || \
   echo "[session-start] warning: cvm session start failed" >&2
 
 exit 0
