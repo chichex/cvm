@@ -386,6 +386,35 @@ func Start(sessionID, project, profileName string) error {
 	line = append(line, '\n')
 
 	path := sessionPath(sessionID)
+
+	// If JSONL already exists, this is a resume — append instead of overwrite.
+	if _, statErr := os.Stat(path); statErr == nil {
+		ev.Type = "resume"
+		line, err = json.Marshal(ev)
+		if err != nil {
+			return err
+		}
+		line = append(line, '\n')
+		f, openErr := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+		if openErr != nil {
+			return fmt.Errorf("appending resume event: %w", openErr)
+		}
+		_, writeErr := f.Write(line)
+		f.Close()
+		if writeErr != nil {
+			return fmt.Errorf("writing resume event: %w", writeErr)
+		}
+		// Re-activate in DB if it was ended.
+		db, dbErr := openGlobalDB()
+		if dbErr == nil {
+			defer db.Close()
+			db.Exec(`UPDATE sessions SET status = 'active' WHERE id = ?`, sessionID)
+		}
+		fmt.Println(sessionID)
+		fmt.Fprintf(os.Stderr, "cvm session resumed\n")
+		return nil
+	}
+
 	if err := os.WriteFile(path, line, 0644); err != nil {
 		return fmt.Errorf("creating session file: %w", err)
 	}
@@ -494,8 +523,14 @@ func Append(sessionID, eventType, content, tool, agentType string) error {
 func End(sessionID string) error {
 	path := sessionPath(sessionID)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "error: session %s not found\n", sessionID)
-		os.Exit(1)
+		// Try prefix resolution like Show() does.
+		resolved, resolveErr := resolvePrefix(sessionID)
+		if resolveErr != nil {
+			fmt.Fprintf(os.Stderr, "error: session %s not found\n", sessionID)
+			os.Exit(1)
+		}
+		sessionID = resolved
+		path = sessionPath(sessionID)
 	}
 
 	// E-008: check concurrent end via SQLite status. Spec: S-017 | Req: E-008
