@@ -45,7 +45,7 @@ Mejoras al comando `cvm kb` que benefician a todos los profiles.
 
 | ID | Item | Descripción |
 |----|------|-------------|
-| B-008 | `cvm kb put --type` | Flag `--type` con enum: decision, learning, gotcha, discovery, session. Persiste como tag `type:<valor>` |
+| B-008 | `cvm kb put --type` | Flag `--type` con enum: decision, learning, gotcha, discovery, session. Persiste como tag bare (e.g., `learning`). Actualizado por S-019 |
 | B-009 | `cvm kb search` ranking | Ordenar resultados: exact key match > key contains > body contains. Flag `--sort recent\|relevance` |
 | B-010 | `cvm kb search` filters | Flags `--tag`, `--since`, `--type` para filtrar resultados |
 | B-011 | `cvm kb timeline` | Nuevo subcommand: entries ordenadas cronológicamente, agrupadas por día. Flag `--days N` |

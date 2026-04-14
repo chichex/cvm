@@ -199,11 +199,14 @@ Respuesta:
     "enabled": 40,
     "stale": 5,
     "total_tokens": 12400,
-    "by_tag": {
+    "by_type": {
       "decision": 12,
       "learning": 15,
-      "gotcha": 8,
-      "session": 7
+      "gotcha": 8
+    },
+    "by_topic": {
+      "cvm": 5,
+      "backend": 3
     }
   },
   "local": {
@@ -211,9 +214,11 @@ Respuesta:
     "enabled": 8,
     "stale": 0,
     "total_tokens": 1200,
-    "by_tag": {
-      "session-buffer": 1,
-      "spec-gap": 3
+    "by_type": {
+      "decision": 3
+    },
+    "by_topic": {
+      "infra": 2
     }
   },
   "active_sessions": 1
@@ -221,7 +226,7 @@ Respuesta:
 ```
 
 - **I-002l**: `stale` MUST ser el count de entradas con `last_referenced` nulo o con más de 30 días sin referencia.
-- **I-002m**: `by_tag` MUST incluir todos los tags presentes en la KB, no solo los predefinidos.
+- **I-002m**: `by_type` MUST contener tags clasificados como tipo (`ClassifyTag() == "type"`). `by_topic` MUST contener tags clasificados como tema. Tags internos MUST ser excluidos. Ver S-019 para la clasificación.
 - **I-002n**: `active_sessions` MUST ser el count de entradas con key que empieza por `"session-buffer-"` en la KB local.
 - **I-002o**: Si la KB global no está inicializada, `global` MUST retornar conteos en cero sin error.
 
@@ -290,7 +295,7 @@ El frontend es una SPA mínima con 4 tabs navegables via hash URL:
 
 - **I-007a**: MUST mostrar conteos para global y local: total, enabled, stale, total_tokens.
 - **I-007b**: MUST mostrar `active_sessions` como un contador destacado.
-- **I-007c**: MUST mostrar el breakdown `by_tag` como una lista ordenada por count descendente.
+- **I-007c**: MUST mostrar `by_type` y `by_topic` como secciones separadas ("Types" y "Topics"), cada una ordenada por count descendente. Tags internos MUST ser excluidos. Ver S-019.
 - **I-007d**: MUST auto-refrescar cada 10 segundos (no via SSE — poll directo a `/api/stats`).
 - **I-007e**: MUST mostrar la estimación total de tokens con el formato humano (e.g., "12.4k tokens").
 

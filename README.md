@@ -90,7 +90,7 @@ cvm upgrade             # upgrade cvm itself to the latest version
 
 ```bash
 cvm kb put <key> --body "..." --tag "a,b"   # create/update entry
-cvm kb put <key> --body "..." --type learning # type: decision|learning|gotcha|discovery|session
+cvm kb put <key> --body "..." --type learning # adds type tag: decision|learning|gotcha|discovery|session
 cvm kb ls [--tag <tag>]                      # list entries
 cvm kb show <key>                            # show entry content
 cvm kb search <query>                        # search entries (ranked: exact > key > body)

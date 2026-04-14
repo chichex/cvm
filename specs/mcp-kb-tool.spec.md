@@ -111,7 +111,7 @@ Output (tool result content[0].text): JSON string with structure:
     "results": [
       {
         "key": "my-entry-key",
-        "tags": ["decision", "type:decision"],
+        "tags": ["decision"],
         "snippet": "...context around the match...",
         "rank": 0,
         "updated_at": "2026-04-13T10:00:00Z"
@@ -164,7 +164,7 @@ Input schema:
 Output (tool result content[0].text): JSON string with structure:
   {
     "key": "my-entry-key",
-    "tags": ["decision", "type:decision"],
+    "tags": ["decision"],
     "body": "Full markdown body of the entry (frontmatter stripped)",
     "created_at": "2026-04-01T09:00:00Z",
     "updated_at": "2026-04-13T10:00:00Z",
@@ -250,7 +250,7 @@ No se cachea el índice entre llamadas.
 ### B-002-happy: Search con resultados
 
 ```
-GIVEN KB global contiene entries: "arch-decision-api" (tags: [decision, type:decision])
+GIVEN KB global contiene entries: "arch-decision-api" (tags: [decision])
   y "api-gateway-notes" (tags: [learning])
 AND la query es "api"
 WHEN kb_search es llamado con {"query": "api"}
@@ -263,7 +263,7 @@ AND resultados MUST estar ordenados por rank ASC (exacto < contiene < body)
 ### B-002-filter: Search con filtro type
 
 ```
-GIVEN KB global contiene: "bug-fix-2026" (tags: [type:gotcha]), "arch-v2" (tags: [type:decision])
+GIVEN KB global contiene: "bug-fix-2026" (tags: [gotcha]), "arch-v2" (tags: [decision])
 WHEN kb_search es llamado con {"query": "a", "type": "gotcha"}
 THEN el resultado MUST incluir SOLO "bug-fix-2026"
 AND "total" MUST ser 1
@@ -291,11 +291,11 @@ AND isError MUST ser false
 
 ```
 GIVEN KB global contiene entry "my-decision" con body "Usamos flat files por simplicidad"
-  y tags ["decision", "type:decision"]
+  y tags ["decision"]
 WHEN kb_get es llamado con {"key": "my-decision"}
 THEN el resultado MUST ser JSON con "key": "my-decision"
 AND "body" MUST ser "Usamos flat files por simplicidad" (sin frontmatter)
-AND "tags" MUST ser ["decision", "type:decision"]
+AND "tags" MUST ser ["decision"]
 AND "scope" MUST ser "global"
 ```
 
