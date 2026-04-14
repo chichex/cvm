@@ -19,6 +19,7 @@ brews:
   - repository:
       owner: chichex
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: https://github.com/chichex/cvm
     description: "Claude Version Manager - profile manager for Claude Code"
