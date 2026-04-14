@@ -114,14 +114,15 @@ func saveIndex(scope config.Scope, projectPath string, idx *Index) error {
 }
 
 // Put inserts or updates an entry. Delegates through Backend.
-// Spec: S-013 | Fix: Backend wiring
-func Put(scope config.Scope, projectPath, key, body string, tags []string) error {
+// sessionID links the entry to a session; pass "" for no session link.
+// Spec: S-013 | Fix: Backend wiring | Spec: S-017 | Req: C-010
+func Put(scope config.Scope, projectPath, key, body string, tags []string, sessionID string) error {
 	b, err := NewBackend(scope, projectPath)
 	if err != nil {
 		return err
 	}
 	defer b.Close()
-	return b.Put(key, body, tags, time.Now())
+	return b.Put(key, body, tags, time.Now(), sessionID)
 }
 
 // LoadDocuments returns all Documents. Delegates through Backend.
@@ -345,7 +346,7 @@ func PutWithOptions(scope config.Scope, projectPath, key, body string, tags []st
 		return err
 	}
 	defer b.Close()
-	return b.Put(key, body, tags, time.Now())
+	return b.Put(key, body, tags, time.Now(), "")
 }
 
 // PutWithDedup inserts or updates only if the content hash differs. Delegates through Backend.

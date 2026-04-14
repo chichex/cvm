@@ -1,16 +1,16 @@
 // Package session implements the CVM session system.
-// Spec: S-017 | Version: 0.4.0
+// Spec: S-017 | Version: 0.6.0
 package session
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -21,12 +21,11 @@ import (
 	"github.com/chichex/cvm/internal/kb"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/state"
+	_ "modernc.org/sqlite"
 )
 
 // SessionEvent is the base struct for all JSONL lines.
-// Concrete event types are discriminated by Type field.
-// Additional fields use omitempty so unused fields are omitted.
-// Spec: S-017 | Req: C-001, C-002, C-003
+// Spec: S-017 | Req: C-003, C-004, C-005
 type SessionEvent struct {
 	Type      string          `json:"type"`
 	Timestamp string          `json:"ts"`
@@ -36,9 +35,7 @@ type SessionEvent struct {
 	SessionID string          `json:"session_id,omitempty"`
 	Project   string          `json:"project,omitempty"`
 	Profile   string          `json:"profile,omitempty"`
-	PID       int             `json:"pid,omitempty"`
 	Tools     map[string]bool `json:"tools,omitempty"`
-	SummaryKey string         `json:"summary_key,omitempty"`
 	Reason    string          `json:"reason,omitempty"`
 }
 
@@ -54,7 +51,7 @@ func sessionPath(uuid string) string {
 }
 
 // detectTools checks PATH for known tools.
-// Spec: S-017 | Req: C-002
+// Spec: S-017 | Req: C-004
 func detectTools() map[string]bool {
 	tools := map[string]bool{}
 	for _, tool := range []string{"claude", "codex", "gemini", "gh", "docker", "node", "npm", "go"} {
@@ -64,14 +61,14 @@ func detectTools() map[string]bool {
 	return tools
 }
 
-// truncate truncates s to maxRunes runes, appending "…" if truncated.
-// Spec: S-017 | Req: C-004
+// truncate truncates s to maxRunes runes, appending "..." if truncated.
+// Spec: S-017 | Req: C-006
 func truncate(s string, maxRunes int) string {
 	r := []rune(s)
 	if len(r) <= maxRunes {
 		return s
 	}
-	return string(r[:maxRunes]) + "…"
+	return string(r[:maxRunes]) + "\u2026"
 }
 
 // withFileLock acquires an exclusive lock on the given file, runs fn, then releases.
@@ -85,7 +82,6 @@ func withFileLock(f *os.File, fn func() error) error {
 }
 
 // appendEvent appends a JSON-encoded event to the session file under lock.
-// It first checks if the last line is an end event (E-002).
 // Spec: S-017 | Req: I-007, I-011
 func appendEvent(path string, event SessionEvent) error {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0644)
@@ -95,8 +91,6 @@ func appendEvent(path string, event SessionEvent) error {
 	defer f.Close()
 
 	return withFileLock(f, func() error {
-		// Check last line for end event (O(1): seek near EOF, scan backwards)
-		// Spec: S-017 | Req: I-011, E-002
 		info, err := f.Stat()
 		if err != nil {
 			return err
@@ -125,9 +119,7 @@ func appendEvent(path string, event SessionEvent) error {
 var errAlreadyEnded = fmt.Errorf("session already ended")
 
 // readLastLine reads the last newline-terminated line from an open file.
-// O(1) for typical line sizes: seeks near EOF and scans backward for a newline.
 func readLastLine(f *os.File, size int64) (string, error) {
-	// Seek to read up to 4096 bytes from the end.
 	bufSize := int64(4096)
 	if size < bufSize {
 		bufSize = size
@@ -140,8 +132,6 @@ func readLastLine(f *os.File, size int64) (string, error) {
 	}
 	buf = buf[:n]
 
-	// Find the last newline.
-	// The file ends with \n so find the second-to-last newline.
 	end := len(buf)
 	if end > 0 && buf[end-1] == '\n' {
 		end--
@@ -154,7 +144,7 @@ func readLastLine(f *os.File, size int64) (string, error) {
 }
 
 // readStartEvent reads the first line of a session file and parses it as SessionEvent.
-// Spec: S-017 | Req: C-002
+// Spec: S-017 | Req: C-004
 func readStartEvent(path string) (*SessionEvent, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -171,54 +161,6 @@ func readStartEvent(path string) (*SessionEvent, error) {
 		return nil, fmt.Errorf("parsing start event: %w", err)
 	}
 	return &ev, nil
-}
-
-// isAlive checks if a PID is alive and its process name contains "claude".
-// Spec: S-017 | Req: I-010
-func isAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// On Unix, FindProcess always succeeds; send signal 0 to check existence.
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		return false
-	}
-	return processNameContainsClaude(pid)
-}
-
-// processNameContainsClaude checks if the process name for pid contains "claude".
-// Spec: S-017 | Req: I-010
-func processNameContainsClaude(pid int) bool {
-	var out []byte
-	var err error
-	if runtime.GOOS == "darwin" {
-		out, err = exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "comm=").Output()
-	} else {
-		commPath := fmt.Sprintf("/proc/%d/comm", pid)
-		out, err = os.ReadFile(commPath)
-	}
-	if err != nil {
-		return false
-	}
-	return strings.Contains(strings.ToLower(strings.TrimSpace(string(out))), "claude")
-}
-
-// isActive returns true if the session at path has no end event, a live PID, and process name "claude".
-// Spec: S-017 | Req: B-007, I-010
-func isActive(path string) bool {
-	ev, err := readStartEvent(path)
-	if err != nil {
-		return false
-	}
-	if !isAlive(ev.PID) {
-		return false
-	}
-	// Check no end event exists.
-	return !hasEndEvent(path)
 }
 
 // hasEndEvent returns true if the session file has an "end" event as its last line.
@@ -252,7 +194,6 @@ func countEvents(path string) int {
 	defer f.Close()
 	count := 0
 	scanner := bufio.NewScanner(f)
-	// Use larger buffer to handle long lines.
 	scanner.Buffer(make([]byte, 1<<20), 1<<20)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -264,7 +205,7 @@ func countEvents(path string) int {
 }
 
 // readAllEvents reads all events from a session file. Invalid JSON lines are skipped.
-// Spec: S-017 | Req: I-008, E-011
+// Spec: S-017 | Req: I-008, E-001
 func readAllEvents(path string) ([]SessionEvent, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -291,12 +232,38 @@ func readAllEvents(path string) ([]SessionEvent, error) {
 }
 
 // resolvePrefix resolves a UUID prefix to a full session UUID.
-// Spec: S-017 | Req: E-009
+// Tries SQLite first, falls back to JSONL file scan.
+// Spec: S-017 | Req: E-007
 func resolvePrefix(prefix string) (string, error) {
+	db, err := openGlobalDB()
+	if err == nil {
+		defer db.Close()
+		rows, qErr := db.Query(`SELECT id FROM sessions WHERE id LIKE ?||'%'`, prefix)
+		if qErr == nil {
+			defer rows.Close()
+			var matches []string
+			for rows.Next() {
+				var id string
+				if rows.Scan(&id) == nil {
+					matches = append(matches, id)
+				}
+			}
+			switch len(matches) {
+			case 1:
+				return matches[0], nil
+			case 0:
+				// Fall through to JSONL scan
+			default:
+				return "", fmt.Errorf("ambiguous prefix %s, matches: %s", prefix, strings.Join(matches, ", "))
+			}
+		}
+	}
+
+	// Fallback: scan JSONL files.
 	dir := sessionsDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", fmt.Errorf("reading sessions dir: %w", err)
+	entries, err2 := os.ReadDir(dir)
+	if err2 != nil {
+		return "", fmt.Errorf("reading sessions dir: %w", err2)
 	}
 
 	var matches []string
@@ -320,76 +287,54 @@ func resolvePrefix(prefix string) (string, error) {
 	}
 }
 
-// cleanOrphans scans the sessions dir and marks orphaned sessions.
-// An orphan is a session with no end event and PID dead or not "claude".
-// Spec: S-017 | Req: E-007
-func cleanOrphans() {
-	dir := sessionsDir()
-	entries, err := os.ReadDir(dir)
+// sessionsSchema is the minimal DDL for the sessions table.
+// Idempotent — uses CREATE TABLE IF NOT EXISTS.
+// Spec: S-017 | Req: C-001, C-002a
+const sessionsSchema = `
+CREATE TABLE IF NOT EXISTS sessions (
+    id          TEXT PRIMARY KEY,
+    status      TEXT NOT NULL DEFAULT 'active',
+    project     TEXT NOT NULL,
+    profile     TEXT NOT NULL DEFAULT '',
+    started_at  TEXT NOT NULL,
+    ended_at    TEXT,
+    jsonl_path  TEXT NOT NULL,
+    event_count INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+`
+
+// openGlobalDB opens the global KB SQLite database directly and ensures
+// the sessions table exists (idempotent migration). Spec: S-017 | Req: C-001, C-002a
+// The caller is responsible for closing the returned *sql.DB.
+func openGlobalDB() (*sql.DB, error) {
+	path := filepath.Join(config.GlobalKBDir(), "kb.db")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, fmt.Errorf("creating kb dir: %w", err)
+	}
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		uuid := strings.TrimSuffix(e.Name(), ".jsonl")
-
-		// Read start event to get PID.
-		ev, err := readStartEvent(path)
-		if err != nil {
-			continue
-		}
-		if ev.Type != "start" {
-			continue
-		}
-
-		// Skip already-ended sessions.
-		if hasEndEvent(path) {
-			continue
-		}
-
-		// If PID alive and process is "claude", it's not an orphan.
-		if isAlive(ev.PID) {
-			continue
-		}
-
-		// Orphan: acquire lock, verify no end event (check-under-lock), write end event.
-		// Spec: S-017 | Req: E-007
-		f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0644)
-		if err != nil {
-			continue
-		}
-		_ = withFileLock(f, func() error {
-			info, _ := f.Stat()
-			if info != nil && info.Size() > 0 {
-				lastLine, _ := readLastLine(f, info.Size())
-				var check SessionEvent
-				if json.Unmarshal([]byte(lastLine), &check) == nil && check.Type == "end" {
-					return nil // already ended under lock
-				}
-			}
-			endEv := SessionEvent{
-				Type:       "end",
-				Timestamp:  time.Now().Format(time.RFC3339),
-				SummaryKey: "",
-				Reason:     "orphan",
-			}
-			line, _ := json.Marshal(endEv)
-			line = append(line, '\n')
-			_, err := f.Write(line)
-			if err == nil {
-				fmt.Fprintf(os.Stderr, "warning: cleaned up orphan session %s (PID %d dead)\n", uuid, ev.PID)
-			}
-			return err
-		})
-		f.Close()
+	pragmas := []string{
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA busy_timeout=5000",
 	}
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("pragma: %w", err)
+		}
+	}
+	// Ensure sessions table exists (idempotent). Spec: S-017 | Req: C-002a
+	if _, err := db.Exec(sessionsSchema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("sessions schema: %w", err)
+	}
+	return db, nil
 }
 
-// generateUUID generates a UUID v4 using os.ReadFile of /dev/urandom.
+// generateUUID generates a UUID v4 using /dev/urandom.
 func generateUUID() string {
 	f, err := os.Open("/dev/urandom")
 	if err != nil {
@@ -403,22 +348,18 @@ func generateUUID() string {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// Start creates a new session file with a start event.
-// Spec: S-017 | Req: B-001
-func Start(sessionID, project, profile string, pid int) error {
+// Start creates a new session file with a start event and inserts into SQLite sessions table.
+// Spec: S-017 | Req: B-001, C-001, C-004, I-005
+func Start(sessionID, project, profileName string) error {
 	// Ensure sessions dir exists. Spec: S-017 | Req: I-008
 	if err := os.MkdirAll(sessionsDir(), 0755); err != nil {
 		return fmt.Errorf("creating sessions dir: %w", err)
 	}
 
-	// Run orphan cleanup before creating new session. Spec: S-017 | Req: E-007, B-001
-	cleanOrphans()
+	// B-001: MUST NOT run any orphan cleanup or PID checking. Spec: S-017 | Req: I-005
 
 	if sessionID == "" {
 		sessionID = generateUUID()
-	}
-	if pid == 0 {
-		pid = os.Getppid()
 	}
 
 	tools := detectTools()
@@ -428,8 +369,7 @@ func Start(sessionID, project, profile string, pid int) error {
 		Timestamp: time.Now().Format(time.RFC3339),
 		SessionID: sessionID,
 		Project:   project,
-		Profile:   profile,
-		PID:       pid,
+		Profile:   profileName,
 		Tools:     tools,
 	}
 
@@ -444,11 +384,23 @@ func Start(sessionID, project, profile string, pid int) error {
 		return fmt.Errorf("creating session file: %w", err)
 	}
 
-	// Print UUID to stdout (for programmatic capture by hooks/tests)
+	// INSERT into sessions table. Spec: S-017 | Req: B-001, C-001
+	db, dbErr := openGlobalDB()
+	if dbErr == nil {
+		defer db.Close()
+		_, sqlErr := db.Exec(`
+			INSERT OR IGNORE INTO sessions (id, status, project, profile, started_at, jsonl_path, event_count)
+			VALUES (?, 'active', ?, ?, ?, ?, 0)
+		`, sessionID, project, profileName, ev.Timestamp, path)
+		if sqlErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to insert session into db: %v\n", sqlErr)
+		}
+	}
+
+	// Print UUID to stdout (for programmatic capture by hooks/tests).
 	fmt.Println(sessionID)
 
-	// Print session info to stderr (same output as legacy lifecycle.Start)
-	// UUID goes to stdout for programmatic capture; stats go to stderr for human info
+	// Print session info to stderr.
 	fmt.Fprintf(os.Stderr, "cvm session started\n")
 	st, _ := state.Load()
 	if st != nil {
@@ -475,15 +427,15 @@ func Start(sessionID, project, profile string, pid int) error {
 	return nil
 }
 
-// Append appends an event to an existing session file.
-// Spec: S-017 | Req: B-002, B-003, B-004, C-004, E-001, E-002, I-007, I-011
+// Append appends an event to an existing session file and updates event_count in SQLite.
+// Spec: S-017 | Req: B-002, B-003, B-004, C-006, E-001, E-002, I-007, I-011
 func Append(sessionID, eventType, content, tool, agentType string) error {
 	if sessionID == "" {
 		fmt.Fprintln(os.Stderr, "error: session_id is required")
 		os.Exit(1)
 	}
 
-	// Apply truncation limits. Spec: S-017 | Req: C-004
+	// Apply truncation limits. Spec: S-017 | Req: C-006
 	switch eventType {
 	case "prompt":
 		content = truncate(content, 300)
@@ -495,7 +447,7 @@ func Append(sessionID, eventType, content, tool, agentType string) error {
 
 	path := sessionPath(sessionID)
 
-	// E-001: file doesn't exist → no-op with warning
+	// E-001: file doesn't exist -> no-op with warning
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "warning: session %s not found, skipping append\n", sessionID)
 		return nil
@@ -511,20 +463,46 @@ func Append(sessionID, eventType, content, tool, agentType string) error {
 
 	err := appendEvent(path, ev)
 	if err == errAlreadyEnded {
-		// E-002: session already ended → no-op with warning
+		// E-002: session already ended -> no-op with warning
 		fmt.Fprintf(os.Stderr, "warning: session %s already ended, ignoring append\n", sessionID)
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Update event_count in SQLite (best-effort/advisory). Spec: S-017 | Req: B-002, B-003, B-004, I-011
+	db, dbErr := openGlobalDB()
+	if dbErr == nil {
+		defer db.Close()
+		if _, sqlErr := db.Exec(`UPDATE sessions SET event_count = event_count + 1 WHERE id = ?`, sessionID); sqlErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to update event_count: %v\n", sqlErr)
+		}
+	}
+
+	return nil
 }
 
-// End closes a session, optionally generating a summary.
-// Spec: S-017 | Req: B-005, B-006, E-003, E-004, E-010
+// End closes a session, optionally running a retro pass via claude -p.
+// Spec: S-017 | Req: B-005, B-006, E-003, E-004, E-008
 func End(sessionID string) error {
 	path := sessionPath(sessionID)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "error: session %s not found\n", sessionID)
 		os.Exit(1)
+	}
+
+	// E-008: check concurrent end via SQLite status. Spec: S-017 | Req: E-008
+	db, dbErr := openGlobalDB()
+	if dbErr == nil {
+		var status string
+		err := db.QueryRow(`SELECT status FROM sessions WHERE id = ?`, sessionID).Scan(&status)
+		if err == nil && status == "ended" {
+			db.Close()
+			fmt.Fprintf(os.Stderr, "warning: session %s already ended\n", sessionID)
+			return nil
+		}
+		db.Close()
 	}
 
 	// Read events snapshot WITHOUT holding lock during LLM call. Spec: S-017 | Req: B-005
@@ -533,40 +511,35 @@ func End(sessionID string) error {
 		return fmt.Errorf("reading session events: %w", err)
 	}
 
-	// Compaction for summarization only (read-time, file not rewritten). Spec: S-017 | Req: E-006, C-005
-	summaryEvents := events
+	// Compaction for retro only (read-time, file not rewritten). Spec: S-017 | Req: B-005
+	retroEvents := events
 	if len(events) > 1000 {
-		summaryEvents = append(events[:1], events[len(events)-999:]...)
+		retroEvents = append(events[:1], events[len(events)-999:]...)
 	}
 
-	// Determine whether to generate summary. Spec: S-017 | Req: B-005, B-006, E-003, I-009
-	autosummaryEnabled := os.Getenv("CVM_AUTOSUMMARY_ENABLED") != "false"
-	model := os.Getenv("CVM_AUTOSUMMARY_MODEL")
+	// Determine whether to generate retro. Spec: S-017 | Req: B-005, B-006, E-003, I-009
+	retroEnabled := os.Getenv("CVM_SESSION_RETRO_ENABLED") != "false"
+	model := os.Getenv("CVM_SESSION_RETRO_MODEL")
 	if model == "" {
 		model = "haiku"
 	}
 
-	summaryKey := ""
 	reason := "normal"
 
-	// E-003: skip summary on short sessions (< 3 events)
-	if autosummaryEnabled && len(events) >= 3 {
-		key, genErr := generateSummary(sessionID, summaryEvents, model)
-		if genErr != nil {
-			// E-004: summary failure → warn, continue
-			fmt.Fprintf(os.Stderr, "warning: summary generation failed: %v\n", genErr)
+	// E-003: skip retro on short sessions (< 3 events)
+	if retroEnabled && len(events) >= 3 {
+		if retroErr := generateRetro(sessionID, retroEvents, model); retroErr != nil {
+			// E-004: retro failure -> warn, continue with reason=error
+			fmt.Fprintf(os.Stderr, "warning: retro pass failed: %v\n", retroErr)
 			reason = "error"
-		} else {
-			summaryKey = key
 		}
 	}
 
-	// Append end event under lock. Check for concurrent end (E-010).
+	// Append end event under lock. Check for concurrent end (E-008).
 	endEv := SessionEvent{
-		Type:       "end",
-		Timestamp:  time.Now().Format(time.RFC3339),
-		SummaryKey: summaryKey,
-		Reason:     reason,
+		Type:      "end",
+		Timestamp: time.Now().Format(time.RFC3339),
+		Reason:    reason,
 	}
 	err = appendEvent(path, endEv)
 	if err == errAlreadyEnded {
@@ -577,10 +550,21 @@ func End(sessionID string) error {
 		return err
 	}
 
+	// Update SQLite: status='ended', ended_at=now. Spec: S-017 | Req: B-005
+	db, dbErr = openGlobalDB()
+	if dbErr == nil {
+		defer db.Close()
+		_, sqlErr := db.Exec(`UPDATE sessions SET status = 'ended', ended_at = ? WHERE id = ?`,
+			endEv.Timestamp, sessionID)
+		if sqlErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to update session status: %v\n", sqlErr)
+		}
+	}
+
 	// Cleanup learning-pulse. Spec: S-017 | Req: B-005
 	_ = os.Remove(filepath.Join(config.CvmHome(), "learning-pulse"))
 
-	// Automation integration (reused from lifecycle.End). Spec: S-017 | Req: B-005
+	// Automation integration. Spec: S-017 | Req: B-005
 	projectPath := ""
 	if len(events) > 0 && events[0].Type == "start" {
 		projectPath = events[0].Project
@@ -592,10 +576,10 @@ func End(sessionID string) error {
 	return nil
 }
 
-// generateSummary calls claude CLI to summarize the session and stores result in global KB.
-// Returns the KB key. Spec: S-017 | Req: B-005, C-008
-func generateSummary(sessionID string, events []SessionEvent, model string) (string, error) {
-	// Build events text for prompt. Spec: S-017 | Req: C-008
+// generateRetro calls claude CLI with the retro prompt and persists results to KB with session_id.
+// Spec: S-017 | Req: B-005, C-009, C-009a
+func generateRetro(sessionID string, events []SessionEvent, model string) error {
+	// Build events text for prompt. Spec: S-017 | Req: C-009a
 	var sb strings.Builder
 	for _, ev := range events {
 		line, _ := json.Marshal(ev)
@@ -604,38 +588,73 @@ func generateSummary(sessionID string, events []SessionEvent, model string) (str
 	}
 	eventsText := sb.String()
 
-	promptText := fmt.Sprintf(`Summarize this coding session from the captured events.
-Generate JSON: {"request": "...", "accomplished": "...", "discovered": "...", "next_steps": "..."}
-Max 1-2 sentences per field. Output ONLY the JSON.
+	// Query existing KB entries for this session. Spec: S-017 | Req: B-005, C-009a
+	existingEntries := ""
+	db, dbErr := openGlobalDB()
+	if dbErr == nil {
+		rows, qErr := db.Query(`SELECT key, body, tags FROM entries WHERE session_id = ?`, sessionID)
+		if qErr == nil {
+			var entriesBuilder strings.Builder
+			for rows.Next() {
+				var key, body, tagsJSON string
+				if rows.Scan(&key, &body, &tagsJSON) == nil {
+					entriesBuilder.WriteString(fmt.Sprintf("key: %s\nbody: %s\ntags: %s\n\n", key, body, tagsJSON))
+				}
+			}
+			rows.Close()
+			existingEntries = entriesBuilder.String()
+		}
+		db.Close()
+	}
+
+	promptText := fmt.Sprintf(`Analyze this coding session's events and identify learnings, decisions, or gotchas
+that were NOT already captured in the existing KB entries listed below.
+
+Output ONLY a JSON array. Each element: {"key": "...", "body": "...", "tags": ["learning"|"decision"|"gotcha"]}
+If nothing new to capture, output: []
 
 <events>
 %s
-</events>`, eventsText)
+</events>
+
+<already_captured>
+%s
+</already_captured>`, eventsText, existingEntries)
 
 	cmd := exec.Command("claude", "-p", "--model", model)
 	cmd.Stdin = strings.NewReader(promptText)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("claude invocation failed: %w", err)
+		return fmt.Errorf("claude invocation failed: %w", err)
 	}
 
-	summaryBody := strings.TrimSpace(string(out))
-	if summaryBody == "" {
-		return "", fmt.Errorf("empty summary output")
+	outputStr := strings.TrimSpace(string(out))
+	if outputStr == "" {
+		return nil
 	}
 
-	// Key format: session-summary-<YYYYMMDD-HHMMSS>-<uuid8>. Spec: S-017 | Req: B-005
-	uuid8 := sessionID
-	if len(uuid8) > 8 {
-		uuid8 = uuid8[:8]
+	// Parse JSON array output. Spec: S-017 | Req: B-005
+	type retroEntry struct {
+		Key  string   `json:"key"`
+		Body string   `json:"body"`
+		Tags []string `json:"tags"`
 	}
-	key := fmt.Sprintf("session-summary-%s-%s", time.Now().Format("20060102-150405"), uuid8)
-
-	if err := kb.Put(config.ScopeGlobal, "", key, summaryBody, []string{"session", "summary"}); err != nil {
-		return "", fmt.Errorf("storing summary in KB: %w", err)
+	var entries []retroEntry
+	if err := json.Unmarshal([]byte(outputStr), &entries); err != nil {
+		return fmt.Errorf("parsing retro output: %w", err)
 	}
 
-	return key, nil
+	// Persist each entry with session_id. Spec: S-017 | Req: B-005, C-010
+	for _, entry := range entries {
+		if entry.Key == "" {
+			continue
+		}
+		if putErr := kb.Put(config.ScopeGlobal, "", entry.Key, entry.Body, entry.Tags, sessionID); putErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to put retro entry %q: %v\n", entry.Key, putErr)
+		}
+	}
+
+	return nil
 }
 
 // runEndAutomation replicates lifecycle.End automation integration.
@@ -688,7 +707,7 @@ func runEndAutomation(projectPath string) error {
 	return nil
 }
 
-// saveActiveProfiles saves the currently active profiles (reused from lifecycle).
+// saveActiveProfiles saves the currently active profiles.
 func saveActiveProfiles(projectPath string) error {
 	st, err := state.Load()
 	if err != nil {
@@ -708,7 +727,7 @@ func saveActiveProfiles(projectPath string) error {
 	return nil
 }
 
-// queueAutomationRunner starts the automation runner in background (reused from lifecycle).
+// queueAutomationRunner starts the automation runner in background.
 func queueAutomationRunner() (bool, error) {
 	binPath, err := os.Executable()
 	if err != nil {
@@ -753,13 +772,181 @@ func taggedEntryCount(scope config.Scope, projectPath string) int {
 	return count
 }
 
-// sessionFileInfo holds summary info for listing.
+// sessionRow holds data from the sessions SQLite table.
+// Spec: S-017 | Req: C-001
+type sessionRow struct {
+	ID         string
+	Status     string
+	Project    string
+	Profile    string
+	StartedAt  string
+	EndedAt    sql.NullString
+	JSONLPath  string
+	EventCount int
+}
+
+// queryActiveSessions returns all active sessions from SQLite.
+// Spec: S-017 | Req: B-007
+func queryActiveSessions() ([]sessionRow, error) {
+	db, err := openGlobalDB()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`SELECT id, status, project, profile, started_at, ended_at, jsonl_path, event_count
+		FROM sessions WHERE status = 'active'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanSessionRows(rows)
+}
+
+// queryAllSessions returns sessions ordered by started_at desc with optional limit.
+// Spec: S-017 | Req: B-008
+func queryAllSessions(limit int) ([]sessionRow, error) {
+	db, err := openGlobalDB()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	var (
+		rows *sql.Rows
+		qErr error
+	)
+	if limit > 0 {
+		rows, qErr = db.Query(`SELECT id, status, project, profile, started_at, ended_at, jsonl_path, event_count
+			FROM sessions ORDER BY started_at DESC LIMIT ?`, limit)
+	} else {
+		rows, qErr = db.Query(`SELECT id, status, project, profile, started_at, ended_at, jsonl_path, event_count
+			FROM sessions ORDER BY started_at DESC`)
+	}
+	if qErr != nil {
+		return nil, qErr
+	}
+	defer rows.Close()
+	return scanSessionRows(rows)
+}
+
+// scanSessionRows scans sql.Rows into []sessionRow.
+func scanSessionRows(rows *sql.Rows) ([]sessionRow, error) {
+	var result []sessionRow
+	for rows.Next() {
+		var r sessionRow
+		if err := rows.Scan(&r.ID, &r.Status, &r.Project, &r.Profile, &r.StartedAt, &r.EndedAt, &r.JSONLPath, &r.EventCount); err != nil {
+			continue
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+// Status lists active sessions from SQLite.
+// Spec: S-017 | Req: B-007
+func Status() error {
+	rows, err := queryActiveSessions()
+	if err != nil {
+		return statusFallback()
+	}
+
+	if len(rows) == 0 {
+		fmt.Println("No active sessions")
+		return nil
+	}
+
+	for _, r := range rows {
+		shortID := r.ID
+		if len(shortID) > 8 {
+			shortID = shortID[:8]
+		}
+		fmt.Printf("%s  project=%-40s  profile=%s  started=%s  events=%d\n",
+			shortID, r.Project, r.Profile, r.StartedAt, r.EventCount)
+	}
+	return nil
+}
+
+// statusFallback scans JSONL files when SQLite is unavailable.
+func statusFallback() error {
+	infos, err := listSessionFiles(0)
+	if err != nil {
+		return err
+	}
+	activeCount := 0
+	for _, info := range infos {
+		if !hasEndEvent(info.path) {
+			activeCount++
+			shortUUID := info.uuid
+			if len(shortUUID) > 8 {
+				shortUUID = shortUUID[:8]
+			}
+			fmt.Printf("%s  project=%-40s  profile=%s  started=%s  events=%d\n",
+				shortUUID, info.startEv.Project, info.startEv.Profile,
+				info.startTime.Format("2006-01-02 15:04:05"), info.eventCount)
+		}
+	}
+	if activeCount == 0 {
+		fmt.Println("No active sessions")
+	}
+	return nil
+}
+
+// List lists all sessions from SQLite ordered by start time descending.
+// Spec: S-017 | Req: B-008
+func List(limit int) error {
+	rows, err := queryAllSessions(limit)
+	if err != nil {
+		return listFallback(limit)
+	}
+	if len(rows) == 0 {
+		fmt.Println("No sessions found")
+		return nil
+	}
+
+	for _, r := range rows {
+		shortID := r.ID
+		if len(shortID) > 8 {
+			shortID = shortID[:8]
+		}
+		fmt.Printf("%s  %-7s  %-40s  %s  events=%d\n",
+			shortID, r.Status, r.Project, r.StartedAt, r.EventCount)
+	}
+	return nil
+}
+
+// listFallback scans JSONL files when SQLite is unavailable.
+func listFallback(limit int) error {
+	infos, err := listSessionFiles(limit)
+	if err != nil {
+		return err
+	}
+	if len(infos) == 0 {
+		fmt.Println("No sessions found")
+		return nil
+	}
+	for _, info := range infos {
+		status := "ended"
+		if !hasEndEvent(info.path) {
+			status = "active"
+		}
+		shortUUID := info.uuid
+		if len(shortUUID) > 8 {
+			shortUUID = shortUUID[:8]
+		}
+		fmt.Printf("%s  %-7s  %-40s  %s  events=%d\n",
+			shortUUID, status, info.startEv.Project,
+			info.startTime.Format("2006-01-02 15:04:05"), info.eventCount)
+	}
+	return nil
+}
+
+// sessionFileInfo holds summary info for listing (used in fallback).
 type sessionFileInfo struct {
-	uuid      string
-	path      string
-	startTime time.Time
-	startEv   *SessionEvent
-	active    bool
+	uuid       string
+	path       string
+	startTime  time.Time
+	startEv    *SessionEvent
 	eventCount int
 }
 
@@ -791,7 +978,6 @@ func listSessionFiles(limit int) ([]sessionFileInfo, error) {
 			ts = time.Time{}
 		}
 
-		active := !hasEndEvent(path) && isAlive(ev.PID)
 		count := countEvents(path)
 
 		infos = append(infos, sessionFileInfo{
@@ -799,12 +985,10 @@ func listSessionFiles(limit int) ([]sessionFileInfo, error) {
 			path:       path,
 			startTime:  ts,
 			startEv:    ev,
-			active:     active,
 			eventCount: count,
 		})
 	}
 
-	// Sort by start time descending.
 	sort.Slice(infos, func(i, j int) bool {
 		return infos[i].startTime.After(infos[j].startTime)
 	})
@@ -815,76 +999,9 @@ func listSessionFiles(limit int) ([]sessionFileInfo, error) {
 	return infos, nil
 }
 
-// Status lists active sessions.
-// Spec: S-017 | Req: B-007
-func Status() error {
-	infos, err := listSessionFiles(0)
-	if err != nil {
-		return err
-	}
-
-	activeCount := 0
-	for _, info := range infos {
-		if !info.active {
-			continue
-		}
-		activeCount++
-		shortUUID := info.uuid
-		if len(shortUUID) > 8 {
-			shortUUID = shortUUID[:8]
-		}
-		fmt.Printf("%s  project=%-40s  profile=%s  started=%s  events=%d\n",
-			shortUUID,
-			info.startEv.Project,
-			info.startEv.Profile,
-			info.startTime.Format("2006-01-02 15:04:05"),
-			info.eventCount,
-		)
-	}
-
-	if activeCount == 0 {
-		fmt.Println("No active sessions")
-	}
-	return nil
-}
-
-// List lists all sessions ordered by start time descending.
-// Spec: S-017 | Req: B-008
-func List(limit int) error {
-	infos, err := listSessionFiles(limit)
-	if err != nil {
-		return err
-	}
-
-	if len(infos) == 0 {
-		fmt.Println("No sessions found")
-		return nil
-	}
-
-	for _, info := range infos {
-		status := "closed"
-		if info.active {
-			status = "active"
-		}
-		shortUUID := info.uuid
-		if len(shortUUID) > 8 {
-			shortUUID = shortUUID[:8]
-		}
-		fmt.Printf("%s  %-7s  %-40s  %s  events=%d\n",
-			shortUUID,
-			status,
-			info.startEv.Project,
-			info.startTime.Format("2006-01-02 15:04:05"),
-			info.eventCount,
-		)
-	}
-	return nil
-}
-
-// Show prints all events for a session. Supports UUID prefix matching.
-// Spec: S-017 | Req: B-009, E-009, I-008
+// Show prints all events for a session and lists linked KB entries.
+// Spec: S-017 | Req: B-009, E-007, I-008
 func Show(sessionID string) error {
-	// Resolve prefix if needed. Spec: S-017 | Req: E-009
 	uuid, err := resolvePrefix(sessionID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -902,10 +1019,10 @@ func Show(sessionID string) error {
 		ts := ev.Timestamp
 		switch ev.Type {
 		case "start":
-			fmt.Printf("[%s] START  session=%s project=%s profile=%s pid=%d\n",
-				ts, ev.SessionID, ev.Project, ev.Profile, ev.PID)
+			fmt.Printf("[%s] START  session=%s project=%s profile=%s\n",
+				ts, ev.SessionID, ev.Project, ev.Profile)
 		case "end":
-			fmt.Printf("[%s] END    summary_key=%s reason=%s\n", ts, ev.SummaryKey, ev.Reason)
+			fmt.Printf("[%s] END    reason=%s\n", ts, ev.Reason)
 		case "prompt":
 			fmt.Printf("[%s] PROMPT %s\n", ts, ev.Content)
 		case "tool":
@@ -917,12 +1034,89 @@ func Show(sessionID string) error {
 			fmt.Printf("[%s] %s\n", ts, string(line))
 		}
 	}
+
+	// List KB entries linked to this session. Spec: S-017 | Req: B-009
+	db, dbErr := openGlobalDB()
+	if dbErr == nil {
+		defer db.Close()
+		rows, qErr := db.Query(`SELECT key, tags FROM entries WHERE session_id = ?`, uuid)
+		if qErr == nil {
+			defer rows.Close()
+			var linked []string
+			for rows.Next() {
+				var key, tagsJSON string
+				if rows.Scan(&key, &tagsJSON) == nil {
+					linked = append(linked, fmt.Sprintf("  %s  tags=%s", key, tagsJSON))
+				}
+			}
+			if len(linked) > 0 {
+				fmt.Printf("\n--- KB Entries for this session (%d) ---\n", len(linked))
+				for _, l := range linked {
+					fmt.Println(l)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
-// GC deletes closed session files with mtime older than olderThan.
+// GC deletes ended sessions with ended_at older than olderThan.
 // Spec: S-017 | Req: B-010
 func GC(olderThan time.Duration) error {
+	cutoff := time.Now().Add(-olderThan)
+
+	db, dbErr := openGlobalDB()
+	if dbErr != nil {
+		return gcFallback(olderThan)
+	}
+	defer db.Close()
+
+	// Query ended sessions with ended_at before cutoff. Spec: S-017 | Req: B-010
+	rows, err := db.Query(`SELECT id, jsonl_path FROM sessions WHERE status = 'ended' AND ended_at < ?`,
+		cutoff.Format(time.RFC3339))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type gcRow struct {
+		id        string
+		jsonlPath string
+	}
+	var toDelete []gcRow
+	for rows.Next() {
+		var r gcRow
+		if rows.Scan(&r.id, &r.jsonlPath) == nil {
+			toDelete = append(toDelete, r)
+		}
+	}
+	rows.Close()
+
+	deleted := 0
+	for _, r := range toDelete {
+		// Unlink KB entries from this session. Spec: S-017 | Req: B-010
+		if _, err := db.Exec(`UPDATE entries SET session_id = NULL WHERE session_id = ?`, r.id); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to unlink entries for session %s: %v\n", r.id, err)
+		}
+		// Delete from sessions table. Spec: S-017 | Req: B-010
+		if _, err := db.Exec(`DELETE FROM sessions WHERE id = ?`, r.id); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to delete session %s from db: %v\n", r.id, err)
+			continue
+		}
+		// Remove JSONL file.
+		if r.jsonlPath != "" {
+			_ = os.Remove(r.jsonlPath)
+		}
+		deleted++
+	}
+
+	fmt.Printf("deleted %d session(s)\n", deleted)
+	return nil
+}
+
+// gcFallback uses JSONL file mtime when SQLite is unavailable.
+func gcFallback(olderThan time.Duration) error {
 	dir := sessionsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -942,8 +1136,7 @@ func GC(olderThan time.Duration) error {
 		}
 		path := filepath.Join(dir, e.Name())
 
-		// Never delete active sessions. Spec: S-017 | Req: B-010
-		if isActive(path) {
+		if !hasEndEvent(path) {
 			continue
 		}
 

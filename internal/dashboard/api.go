@@ -4,21 +4,21 @@ package dashboard
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/kb"
 	"github.com/chichex/cvm/internal/session"
+	_ "modernc.org/sqlite"
 )
 
 // jsonError writes a JSON error response.
@@ -271,34 +271,20 @@ func sessionHasEndEvent(events []dashboardSessionEvent) bool {
 	return false
 }
 
-// sessionIsPIDAlive checks if a PID is alive and the process name contains "claude".
-// Spec: S-017 | Req: I-010
-func sessionIsPIDAlive(pid int) bool {
-	if pid <= 0 {
-		return false
+// openGlobalDB opens the global KB SQLite database for direct querying.
+// The caller must close the returned *sql.DB.
+// Spec: S-017 | Req: C-001, B-011, B-012
+func openGlobalDB() (*sql.DB, error) {
+	path := filepath.Join(config.GlobalKBDir(), "kb.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	// Send signal 0 to check process existence (Unix only)
-	if err := syscall.Kill(pid, 0); err != nil {
-		return false
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		db.Close()
+		return nil, err
 	}
-	// Check process name contains "claude". Spec: S-017 | Req: I-010
-	psOut, psErr := execPsComm(pid)
-	if psErr != nil {
-		// Fallback: Linux /proc/<pid>/comm
-		out, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
-		if err != nil {
-			return false
-		}
-		return strings.Contains(strings.ToLower(strings.TrimSpace(string(out))), "claude")
-	}
-	return strings.Contains(strings.ToLower(strings.TrimSpace(psOut)), "claude")
-}
-
-// execPsComm runs `ps -p <pid> -o comm=` and returns stdout.
-func execPsComm(pid int) (string, error) {
-	cmd := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "comm=")
-	out, err := cmd.Output()
-	return string(out), err
+	return db, nil
 }
 
 type sessionDetailResponse struct {
@@ -400,10 +386,8 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 			startedAt = events[0].Timestamp
 			projectDir = events[0].Project
 		}
+		// Active if no end event. Spec: S-017 | Req: I-005 — no PID checking.
 		active := len(events) > 0 && !sessionHasEndEvent(events)
-		if active && len(events) > 0 {
-			active = sessionIsPIDAlive(events[0].PID)
-		}
 		result = append(result, sessionSummary{
 			SessionID:  uuid,
 			Key:        e.Name(),
@@ -636,8 +620,8 @@ type sessionsResponse struct {
 }
 
 // handleSessions serves GET /api/sessions
-// Returns active sessions from ~/.cvm/sessions/*.jsonl + completed summaries from global KB.
-// Spec: S-017 | Req: B-012, C-007, I-004, I-005
+// Reads from SQLite sessions table + legacy KB summaries (E-009).
+// Spec: S-017 | Req: B-011, B-012, C-008, E-009, I-005
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -646,75 +630,75 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	var cards []sessionCardJSON
 
-	// --- Active sessions from ~/.cvm/sessions/*.jsonl ---
-	// Spec: S-017 | Req: B-012, C-007, I-004
-	dir := sessionsDir()
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
-				continue
-			}
-			uuid := strings.TrimSuffix(e.Name(), ".jsonl")
-			path := filepath.Join(dir, e.Name())
+	// --- Sessions from SQLite sessions table (C-008 query) ---
+	// Spec: S-017 | Req: B-011, C-008, I-005
+	db, dbErr := openGlobalDB()
+	if dbErr == nil {
+		rows, err := db.Query(`
+			SELECT s.id, s.status, s.project, s.profile, s.started_at, s.ended_at,
+			       s.jsonl_path, s.event_count, COUNT(e.key) as kb_entries
+			FROM sessions s
+			LEFT JOIN entries e ON e.session_id = s.id
+			GROUP BY s.id
+			ORDER BY s.started_at DESC
+		`)
+		if err == nil {
+			for rows.Next() {
+				var (
+					id, status, project, profile, startedAt string
+					endedAt                                  sql.NullString
+					jsonlPath                                string
+					eventCount, kbEntries                    int
+				)
+				if rows.Scan(&id, &status, &project, &profile, &startedAt, &endedAt, &jsonlPath, &eventCount, &kbEntries) != nil {
+					continue
+				}
 
-			events := readAllSessionEvents(path)
-			if len(events) == 0 || events[0].Type != "start" {
-				continue
-			}
-			startEv := events[0]
+				updatedAt := startedAt
+				if endedAt.Valid {
+					updatedAt = endedAt.String
+				} else if jsonlPath != "" {
+					// Use JSONL file mtime as updated_at while active.
+					if fi, err := os.Stat(jsonlPath); err == nil {
+						updatedAt = fi.ModTime().UTC().Format(time.RFC3339)
+					}
+				}
 
-			// Only include sessions without an end event and with a live PID
-			if sessionHasEndEvent(events) {
-				continue
+				card := sessionCardJSON{
+					ID:         id,
+					Key:        id + ".jsonl",
+					Status:     status,
+					Scope:      "global",
+					CreatedAt:  startedAt,
+					UpdatedAt:  updatedAt,
+					ProjectDir: project,
+					LineCount:  eventCount,
+					Knowledge:  []knowledgeEntryJSON{},
+					Meta: &sessionMetaJSON{
+						ProjectDir: project,
+						EventCount: fmt.Sprintf("%d", eventCount),
+					},
+				}
+				cards = append(cards, card)
 			}
-			if !sessionIsPIDAlive(startEv.PID) {
-				continue
-			}
-
-			startedAt := startEv.Timestamp
-			updatedAt := startedAt
-			// Use last event timestamp as "updated_at"
-			if len(events) > 0 {
-				updatedAt = events[len(events)-1].Timestamp
-			}
-
-			finfo, ferr := e.Info()
-			if ferr == nil {
-				updatedAt = finfo.ModTime().UTC().Format(time.RFC3339)
-			}
-
-			card := sessionCardJSON{
-				ID:         uuid,
-				Key:        e.Name(),
-				Status:     "active",
-				Scope:      "local",
-				CreatedAt:  startedAt,
-				UpdatedAt:  updatedAt,
-				ProjectDir: startEv.Project,
-				LineCount:  len(events),
-				Knowledge:  []knowledgeEntryJSON{},
-			}
-			cards = append(cards, card)
+			rows.Close()
 		}
+		db.Close()
 	}
 
-	// --- Completed summaries from global KB ---
-	// Recognize both "session-summary-*" (new, S-017) and "session-*" (legacy) key patterns.
-	// Spec: S-017 | Req: I-005
+	// --- Legacy KB summaries (E-009: backward compatibility) ---
+	// Show existing session-summary-* entries from KB with status "legacy".
+	// Spec: S-017 | Req: E-009
 	if s.globalBack != nil {
 		entries, err := s.globalBack.List("")
 		if err == nil {
 			for _, e := range entries {
-				// Recognize new "session-summary-*" keys and legacy "session-*" keys.
-				// Exclude "session-buffer-*" which was the old active buffer pattern.
-				isNewSummary := strings.HasPrefix(e.Key, "session-summary-")
-				isLegacySummary := strings.HasPrefix(e.Key, "session-") &&
-					!strings.HasPrefix(e.Key, "session-summary-") &&
-					!strings.HasPrefix(e.Key, "session-buffer-")
-				if !isNewSummary && !isLegacySummary {
+				isLegacySummary := strings.HasPrefix(e.Key, "session-summary-") ||
+					(strings.HasPrefix(e.Key, "session-") &&
+						!strings.HasPrefix(e.Key, "session-buffer-"))
+				if !isLegacySummary {
 					continue
 				}
-				// Must have "summary" in tags to be a completed session
 				hasSummaryTag := false
 				for _, t := range e.Tags {
 					if t == "summary" {
@@ -725,16 +709,15 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 				if !hasSummaryTag {
 					continue
 				}
-				doc, err := s.globalBack.Get(e.Key)
+				doc, getErr := s.globalBack.Get(e.Key)
 				summaryBody := ""
-				if err == nil {
+				if getErr == nil {
 					summaryBody = doc.Body
 				}
 				tags := e.Tags
 				if tags == nil {
 					tags = []string{}
 				}
-				// Parse [meta] line if present
 				var meta *sessionMetaJSON
 				displayBody := summaryBody
 				if strings.HasPrefix(summaryBody, "[meta]") {
@@ -749,7 +732,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 				card := sessionCardJSON{
 					ID:          e.Key,
 					Key:         e.Key,
-					Status:      "summarized",
+					Status:      "legacy",
 					Scope:       "global",
 					CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
 					UpdatedAt:   e.UpdatedAt.UTC().Format(time.RFC3339),
@@ -763,73 +746,8 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- Correlate knowledge entries to sessions ---
-	// Collect all non-session knowledge entries from both scopes
-	type scopedKB struct {
-		entry knowledgeEntryJSON
-		ts    time.Time
-	}
-	var allKB []scopedKB
-
-	collectKB := func(b kb.Backend, scopeName string) {
-		if b == nil {
-			return
-		}
-		entries, err := b.List("")
-		if err != nil {
-			return
-		}
-		for _, e := range entries {
-			// Skip session keys
-			if strings.HasPrefix(e.Key, "session-") {
-				continue
-			}
-			doc, err := b.Get(e.Key)
-			body := ""
-			if err == nil {
-				body = doc.Body
-			}
-			tags := e.Tags
-			if tags == nil {
-				tags = []string{}
-			}
-			allKB = append(allKB, scopedKB{
-				entry: knowledgeEntryJSON{
-					Key:           e.Key,
-					Tags:          tags,
-					Scope:         scopeName,
-					CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
-					UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
-					Body:          body,
-					TokenEstimate: len(body) / 4,
-				},
-				ts: e.CreatedAt,
-			})
-		}
-	}
-
-	collectKB(s.globalBack, "global")
-	collectKB(s.localBack, "local")
-
-	// For each session card, find knowledge entries whose CreatedAt falls within the session timeframe
-	for i, card := range cards {
-		start, errStart := time.Parse(time.RFC3339, card.CreatedAt)
-		end, errEnd := time.Parse(time.RFC3339, card.UpdatedAt)
-		if errStart != nil || errEnd != nil {
-			continue
-		}
-		// Add a small buffer after the session ended (5 min) to capture entries written just after
-		end = end.Add(5 * time.Minute)
-
-		for _, kb := range allKB {
-			if !kb.ts.Before(start) && !kb.ts.After(end) {
-				cards[i].Knowledge = append(cards[i].Knowledge, kb.entry)
-			}
-		}
-	}
-
-	// Sort: active first, stale second, summarized last, then by UpdatedAt desc
-	statusOrder := map[string]int{"active": 0, "stale": 1, "summarized": 2}
+	// Sort: active first, ended second, legacy last, then by UpdatedAt desc.
+	statusOrder := map[string]int{"active": 0, "ended": 1, "legacy": 2}
 	sort.Slice(cards, func(i, j int) bool {
 		oi, oj := statusOrder[cards[i].Status], statusOrder[cards[j].Status]
 		if oi != oj {
@@ -907,26 +825,13 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	globalStats := buildScopeStats(s.globalBack)
 	localStats := buildScopeStats(s.localBack)
 
-	// Count active sessions from ~/.cvm/sessions/*.jsonl (open files with live PID).
-	// Spec: S-017 | Req: B-011, C-007, I-004, I-006
+	// Count active sessions from SQLite sessions table. Spec: S-017 | Req: B-012, C-008, I-005
 	activeSessions := 0
-	if sessEntries, err := os.ReadDir(sessionsDir()); err == nil {
-		for _, e := range sessEntries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
-				continue
-			}
-			path := filepath.Join(sessionsDir(), e.Name())
-			events := readAllSessionEvents(path)
-			if len(events) == 0 || events[0].Type != "start" {
-				continue
-			}
-			if sessionHasEndEvent(events) {
-				continue
-			}
-			if sessionIsPIDAlive(events[0].PID) {
-				activeSessions++
-			}
-		}
+	db, dbErr := openGlobalDB()
+	if dbErr == nil {
+		row := db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE status = 'active'`)
+		row.Scan(&activeSessions) //nolint:errcheck
+		db.Close()
 	}
 
 	jsonOK(w, statsResponse{

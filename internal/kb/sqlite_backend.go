@@ -29,6 +29,20 @@ CREATE TABLE IF NOT EXISTS entries (
     last_referenced TEXT
 );
 
+-- Spec: S-017 | Req: C-001 — sessions table (single source of truth for session state)
+CREATE TABLE IF NOT EXISTS sessions (
+    id          TEXT PRIMARY KEY,
+    status      TEXT NOT NULL DEFAULT 'active',
+    project     TEXT NOT NULL,
+    profile     TEXT NOT NULL DEFAULT '',
+    started_at  TEXT NOT NULL,
+    ended_at    TEXT,
+    jsonl_path  TEXT NOT NULL,
+    event_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+
 -- Spec: S-013 | Req: I-004
 CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
     key,
@@ -144,6 +158,21 @@ func NewSQLiteBackend(scope config.Scope, projectPath string) (*SQLiteBackend, e
 		return nil, fmt.Errorf("create schema: %w", err)
 	}
 
+	// Spec: S-017 | Req: C-002, C-002a — idempotent migration: add session_id column to entries
+	var sessionIDExists int
+	err = db.QueryRow(`SELECT 1 FROM pragma_table_info('entries') WHERE name='session_id'`).Scan(&sessionIDExists)
+	if err != nil {
+		// Column not present — add it
+		if _, alterErr := db.Exec(`ALTER TABLE entries ADD COLUMN session_id TEXT`); alterErr != nil {
+			db.Close()
+			return nil, fmt.Errorf("add session_id column: %w", alterErr)
+		}
+		if _, idxErr := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_session_id ON entries(session_id)`); idxErr != nil {
+			db.Close()
+			return nil, fmt.Errorf("create session_id index: %w", idxErr)
+		}
+	}
+
 	// Spec: S-013 | Req: I-007c, NF-007 — set file permissions to 0600
 	if err := os.Chmod(path, 0600); err != nil {
 		// Non-fatal: log but continue
@@ -169,23 +198,31 @@ func NewSQLiteBackend(scope config.Scope, projectPath string) (*SQLiteBackend, e
 }
 
 // Put inserts or updates an entry.
-// Spec: S-013 | Req: B-007
-func (s *SQLiteBackend) Put(key, body string, tags []string, now time.Time) error {
+// sessionID links the entry to a session; empty string stores NULL (no session link).
+// Spec: S-013 | Req: B-007 | Spec: S-017 | Req: C-010
+func (s *SQLiteBackend) Put(key, body string, tags []string, now time.Time, sessionID string) error {
 	tagsJSON, err := json.Marshal(tags)
 	if err != nil {
 		return fmt.Errorf("marshal tags: %w", err)
 	}
 	nowStr := now.UTC().Format(time.RFC3339Nano)
 
+	// sessionID: empty string → NULL; non-empty → store value
+	var sessionIDVal interface{}
+	if sessionID != "" {
+		sessionIDVal = sessionID
+	}
+
 	// Upsert: preserve created_at on update (Spec: S-013 | Req: I-009)
 	_, err = s.db.Exec(`
-		INSERT INTO entries (key, body, tags, enabled, created_at, updated_at)
-		VALUES (?, ?, ?, 1, ?, ?)
+		INSERT INTO entries (key, body, tags, enabled, created_at, updated_at, session_id)
+		VALUES (?, ?, ?, 1, ?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET
 			body = excluded.body,
 			tags = excluded.tags,
-			updated_at = excluded.updated_at
-	`, key, body, string(tagsJSON), nowStr, nowStr)
+			updated_at = excluded.updated_at,
+			session_id = excluded.session_id
+	`, key, body, string(tagsJSON), nowStr, nowStr, sessionIDVal)
 	if err != nil {
 		if strings.Contains(err.Error(), "disk") || strings.Contains(err.Error(), "full") {
 			return fmt.Errorf("kb: disk full")
@@ -737,7 +774,7 @@ func (s *SQLiteBackend) PutWithDedup(key, body string, tags []string, now time.T
 		}
 	}
 
-	return false, s.Put(key, body, tags, now)
+	return false, s.Put(key, body, tags, now, "")
 }
 
 // --- helpers ---

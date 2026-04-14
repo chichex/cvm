@@ -639,8 +639,8 @@ func TestSession(t *testing.T) {
 	out = e.mustRun("session", "ls")
 	assertContains(t, out, uuid[:8])
 
-	// end with CVM_AUTOSUMMARY_ENABLED=false to skip LLM call
-	e.runWithEnv(map[string]string{"CVM_AUTOSUMMARY_ENABLED": "false"}, "session", "end", uuid)
+	// end with CVM_SESSION_RETRO_ENABLED=false to skip LLM call
+	e.runWithEnv(map[string]string{"CVM_SESSION_RETRO_ENABLED": "false"}, "session", "end", uuid)
 
 	// ls still shows the session (now closed)
 	out = e.mustRun("session", "ls")

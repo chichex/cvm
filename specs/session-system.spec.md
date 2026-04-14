@@ -1,46 +1,85 @@
 # S-017: CVM Session System
 
 - **ID**: S-017
-- **Version**: 0.4.0
-- **Status**: approved
+- **Version**: 0.6.0
+- **Status**: implemented
 - **Supersedes**: S-011 (realtime-capture), S-015 (tool-observation)
-- **Modifies**: S-016 (dashboard — session source changes from local KB to session files)
-- **Validation Strategy**: TDD (CLI commands, storage, parsing) + manual (hooks, dashboard integration)
+- **Modifies**: S-016 (dashboard — reads from sessions table instead of JSONL+PID inference), S-010 (sdd-mem — removes /learn, /decide, /gotcha skills)
+- **Validation Strategy**: TDD (session CRUD, SQLite schema, retro integration) + manual (hooks, dashboard)
 
 ## Objective
 
-Replace the current session lifecycle system (piggybacks on `~/.claude/sessions/`, uses local KB `session-buffer-*` entries, and `cvm lifecycle` commands) with a CVM-owned session system that stores structured events in `~/.cvm/sessions/`, provides unified CLI commands, and enables cross-project session visibility in the dashboard.
+Redesign the session system to use a SQLite `sessions` table as the single source of truth for session state, eliminating PID-based inference. Link all KB entries produced during a session to their originating session_id. Replace the session-end summary with a final retrospective pass that captures missed learnings. Consolidate /learn, /decide, /gotcha into /retro as the sole knowledge-capture mechanism.
 
 ## Scope
 
 ### In scope
-- New `cvm session` CLI command tree (start, append, end, status, ls, show, gc)
-- JSONL-based session storage in `~/.cvm/sessions/<uuid>.jsonl`
-- Centralized truncation logic in Go
-- Dashboard reads sessions from `~/.cvm/sessions/` instead of local KB
-- Hook updates (sdd-mem profile): replace `cvm kb put session-buffer` with `cvm session append`
-- Removal of dead code: `cmd/lifecycle.go`, `internal/lifecycle/`, `hooks/tool-capture.sh`, `hooks/session-summary.sh`, `internal/dashboard/parser.go`
-- Remove `sdd` profile (deprecated — `sdd-mem` is the sole profile)
-- Preserve automation integration from `lifecycle.End()` in `cvm session end`: `saveActiveProfiles`, `automation.RecordSessionEnd`, `queueAutomationRunner`
-- `cvm session start` prints KB stats and detected tools (same as current `lifecycle.Start()`) but does NOT mutate automation state
-- Deprecate `CVM_AUTOSUMMARY_MIN_TOOLS` env var (S-011 legacy, replaced by hardcoded threshold in E-003)
+- New `sessions` table in the existing KB SQLite database (`~/.cvm/global/kb.db`)
+- Add `session_id` column to KB `entries` table
+- Remove PID checking (`sessionIsPIDAlive`, `cleanOrphans`) entirely
+- Session state derived from SQLite `status` column, not from JSONL+PID inference
+- JSONL files remain as append-only event log (unchanged hot path)
+- Session end runs `/retro` instead of generating a summary via `claude -p`
+- Remove `/learn`, `/decide`, `/gotcha` skills (consolidated into `/retro`)
+- Learning pulse (self-check) triggers `/retro` instead of individual skills
+- Dashboard reads session list from SQLite `sessions` table
+- Stale session handling deferred (out of scope for this version)
 
 ### Out of scope
-- Response capture (future enhancement, not in v0.1.0)
+- Stale/orphan session recovery (deferred — address separately)
+- Migration of existing JSONL-only sessions
+- Response capture
 - Session search/filter CLI
-- Session replay
-- Migration of existing session-buffer KB entries
 
 ## Contracts
 
-### C-001: Session Event (JSONL line)
+### C-001: Sessions Table Schema
 
-All events share these base fields. Additional fields vary by type.
+```sql
+CREATE TABLE IF NOT EXISTS sessions (
+    id          TEXT PRIMARY KEY,   -- UUID from Claude Code
+    status      TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'ended'
+    project     TEXT NOT NULL,      -- absolute path to project dir
+    profile     TEXT NOT NULL DEFAULT '',
+    started_at  TEXT NOT NULL,      -- RFC3339
+    ended_at    TEXT,               -- RFC3339, NULL while active
+    jsonl_path  TEXT NOT NULL,      -- path to ~/.cvm/sessions/<uuid>.jsonl
+    event_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+```
+
+Status values: `active`, `ended`. No `orphan`, no `stale` — those are deferred.
+
+### C-002: KB Entries Table Migration
+
+Add `session_id` column to existing `entries` table. No foreign key constraint — validation is done in application code to allow graceful degradation (B-015).
+
+```sql
+ALTER TABLE entries ADD COLUMN session_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_entries_session_id ON entries(session_id);
+```
+
+- `session_id` is nullable (existing entries and entries created outside a session have NULL)
+- No FK constraint: allows `cvm kb put --session-id <uuid>` to succeed even if the session doesn't exist in the table (e.g., legacy sessions, race conditions). Validation is advisory.
+- FTS5 triggers are NOT modified — `session_id` is not full-text indexed
+
+### C-002a: Migration Mechanism
+
+The migration MUST run on database open, in this order:
+
+1. `CREATE TABLE IF NOT EXISTS sessions (...)` — safe if table already exists
+2. Check if `session_id` column exists in `entries`: `SELECT 1 FROM pragma_table_info('entries') WHERE name='session_id'`
+3. If missing: `ALTER TABLE entries ADD COLUMN session_id TEXT` + create index
+
+This runs inside `NewSQLiteBackend()` alongside the existing schema initialization. No versioned migration system required — the check is idempotent.
+
+### C-003: Session Event (JSONL line) — unchanged
+
+All events share these base fields. JSONL format unchanged from v0.4.0.
 
 ```go
-// SessionEvent is the base for all JSONL lines. Concrete types embed extra fields.
-// Discriminated by Type field. Implementation MAY use a single struct with optional
-// fields or separate structs — as long as serialization matches the contracts below.
 type SessionEvent struct {
     Type      string `json:"type"`                // "start" | "prompt" | "tool" | "agent" | "end"
     Timestamp string `json:"ts"`                  // RFC3339
@@ -50,7 +89,7 @@ type SessionEvent struct {
 }
 ```
 
-### C-002: Session Start Event (first line of .jsonl)
+### C-004: Session Start Event (first line of .jsonl) — PID removed
 
 ```go
 type SessionStartEvent struct {
@@ -59,29 +98,25 @@ type SessionStartEvent struct {
     SessionID string            `json:"session_id"`  // UUID from Claude Code
     Project   string            `json:"project"`     // absolute path to project dir
     Profile   string            `json:"profile"`     // active cvm profile name
-    PID       int               `json:"pid"`         // process ID of claude (derived via os.Getppid() in Go)
-    Tools     map[string]bool   `json:"tools"`       // detected tools (auto-detected by cvm session start)
+    Tools     map[string]bool   `json:"tools"`       // detected tools
 }
 ```
 
-Tools are auto-detected by `cvm session start` (checks PATH for: claude, codex, gemini, gh, docker, node, npm, go). No `--tools` flag needed.
+`PID` field removed — no longer used for state inference.
 
-`--pid` is optional; if omitted, `cvm session start` uses `os.Getppid()` to get the parent process PID (the Claude Code process that invoked the hook).
-
-### C-003: Session End Event (last line of .jsonl)
+### C-005: Session End Event (last line of .jsonl) — summary_key removed
 
 ```go
 type SessionEndEvent struct {
-    Type       string `json:"type"`                // always "end"
-    Timestamp  string `json:"ts"`                  // RFC3339
-    SummaryKey string `json:"summary_key"`         // global KB key where summary was stored (empty if skipped/failed)
-    Reason     string `json:"reason,omitempty"`    // "normal" | "orphan" | "error" — why the session ended
+    Type      string `json:"type"`        // always "end"
+    Timestamp string `json:"ts"`          // RFC3339
+    Reason    string `json:"reason"`      // "normal" | "error"
 }
 ```
 
-### C-004: Truncation Limits
+`SummaryKey` removed — session end no longer generates a summary. The final /retro produces KB entries linked via `session_id` instead.
 
-"chars" means UTF-8 runes (Go `[]rune` length).
+### C-006: Truncation Limits — unchanged
 
 | Event type | Max content length | Behavior when exceeded |
 |------------|-------------------|----------------------|
@@ -89,17 +124,10 @@ type SessionEndEvent struct {
 | tool       | 200 runes         | Truncate, append "…" |
 | agent      | 300 runes         | Truncate, append "…" |
 
-### C-005: Session File Cap
-
-- Max events per session: **unlimited during active session** (append is always O(1))
-- Compaction happens **only at session end** (`cvm session end`): if event count > 1000, keep start event + last 999 events before generating summary
-- File location: `~/.cvm/sessions/<uuid>.jsonl`
-- UUID: the `session_id` provided by Claude Code via stdin JSON
-
-### C-006: CLI Interface
+### C-007: CLI Interface — updated
 
 ```
-cvm session start    [--session-id <uuid>] [--project <path>] [--profile <name>] [--pid <int>]
+cvm session start    [--session-id <uuid>] [--project <path>] [--profile <name>]
 cvm session append   <uuid> --type <prompt|tool|agent> [--content <string>] [--tool <name>] [--agent-type <type>]
 cvm session end      <uuid>
 cvm session status
@@ -108,329 +136,371 @@ cvm session show     <uuid>
 cvm session gc       [--older-than <duration>]  # default: 30d
 ```
 
-If `--session-id` is omitted from `cvm session start`, the command MUST generate a UUID v4. However, when called from a Claude Code hook, the hook script MUST extract `session_id` from stdin JSON and pass it via `--session-id` to ensure identity continuity with subsequent `append` calls from other hooks (which also receive `session_id` via stdin). The settings.json hook command MUST be a shell script that parses stdin, NOT a bare `cvm session start` invocation.
+`--pid` flag removed from `cvm session start`.
 
-### C-007: Dashboard API Changes
+### C-008: Dashboard API — simplified
 
-`GET /api/stats` response field `active_sessions` MUST count open session files (no "end" event) in `~/.cvm/sessions/` with a validated live PID (per I-010: PID alive + process name contains "claude").
+`GET /api/sessions` reads from SQLite `sessions` table:
 
-`GET /api/sessions` MUST return both:
-- Active sessions from `~/.cvm/sessions/*.jsonl` (open, live PID)
-- Completed summaries from global KB (`session-summary-*`)
+```sql
+SELECT s.*, COUNT(e.key) as kb_entries
+FROM sessions s
+LEFT JOIN entries e ON e.session_id = s.id
+GROUP BY s.id
+ORDER BY s.started_at DESC;
+```
 
-### C-008: Summary Prompt Template
+Response includes KB entries linked to each session.
+
+`GET /api/stats` field `active_sessions`: `SELECT COUNT(*) FROM sessions WHERE status = 'active'`.
+
+No PID checking, no JSONL parsing for state, no process name validation.
+
+### C-009: Retro — Two Execution Contexts
+
+`/retro` operates in two distinct contexts:
+
+**A. Mid-session retro** (inside Claude conversation):
+- Triggered by learning pulse (B-014) or manually by the user
+- Runs as a Claude Code skill within the active conversation
+- Has access to conversation context
+- Persists entries via `cvm kb put --session-id <uuid>`
+- Tags entries with their type: `learning`, `decision`, `gotcha`
+
+**B. End-session retro** (Go CLI via `claude -p`):
+- Triggered by `cvm session end` (B-005)
+- Runs as a standalone `claude -p --model haiku` invocation (same pattern as the old `generateSummary()`)
+- Input: JSONL events + list of KB entries already linked to this session_id
+- Output: JSON array of missing insights, each with key, body, tags
+- `cvm session end` parses the output and calls `kb.Put()` for each entry with `session_id` set
+- Cheap and fast (haiku)
+
+### C-009a: End-Session Retro Prompt Template
 
 ```
-Summarize this coding session from the captured events.
-Generate JSON: {"request": "...", "accomplished": "...", "discovered": "...", "next_steps": "..."}
-Max 1-2 sentences per field. Output ONLY the JSON.
+Analyze this coding session's events and identify learnings, decisions, or gotchas
+that were NOT already captured in the existing KB entries listed below.
+
+Output ONLY a JSON array. Each element: {"key": "...", "body": "...", "tags": ["learning"|"decision"|"gotcha"]}
+If nothing new to capture, output: []
 
 <events>
 {events_text}
 </events>
+
+<already_captured>
+{existing_kb_entries_for_this_session}
+</already_captured>
 ```
 
-Where `{events_text}` is the JSONL content (after optional compaction to 1000 events).
+Where `{events_text}` is the JSONL content (compacted to last 1000 events if needed) and `{existing_kb_entries_for_this_session}` is the result of `SELECT key, body, tags FROM entries WHERE session_id = ?`.
+
+### C-010: KB Put Session Linking
+
+`cvm kb put` gains a new optional flag:
+
+```
+cvm kb put <key> --body "..." --tag "a,b" [--session-id <uuid>]
+```
+
+When `--session-id` is provided, the entry's `session_id` column is set. This links the entry to the originating session.
+
+**Backend interface change**: The `Backend.Put()` signature gains an optional `sessionID string` parameter. `FlatBackend` MUST accept the parameter but silently ignore it (flat files have no session_id column). The public `kb.Put()` function gains a corresponding parameter.
+
+```go
+// Before:
+Put(key, body string, tags []string, now time.Time) error
+// After:
+Put(key, body string, tags []string, now time.Time, sessionID string) error
+```
+
+Empty string `""` means no session link. Callers that don't care about session linking pass `""`.
 
 ## Behaviors
 
 ### B-001: Session Start
 - **Given** a Claude Code session starts with session_id `778a7b24-509f-4f79-a99e-cd01e631ef82` in project `/Users/me/workspace/cvm` with profile `sdd-mem`
-- **When** the SessionStart hook script extracts `session_id` from stdin JSON and runs `cvm session start --session-id 778a7b24-509f-4f79-a99e-cd01e631ef82 --project /Users/me/workspace/cvm --profile sdd-mem --pid 40558`
-- **Then** a file `~/.cvm/sessions/778a7b24-509f-4f79-a99e-cd01e631ef82.jsonl` MUST be created
-- **And** the first line MUST be a valid JSON object with `type: "start"`, the session_id, project, profile, pid (via `os.Getppid()` if not provided), and auto-detected tools
+- **When** the SessionStart hook runs `cvm session start --session-id 778a7b24-... --project /Users/me/workspace/cvm --profile sdd-mem`
+- **Then** a file `~/.cvm/sessions/778a7b24-....jsonl` MUST be created with a start event (C-004)
+- **And** a row MUST be inserted into the `sessions` table with `status='active'`, `started_at=now`, `ended_at=NULL`
 - **And** the command MUST print the session UUID to stdout
-- **And** the command MUST run orphan cleanup (E-007) before creating the new session
-- **And** the command MUST exit with code 0
-- **Note**: the SessionStart hook in settings.json MUST call a shell script (e.g., `session-start.sh`) that reads stdin, extracts `session_id` via `python3 -c "..."`, and passes it to `cvm session start --session-id <id>`. This is the SAME pattern used by all other hooks (B-014). A bare `cvm session start` (without `--session-id`) would generate a new UUID that does NOT match the `session_id` that Claude Code passes to subsequent hooks, breaking identity continuity.
+- **And** the command MUST NOT run any orphan cleanup or PID checking
 
-### B-002: Append Prompt Event
+### B-002: Append Prompt Event — unchanged
 - **Given** an active session `778a7b24`
-- **When** `cvm session append 778a7b24-509f-4f79-a99e-cd01e631ef82 --type prompt --content "hola claude por que me aparece una sesion activa"`
-- **Then** a JSON line `{"type":"prompt","ts":"2026-04-13T17:02:03-03:00","content":"hola claude por que me aparece una sesion activa"}` MUST be appended to the session file
-- **And** the command MUST complete in < 50ms (benchmark target, not hard CI assertion)
+- **When** `cvm session append 778a7b24-... --type prompt --content "..."`
+- **Then** a JSON line MUST be appended to the JSONL file
+- **And** the `event_count` in the sessions table MUST be incremented
 
-### B-003: Append Tool Event
+### B-003: Append Tool Event — unchanged
 - **Given** an active session `778a7b24`
-- **When** `cvm session append 778a7b24-509f-4f79-a99e-cd01e631ef82 --type tool --tool Bash --content "ls -la ~/.claude/sessions/"`
-- **Then** a JSON line with `type: "tool"`, `tool: "Bash"`, and the content MUST be appended
-- **And** the command MUST complete in < 50ms (benchmark target)
+- **When** `cvm session append 778a7b24-... --type tool --tool Bash --content "ls -la"`
+- **Then** a JSON line with `type: "tool"` MUST be appended
+- **And** `event_count` MUST be incremented
 
-### B-004: Append Agent Event
+### B-004: Append Agent Event — unchanged
 - **Given** an active session `778a7b24`
-- **When** `cvm session append 778a7b24-509f-4f79-a99e-cd01e631ef82 --type agent --agent-type haiku --content "Research complete. Found 3 files matching..."`
-- **Then** a JSON line with `type: "agent"`, `agent_type: "haiku"`, and the content MUST be appended
+- **When** `cvm session append 778a7b24-... --type agent --agent-type haiku --content "Research complete..."`
+- **Then** a JSON line with `type: "agent"` MUST be appended
+- **And** `event_count` MUST be incremented
 
-### B-005: Session End with Summary
+### B-005: Session End with Final Retro
 - **Given** an active session `778a7b24` with 50 events
-- **When** `cvm session end 778a7b24-509f-4f79-a99e-cd01e631ef82` runs
-- **Then** the session file MUST be read (snapshot) WITHOUT holding the file lock during LLM call
-- **And** if event count > 1000, compact to start + last 999 events before summarizing
-- **And** the content MUST be summarized via `claude -p --model $CVM_AUTOSUMMARY_MODEL` using the prompt template from C-008
-- **And** the summary MUST be stored in global KB as `session-summary-<YYYYMMDD-HHMMSS>-<uuid8>` with tags `session,summary` (where `<uuid8>` is the first 8 chars of the session UUID, ensuring collision resistance)
-- **And** a final `{"type":"end","ts":"...","summary_key":"session-summary-20260413-170500-778a7b24","reason":"normal"}` line MUST be appended (under lock)
-- **And** the session file MUST NOT be deleted (archive)
+- **When** `cvm session end 778a7b24-...` runs
+- **Then** the session file MUST be read (compacted to last 1000 events if needed)
+- **And** existing KB entries for this session MUST be queried: `SELECT key, body, tags FROM entries WHERE session_id = ?`
+- **And** `claude -p --model haiku` MUST be invoked with the retro prompt (C-009a), passing events + existing entries
+- **And** the JSON array output MUST be parsed; for each element, `kb.Put()` MUST be called with `session_id` set
+- **And** a final `{"type":"end","ts":"...","reason":"normal"}` line MUST be appended to JSONL
+- **And** the sessions table MUST be updated: `status='ended'`, `ended_at=now`
 - **And** `~/.cvm/learning-pulse` MUST be deleted if it exists
-- **And** automation integration MUST be preserved: call `saveActiveProfiles()`, `automation.RecordSessionEnd()`, `queueAutomationRunner()` equivalents
-- **Note**: events appended between the snapshot read and the end event write are preserved in the file but MAY be absent from the summary. This is acceptable — the session is ending and a few missed events in the summary are tolerable.
+- **And** automation integration MUST be preserved
+- **Note**: The retro prompt is sent to haiku for cost efficiency. The model is configurable via `CVM_SESSION_RETRO_MODEL` (default: `haiku`)
 
-### B-006: Session End with Autosummary Disabled
-- **Given** `CVM_AUTOSUMMARY_ENABLED=false`
+### B-006: Session End with Retro Disabled
+- **Given** `CVM_SESSION_RETRO_ENABLED=false`
 - **When** `cvm session end <uuid>` runs
-- **Then** it MUST skip LLM summary generation entirely
-- **And** it MUST append an "end" event with empty `summary_key` and `reason: "normal"`
+- **Then** it MUST skip the retro pass entirely
+- **And** it MUST append an "end" event with `reason: "normal"`
+- **And** it MUST update the sessions table: `status='ended'`, `ended_at=now`
 - **And** it MUST still perform automation integration and learning-pulse cleanup
 
-### B-007: Session Status
-- **Given** 2 session files exist: one open (no "end" event, PID alive and process is "claude"), one closed (has "end" event)
+### B-007: Session Status — reads from SQLite
+- **Given** 2 sessions in the table: one `active`, one `ended`
 - **When** `cvm session status` runs
-- **Then** it MUST list only the open session with verified live PID
-- **And** it MUST show: session_id, project, profile, start time, event count
+- **Then** it MUST query `SELECT * FROM sessions WHERE status = 'active'`
+- **And** it MUST show: session_id, project, profile, started_at, event_count
 
-### B-008: Session List
-- **Given** 5 session files exist (2 open, 3 closed)
+### B-008: Session List — reads from SQLite
+- **Given** 5 sessions in the table
 - **When** `cvm session ls` runs
-- **Then** it MUST list all sessions ordered by start time descending (default limit: 20)
-- **And** each MUST show: session_id (truncated to 8 chars), status (active/closed), project, start time, event count
+- **Then** it MUST query `SELECT * FROM sessions ORDER BY started_at DESC LIMIT 20`
+- **And** each MUST show: session_id (8 chars), status, project, started_at, event_count
 
-### B-009: Session Show
+### B-009: Session Show — unchanged
 - **Given** a session `778a7b24` with 20 events
-- **When** `cvm session show 778a7b24-509f-4f79-a99e-cd01e631ef82` runs
-- **Then** it MUST print all events formatted as human-readable lines
+- **When** `cvm session show 778a7b24-...` runs
+- **Then** it MUST print all JSONL events formatted as human-readable lines
+- **And** it MUST also list KB entries linked to this session_id
 
-### B-010: Session GC
-- **Given** 10 closed session files, 3 with file mtime older than 30 days
+### B-010: Session GC — updated
+- **Given** 10 ended sessions, 3 with `ended_at` older than 30 days
 - **When** `cvm session gc` runs
-- **Then** it MUST delete the 3 closed session files whose file mtime exceeds the threshold
-- **And** it MUST NOT delete active (open) sessions regardless of age
-- **And** it MUST print: `deleted 3 session(s)`
-- **Note**: age is determined by file mtime (last modification time), not by timestamps inside the JSONL
+- **Then** for each session to delete: first `UPDATE entries SET session_id = NULL WHERE session_id = ?`, then `DELETE FROM sessions WHERE id = ?`, then remove JSONL file
+- **And** age is measured by `ended_at` from SQLite (not file mtime)
+- **And** it MUST NOT delete active sessions regardless of age
 
-### B-011: Dashboard Active Sessions Count
-- **Given** the dashboard is running from any directory
-- **And** there are 2 open session files with live PIDs in `~/.cvm/sessions/`
-- **When** `GET /api/stats` is called
-- **Then** `active_sessions` MUST be `2`
-- **And** it MUST NOT depend on local KB or the dashboard's working directory
-
-### B-012: Dashboard Sessions List
-- **Given** 1 active session in `~/.cvm/sessions/` and 3 completed summaries in global KB
+### B-011: Dashboard Sessions — reads from SQLite
+- **Given** 1 active session and 3 ended sessions in the table
 - **When** `GET /api/sessions` is called
-- **Then** the response MUST contain 4 session cards
-- **And** the active session card MUST have `status: "active"` and include the project dir from the start event
-- **And** completed sessions MUST have `status: "summarized"`
+- **Then** the response MUST come from the sessions table (C-008 query)
+- **And** active sessions MUST have `status: "active"`
+- **And** ended sessions MUST have `status: "ended"`
+- **And** each session MUST include the count of linked KB entries
 
-### B-013: SSE Session Updates
+### B-012: Dashboard Stats — reads from SQLite
+- **Given** 2 active sessions in the table
+- **When** `GET /api/stats` is called
+- **Then** `active_sessions` MUST be `2` (simple COUNT query)
+
+### B-013: SSE Session Updates — unchanged
 - **Given** the dashboard watcher is running and polling `~/.cvm/sessions/` at 2s intervals
-- **When** a session file in `~/.cvm/sessions/` is modified (mtime changes)
+- **When** a session JSONL file is modified (mtime changes)
 - **Then** an SSE event `session_updated` MUST be emitted
+- **Note**: The watcher polls JSONL file mtimes only, not SQLite. This is sufficient because every session state change (start, append, end) also modifies the JSONL file
 
-### B-014: Stdin Passthrough for Hooks
-- **Given** a hook receives session_id via stdin JSON (Claude Code convention)
-- **When** `learning-decorator.sh` extracts `session_id` from stdin
-- **Then** it MUST pass it to `cvm session append <session_id> --type prompt --content "..."`
-- **And** the same pattern applies to `tool-observe.sh` and `subagent-stop.sh`
-- **And** hooks MUST continue to filter tools via `CVM_OBSERVE_TOOLS` env var before calling append
+### B-014: Learning Pulse Triggers Retro
+- **Given** the learning pulse fires (15+ min since last check)
+- **When** the `learning-decorator.sh` hook injects the self-check
+- **Then** the injected protocol MUST instruct Claude to run `/retro` with scope `mid-session`
+- **And** `/retro` MUST persist entries with the current `session_id`
+- **And** `/retro` MUST NOT reference /learn, /decide, or /gotcha (those skills no longer exist)
+
+### B-015: KB Put with Session Linking
+- **Given** an active session `778a7b24`
+- **When** `cvm kb put my-key --body "..." --tag "learning" --session-id 778a7b24-...`
+- **Then** the KB entry MUST be created with `session_id = '778a7b24-...'` in the entries table
+- **And** if the session_id doesn't exist in the sessions table, the command MUST warn but still create the entry (graceful degradation)
+
+### B-016: SubagentStop Captures with Session Linking
+- **Given** an active session `778a7b24` and a subagent that outputs `## Key Learnings:`
+- **When** `subagent-stop.sh` extracts and persists learnings
+- **Then** each `cvm kb put` call MUST include `--session-id 778a7b24-...`
+- **And** the entries MUST be queryable by session_id
 
 ## Edge Cases
 
-### E-001: Session File Does Not Exist on Append
-- **Given** `cvm session append <uuid>` is called but `~/.cvm/sessions/<uuid>.jsonl` does not exist
-- **When** the command runs
-- **Then** it MUST exit with code 0 (no-op, silently drop the event)
-- **And** it MUST log a warning to stderr: `warning: session <uuid> not found, skipping append`
-- **Note**: this preserves I-003 — files are only created by `cvm session start`
+### E-001: Session File Does Not Exist on Append — unchanged
+- **Given** `cvm session append <uuid>` is called but JSONL file does not exist
+- **Then** it MUST exit with code 0 (no-op) and log warning to stderr
 
-### E-002: Session Already Ended
-- **Given** session `778a7b24` has an "end" event
+### E-002: Session Already Ended — unchanged
+- **Given** session `778a7b24` has status `ended` in SQLite
 - **When** `cvm session append 778a7b24-...` is called
-- **Then** it MUST exit with code 0 (no-op)
-- **And** it MUST log a warning to stderr: `warning: session <uuid> already ended, ignoring append`
+- **Then** it MUST exit with code 0 (no-op) and log warning
 
 ### E-003: Session End on Empty/Short Session
-- **Given** a session with < 3 events (only start + 1-2 appends)
+- **Given** a session with < 3 events
 - **When** `cvm session end` runs
-- **Then** it MUST skip LLM summary generation
-- **And** it MUST append an "end" event with empty `summary_key` and `reason: "normal"`
-- **And** it MUST NOT store a summary in global KB
+- **Then** it MUST skip the retro pass (nothing meaningful to analyze)
+- **And** it MUST update SQLite: `status='ended'`, `ended_at=now`
+- **And** it MUST append end event to JSONL
 
-### E-004: Session End with Summary Failure
-- **Given** `claude -p --model haiku` fails or times out
+### E-004: Session End with Retro Failure
+- **Given** the retro pass fails (LLM error, timeout, etc.)
 - **When** `cvm session end` runs
-- **Then** it MUST still append an "end" event (with empty `summary_key`, `reason: "error"`)
-- **And** it MUST log the error to stderr
-- **And** it MUST exit with code 0 (graceful degradation)
+- **Then** it MUST still append end event with `reason: "error"`
+- **And** it MUST still update SQLite: `status='ended'`
+- **And** it MUST log the error to stderr and exit with code 0
 
-### E-005: Empty session_id
-- **Given** a hook calls `cvm session append "" --type prompt --content "..."`
-- **When** the command runs
-- **Then** it MUST exit with code 1
-- **And** it MUST log: `error: session_id is required`
+### E-005: Empty session_id — unchanged
+- **Given** `cvm session append ""` is called
+- **Then** it MUST exit with code 1 with `error: session_id is required`
 
-### E-006: Compaction at Session End
-- **Given** a session has 2500 events when `cvm session end` runs
-- **When** the file is read for summarization
-- **Then** only the start event + last 999 events MUST be used for the LLM summary
-- **And** the original file is NOT rewritten — compaction is read-time only for summary input
-- **And** the end event is appended as line 2501 (file keeps growing during the session)
+### E-006: Concurrent Appends — unchanged
+- **Given** multiple hooks fire simultaneously
+- **Then** JSONL writes use `syscall.Flock` (LOCK_EX); SQLite handles its own concurrency
 
-### E-007: Orphan Session Cleanup
-- **Given** a session file exists with no "end" event and the PID is dead (or PID alive but process name is not "claude" — indicating PID reuse)
-- **When** `cvm session start` runs (before creating the new session)
-- **Then** it MUST acquire the file lock on the orphan's session file
-- **And** it MUST verify no "end" event exists (check-under-lock to prevent race)
-- **And** it MUST append an "end" event with `summary_key: ""` and `reason: "orphan"`
-- **And** it MUST log: `warning: cleaned up orphan session <uuid> (PID <pid> dead)`
+### E-007: UUID Prefix Matching — unchanged
+- **Given** `cvm session show 778a7b24` with unique match
+- **Then** resolve to full UUID from SQLite
 
-### E-008: Concurrent Appends
-- **Given** multiple hooks fire simultaneously for the same session
-- **When** they each call `cvm session append`
-- **Then** each append MUST use Go `syscall.Flock` (LOCK_EX) on the session file to prevent corruption
-- **And** all events MUST be written (no data loss) — append is always O(1), no file rewrite
+### E-008: Concurrent Session End — unchanged
+- **Given** `cvm session end` called while another is in progress
+- **Then** second call detects `status='ended'` in SQLite and exits with code 0
 
-### E-009: UUID Prefix Matching
-- **Given** `cvm session show 778a7b24`
-- **When** only one session file starts with `778a7b24`
-- **Then** it MUST resolve to the full UUID and show that session
-- **When** multiple sessions match the prefix
-- **Then** it MUST list all matches and exit with code 1
+### E-009: Dashboard Backward Compatibility
+- **Given** existing `session-summary-*` entries in global KB from pre-v0.5.0 sessions
+- **When** `GET /api/sessions` is called
+- **Then** the dashboard MUST show both: sessions from SQLite table AND legacy summaries from KB (key pattern match)
+- **And** legacy summaries MUST be displayed with `status: "legacy"` to distinguish them
 
-### E-010: Concurrent Session End
-- **Given** `cvm session end <uuid>` is called while another end is already in progress
-- **When** the second call tries to append the end event
-- **Then** it MUST detect the existing end event (under lock) and exit with code 0
-- **And** it MUST log: `warning: session <uuid> already ended`
-
-### E-011: Dashboard Reads During Append
-- **Given** the dashboard is reading a session file while an append is in progress
-- **When** the dashboard reads the file
-- **Then** it MUST handle partial last lines gracefully (skip lines that fail JSON parsing)
-- **Note**: advisory flock is not required for readers — readers tolerate partial state
+### E-010: SQLite Migration on Existing Install
+- **Given** an existing CVM install with KB database but no `sessions` table
+- **When** any `cvm session` command runs
+- **Then** the migration MUST create the `sessions` table and add `session_id` column to `entries`
+- **And** existing KB entries MUST be unaffected (`session_id = NULL`)
 
 ## Invariants
 
-### I-001: Append Latency
-- `cvm session append` MUST target < 50ms completion (no network, no LLM calls)
-- This is a benchmark target verified via `go test -bench`, not a hard CI assertion
+### I-001: Append Latency — unchanged
+- `cvm session append` MUST target < 50ms completion
 
-### I-002: Storage Location
-- All session files MUST live in `~/.cvm/sessions/`
-- CVM MUST NOT write to `~/.claude/sessions/`
+### I-002: Storage Location — unchanged
+- Session files in `~/.cvm/sessions/`, session state in `~/.cvm/global/kb.db`
 
-### I-003: File Format
-- Each fully-written line in a session file MUST be valid JSON (one JSON object per newline-terminated line)
-- During concurrent writes, the last line MAY be a partial/unterminated JSON fragment — readers MUST tolerate this (see E-011)
-- The first line MUST always be a start event (only `cvm session start` creates files)
-- The last fully-written line of a closed session MUST be an end event
+### I-003: File Format — unchanged
+- Each fully-written JSONL line MUST be valid JSON
+- First line MUST be start event, last line of closed session MUST be end event
 
-### I-004: Cross-Project Visibility
-- The dashboard MUST show active sessions from ALL projects regardless of its own working directory
-- Session count MUST NOT depend on local KB
+### I-004: Cross-Project Visibility — simplified
+- Dashboard reads from SQLite `sessions` table which is global
+- No dependency on local KB or working directory
 
-### I-005: Backward Compatibility (Summaries)
-- Completed session summaries in global KB (`session-summary-*`) MUST remain unchanged in format
-- The dashboard MUST continue to display existing summaries alongside new active sessions
-- **Note**: existing KB summaries use key format `session-<ts>` (legacy) and `session-summary-<ts>` (new). Dashboard MUST recognize both patterns.
+### I-005: No PID Checking
+- The session system MUST NOT check process IDs, process names, or use `syscall.Kill(pid, 0)` for any purpose
+- Session state is determined exclusively by the `status` column in SQLite
 
-### I-006: No Local KB Dependency
-- The session system MUST NOT use local KB for session data
-- Local KB continues to exist for non-session entries (learnings, decisions, etc.)
+### I-006: No Local KB Dependency — unchanged
+- Session system MUST NOT use local KB for session data
 
-### I-007: File Locking
-- All writes to session files MUST use Go `syscall.Flock` with `LOCK_EX` (exclusive advisory lock)
-- Readers (dashboard, show, ls, status) do NOT acquire locks — they tolerate partial reads (E-011)
-- **Note**: `flock` refers to the BSD syscall via Go's `syscall.Flock`, NOT the `flock(1)` CLI utility (not available on macOS by default)
+### I-007: File Locking — unchanged for JSONL
+- JSONL writes use `syscall.Flock` with `LOCK_EX`
+- SQLite handles its own concurrency via WAL mode
 
-### I-008: Graceful Degradation
-- If `~/.cvm/sessions/` does not exist, `cvm session start` MUST create it
-- If a session file is corrupted (invalid JSON lines), `cvm session show` MUST skip invalid lines and warn
+### I-008: Graceful Degradation — unchanged
+- If `~/.cvm/sessions/` does not exist, create it
+- If session file is corrupted, skip invalid lines and warn
 
-### I-009: Autosummary Config
-- `CVM_AUTOSUMMARY_ENABLED=true|false` controls whether `cvm session end` generates an LLM summary (default: `true`)
-- `CVM_AUTOSUMMARY_MODEL` controls which model to use (default: `haiku`)
-- When disabled, `cvm session end` skips LLM call but still appends end event and runs automation (B-006)
+### I-009: Retro Config
+- `CVM_SESSION_RETRO_ENABLED=true|false` controls whether session end runs retro (default: `true`)
+- `CVM_SESSION_RETRO_MODEL` controls which model to use for end-session retro (default: `haiku`)
+- Replaces `CVM_AUTOSUMMARY_ENABLED` and `CVM_AUTOSUMMARY_MODEL`
 
-### I-010: PID Validation
-- A session is considered "active" only if: (1) no end event exists, AND (2) the PID is alive, AND (3) the process command name contains "claude"
-- This prevents false positives from PID reuse by the OS (e.g., PID recycled to "vim" won't match)
-- Process name check: on macOS use `ps -p <pid> -o comm=`, on Linux use `/proc/<pid>/comm`
-- If the process name check fails (PID alive but not "claude"), the session is treated as orphan (E-007)
+### I-010: Session-KB Linkage
+- Every KB entry created during a session SHOULD carry the `session_id`
+- The link is advisory: entries function independently if session is GC'd (`session_id` set to NULL on GC)
+- Query pattern: `SELECT * FROM entries WHERE session_id = ?` returns all knowledge from a session
 
-### I-011: Append is Always O(1)
-- `cvm session append` MUST always be a file append: acquire lock, read last line to check for end event (E-002), write new line, release lock
-- The end-event check reads only the last line (seek to near-EOF, scan backwards for newline) — this is O(1) regardless of file size
-- No file rewriting, no read-modify-write of existing content, no compaction on the hot path
-- Compaction is read-time only (E-006) and only during `cvm session end`
+### I-011: Append is Always O(1) — unchanged
+- JSONL append: lock, check end event, write line, release lock
+- SQLite `event_count` increment: single UPDATE (best-effort, advisory — if SQLite write fails, JSONL write still succeeds and event_count may drift; the JSONL file is authoritative for actual event count)
+
+### I-012: Skills Consolidation
+- `/learn`, `/decide`, `/gotcha` skills MUST be removed
+- `/retro` is the sole knowledge-capture skill
+- The learning-decorator hook MUST NOT reference removed skills
 
 ## Errors
 
 | Condition | Exit code | Stderr message |
 |-----------|-----------|----------------|
 | Empty session_id | 1 | `error: session_id is required` |
-| Session file not found (for show/end) | 1 | `error: session <uuid> not found` |
-| Session file not found (for append) | 0 | `warning: session <uuid> not found, skipping append` |
+| Session not found (for show/end) | 1 | `error: session <uuid> not found` |
+| Session not found (for append) | 0 | `warning: session <uuid> not found, skipping append` |
 | Invalid --type value | 1 | `error: type must be one of: prompt, tool, agent` |
 | --type tool without --tool | 1 | `error: --tool is required when --type is tool` |
 | --type agent without --agent-type | 1 | `error: --agent-type is required when --type is agent` |
-| Summary generation failure | 0 | `warning: summary generation failed: <reason>` |
+| Retro pass failure | 0 | `warning: retro pass failed: <reason>` |
 | Ambiguous UUID prefix | 1 | `error: ambiguous prefix <prefix>, matches: <list>` |
+| Invalid --session-id on kb put | 0 | `warning: session <uuid> not found, entry created without link` |
 
 ## Non-functional Requirements
 
 ### NF-001: Performance
-- `cvm session start`: < 100ms
-- `cvm session append`: < 50ms target (benchmark, not hard assertion)
-- `cvm session end` (without summary): < 100ms
-- `cvm session end` (with summary): < 60s (LLM-bound)
-- `cvm session status/ls`: < 200ms (with up to 100 session files)
+- `cvm session start`: < 100ms (SQLite INSERT + JSONL create)
+- `cvm session append`: < 50ms target (JSONL append + SQLite UPDATE event_count)
+- `cvm session end` (without retro): < 100ms
+- `cvm session end` (with retro): < 60s (LLM-bound)
+- `cvm session status/ls`: < 50ms (SQLite query, no file scanning)
 
 ### NF-002: Storage
-- Typical session: 100-500 events, 50-250KB JSONL file
-- Long session: unlimited events during session, compacted at read-time for summary
-- Closed sessions archived until `cvm session gc` (default retention: 30 days)
+- Sessions table: negligible overhead (one row per session, ~200 bytes)
+- JSONL files: unchanged (100-500 events typical)
+- Entries.session_id: one TEXT column, nullable
 
-### NF-003: Compatibility
+### NF-003: Compatibility — unchanged
 - macOS (primary), Linux
-- No GNU-only flags (no `grep -P`, no `timeout`)
+- No GNU-only flags
 - Go 1.21+
 
 ## Dead Code Removal
 
-The following MUST be deleted as part of this implementation:
+In addition to removals from v0.4.0:
 
 | File/Component | Reason |
 |----------------|--------|
-| `cmd/lifecycle.go` | Replaced by `cmd/session.go` |
-| `internal/lifecycle/lifecycle.go` | Replaced by `internal/session/` package. Reuse `detectTools()` and `taggedEntryCount()`. |
-| `internal/lifecycle/lifecycle_test.go` | Replaced by new tests |
-| `internal/dashboard/parser.go` | Text line parser; new system uses structured JSONL |
-| `profiles/sdd-mem/hooks/tool-capture.sh` | Unified into `tool-observe.sh` (NotebookEdit capture moves to tool-observe.sh) |
-| `settings.json` PostToolUse entry for `tool-capture.sh` | Remove hook entry; NotebookEdit matcher moves to tool-observe.sh |
-| `profiles/sdd-mem/hooks/session-summary.sh` | Absorbed into `cvm session end` |
-| `context-inject.sh` orphan cleanup (lines ~10-59) | Orphan cleanup moves to `cvm session start` (E-007) |
-| `~/.cvm/session.json` runtime file | Metadata now in session JSONL start event |
-| `sessionLineJSON`, `ParseSessionLines` in api.go | Replaced by JSONL event reading |
-| `cmd/root.go` `lifecycleCmd` registration | Replaced by `sessionCmd` |
+| `sessionIsPIDAlive()` in api.go | PID checking eliminated (I-005) |
+| `cleanOrphans()` in session.go | Orphan cleanup eliminated |
+| `execPsComm()` in api.go | PID process name check eliminated |
+| `profiles/sdd-mem/skills/learn.md` | Consolidated into /retro (I-012) |
+| `profiles/sdd-mem/skills/decide.md` | Consolidated into /retro (I-012) |
+| `profiles/sdd-mem/skills/gotcha.md` | Consolidated into /retro (I-012) |
+| `generateSummary()` in session.go | Replaced by `generateRetro()` — same `claude -p` pattern but with retro prompt (C-009a) |
+| `CVM_AUTOSUMMARY_ENABLED` env var | Replaced by `CVM_SESSION_RETRO_ENABLED` |
+| `CVM_AUTOSUMMARY_MODEL` env var | Replaced by `CVM_SESSION_RETRO_MODEL` |
 
 ## Related Specs
 
-- **S-016** (dashboard): MUST be updated to read from `~/.cvm/sessions/` instead of local KB for active sessions. Invariant I-002n changes.
-- **S-011** (realtime-capture): SUPERSEDED — all session buffer behaviors move to this spec.
-- **S-015** (tool-observation): SUPERSEDED — tool capture moves to `cvm session append --type tool`. `CVM_OBSERVE_TOOLS` filtering stays in hooks.
-- **S-012** (multi-validator): Minor update — `cvm lifecycle start` references become `cvm session start`.
-- **S-010** (sdd-mem): Minor update — lifecycle references become session references.
+- **S-016** (dashboard): MUST update to read from `sessions` table
+- **S-013** (sqlite-fts5): Migration adds `session_id` to entries table and creates `sessions` table
+- **S-010** (sdd-mem): Remove /learn, /decide, /gotcha skill references; update learning protocol
 
 ## Dependencies
 
-- `claude -p --model haiku` for summary generation (existing dependency)
-- Global KB backend for storing summaries (existing dependency)
-- Go `syscall.Flock` for file locking (BSD syscall, available on macOS and Linux)
+- Existing SQLite database (`~/.cvm/global/kb.db`) via `modernc.org/sqlite`
+- `claude -p --model haiku` for end-session retro (existing dependency, same as old summary generation)
+- `/retro` skill (must be updated to support `mid-session` scope + session_id linking)
+- Go `syscall.Flock` for JSONL file locking
+- `Backend.Put()` interface change: add `sessionID string` parameter
 
 ## Changelog
 
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1.0 | 2026-04-13 | Initial draft — CVM-owned session system |
-| 0.2.0 | 2026-04-13 | Address triple review round 1 (Opus+Codex+Gemini): fix E-001 vs I-003 contradiction, lazy compaction (I-011), Reason field (C-003), summary prompt (C-008), PID reuse detection (I-010), flock clarification (I-007), autosummary disabled (B-006), session gc (B-010), concurrent end (E-010), partial reads (E-011), legacy key format (I-005), automation integration, --limit default |
-| 0.3.0 | 2026-04-13 | Address triple review round 2: replace started_at with process name validation (I-010), scope I-003 to fully-written lines, document late-append window, add flag validation errors, define GC mtime, deprecate CVM_AUTOSUMMARY_MIN_TOOLS, clarify --pid/I-011 |
-| 0.4.0 | 2026-04-13 | Address triple review round 3 (Codex): fix SessionStart identity gap — hook MUST extract session_id from stdin and pass via --session-id (same pattern as all other hooks), not bare CLI invocation. Fix summary key collision — append uuid8 suffix for uniqueness. Clarify start-side automation is print-only (no state mutation), all automation integration is in session end |
+| 0.2.0 | 2026-04-13 | Triple review round 1: fix contradictions, lazy compaction, PID reuse detection |
+| 0.3.0 | 2026-04-13 | Triple review round 2: process name validation, scope I-003, flag validation |
+| 0.4.0 | 2026-04-13 | Triple review round 3: session_id identity gap, summary key collision, automation |
+| 0.5.0 | 2026-04-13 | Major redesign: SQLite sessions table, remove PID checking, KB entries linked to session_id, session end runs /retro instead of summary, consolidate /learn /decide /gotcha into /retro, dashboard reads from SQLite |
+| 0.6.0 | 2026-04-13 | Dual review fixes (Opus A+B): clarify retro runs via `claude -p --model haiku` (not as skill invocation), remove FK constraint on entries.session_id (use application-level validation for graceful degradation), specify Backend.Put() interface change with sessionID param, add migration mechanism (C-002a), add indexes on sessions.status and entries.session_id, mark event_count as advisory, GC uses ended_at not file mtime, clarify SSE watches JSONL not SQLite, add CVM_SESSION_RETRO_MODEL config |

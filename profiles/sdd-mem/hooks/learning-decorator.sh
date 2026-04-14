@@ -46,7 +46,7 @@ if [ ! -f "$PULSE_FILE" ]; then
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[learning-protocol] On-the-fly learning activo.\n\nSELF-CHECK obligatorio — preguntate despues de cada interaccion significativa:\n- Acabo de tomar una decision de diseno? → cvm kb put con tag decision\n- Acabo de resolver un bug o encontrar la causa? → cvm kb put con tag learning\n- Algo no funciono como esperaba? → cvm kb put con tag gotcha\n- El usuario confirmo o rechazo un approach? → cvm kb put con tag decision\n\nSi la respuesta a cualquiera es SI → guardar AHORA, no despues.\n\nAccion:\n1. Verificar duplicados: cvm kb search \"<terminos>\"\n2. Guardar: cvm kb put \"<key>\" --body \"<descripcion con el POR QUE>\" --tag \"<tipo>,<area>\" [--local]\n3. Reportar: [learned] key — descripcion\n\nTipos: learning, gotcha, decision\nReglas: calidad > cantidad. Solo si genuinamente util para futuras sesiones.\n\nSESSION SUMMARY: Antes de cerrar la sesion (cuando el usuario dice listo/done/chau/exit), DEBES persistir un resumen con:\ncvm kb put \"session-summary-$(date +%Y%m%d)\" --body \"Goal: ... | Accomplished: ... | Discoveries: ... | Next: ...\" --tag \"session,summary\"\nEsto NO es opcional. Si lo salteas, la proxima sesion arranca ciega."
+    "additionalContext": "[learning-protocol] On-the-fly learning activo.\n\nSELF-CHECK obligatorio — preguntate despues de cada interaccion significativa:\n- ¿Tome decisiones de diseno, resolvi bugs, o descubri algo no-obvio?\n\nSi la respuesta es SI → ejecutar /retro (mid-session) AHORA, no despues.\n\n/retro captura automaticamente learnings, decisions, y gotchas y los persiste en KB con session_id.\n\nReglas: calidad > cantidad. Solo si genuinamente util para futuras sesiones."
   }
 }
 HOOK
@@ -64,7 +64,7 @@ if [ "$ELAPSED" -gt 900 ]; then
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[learning-pulse] +15min desde ultimo checkpoint. SELF-CHECK: ¿tomaste decisiones, resolviste bugs, o descubriste algo no-obvio en los ultimos 15min? Si SI → cvm kb put AHORA. No esperar al final."
+    "additionalContext": "[learning-pulse] +15min desde ultimo checkpoint. SELF-CHECK: ¿tomaste decisiones, resolviste bugs, o descubriste algo no-obvio en los ultimos 15min? Si SI → ejecutar /retro AHORA. No esperar al final."
   }
 }
 HOOK

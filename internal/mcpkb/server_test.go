@@ -40,7 +40,7 @@ func setupTempKB(t *testing.T) (globalKBDir string, cleanup func()) {
 // putEntry writes an entry to the global KB.
 func putEntry(t *testing.T, key, body string, tags []string) {
 	t.Helper()
-	if err := kb.Put(config.ScopeGlobal, "", key, body, tags); err != nil {
+	if err := kb.Put(config.ScopeGlobal, "", key, body, tags, ""); err != nil {
 		t.Fatalf("put entry %q: %v", key, err)
 	}
 }

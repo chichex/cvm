@@ -738,7 +738,7 @@ func applyEvolve(candidate Candidate) (string, []Action, error) {
 
 	recordKey := fmt.Sprintf("automation-skill-%s", actualSkillName)
 	recordBody := fmt.Sprintf("Auto-generated skill /%s from repeated KB patterns and installed at %s.", actualSkillName, targetSkillPath)
-	if err := kb.Put(scope, candidate.ProjectPath, recordKey, recordBody, []string{"automation", "evolve", "skill"}); err != nil {
+	if err := kb.Put(scope, candidate.ProjectPath, recordKey, recordBody, []string{"automation", "evolve", "skill"}, ""); err != nil {
 		return "", []Action{action}, err
 	}
 

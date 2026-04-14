@@ -3,6 +3,7 @@
 package kb
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,7 +95,7 @@ func TestSQLiteBackend_Put_Insert(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
 	now := time.Now().UTC()
-	if err := b.Put("my-key", "body text", []string{"tag1"}, now); err != nil {
+	if err := b.Put("my-key", "body text", []string{"tag1"}, now, ""); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
 
@@ -122,10 +123,10 @@ func TestSQLiteBackend_Put_Update_PreservesCreatedAt(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
 	t1 := time.Now().UTC().Add(-time.Hour)
-	b.Put("key1", "original body", []string{"a"}, t1)
+	b.Put("key1", "original body", []string{"a"}, t1, "")
 
 	t2 := time.Now().UTC()
-	b.Put("key1", "updated body", []string{"b"}, t2)
+	b.Put("key1", "updated body", []string{"b"}, t2, "")
 
 	doc, err := b.Get("key1")
 	if err != nil {
@@ -178,7 +179,7 @@ func TestSQLiteBackend_Remove_NotFound(t *testing.T) {
 func TestSQLiteBackend_SetEnabled(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("e1", "body", []string{"a"}, time.Now())
+	b.Put("e1", "body", []string{"a"}, time.Now(), "")
 
 	// Disable
 	if err := b.SetEnabled("e1", false); err != nil {
@@ -232,8 +233,8 @@ func TestSQLiteBackend_Close_Idempotent(t *testing.T) {
 func TestSQLiteBackend_Search_FTS5_Basic(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("golang-notes", "Go is a statically typed language", []string{"lang"}, time.Now())
-	b.Put("python-notes", "Python is dynamically typed", []string{"lang"}, time.Now())
+	b.Put("golang-notes", "Go is a statically typed language", []string{"lang"}, time.Now(), "")
+	b.Put("python-notes", "Python is dynamically typed", []string{"lang"}, time.Now(), "")
 
 	results, err := b.Search("golang", SearchOptions{})
 	if err != nil {
@@ -252,7 +253,7 @@ func TestSQLiteBackend_Search_FTS5_Basic(t *testing.T) {
 func TestSQLiteBackend_Search_Stemming(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("test-entry", "I was running tests all day", []string{"test"}, time.Now())
+	b.Put("test-entry", "I was running tests all day", []string{"test"}, time.Now(), "")
 
 	// "running" → "run" via porter stemmer; "run" should match "running"
 	results, err := b.Search("running", SearchOptions{})
@@ -269,9 +270,9 @@ func TestSQLiteBackend_Search_Stemming(t *testing.T) {
 func TestSQLiteBackend_Search_EmptyQuery_ReturnsAll(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("k1", "body one", []string{"a"}, time.Now())
-	b.Put("k2", "body two", []string{"b"}, time.Now())
-	b.Put("k3", "body three", []string{"c"}, time.Now())
+	b.Put("k1", "body one", []string{"a"}, time.Now(), "")
+	b.Put("k2", "body two", []string{"b"}, time.Now(), "")
+	b.Put("k3", "body three", []string{"c"}, time.Now(), "")
 
 	results, err := b.Search("", SearchOptions{})
 	if err != nil {
@@ -287,8 +288,8 @@ func TestSQLiteBackend_Search_EmptyQuery_ReturnsAll(t *testing.T) {
 func TestSQLiteBackend_SearchWithOptions_FilterByTag(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("entry-a", "test content alpha", []string{"learning"}, time.Now())
-	b.Put("entry-b", "test content beta", []string{"gotcha"}, time.Now())
+	b.Put("entry-a", "test content alpha", []string{"learning"}, time.Now(), "")
+	b.Put("entry-b", "test content beta", []string{"gotcha"}, time.Now(), "")
 
 	results, err := b.Search("test", SearchOptions{Tag: "learning"})
 	if err != nil {
@@ -308,7 +309,7 @@ func TestSQLiteBackend_SearchWithOptions_FilterBySince(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
 	recent := time.Now().UTC()
-	b.Put("recent-entry", "findme content here", []string{"a"}, recent)
+	b.Put("recent-entry", "findme content here", []string{"a"}, recent, "")
 
 	// Should find with since=1h
 	results, err := b.Search("findme", SearchOptions{Since: time.Hour})
@@ -336,9 +337,9 @@ func TestSQLiteBackend_Search_RankingBM25(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
 	now := time.Now().UTC()
-	b.Put("auth", "Authentication module code", []string{"code"}, now)
-	b.Put("auth-gotcha", "Gotcha about tokens", []string{"gotcha"}, now.Add(time.Millisecond))
-	b.Put("database-setup", "Uses auth credentials internally", []string{"infra"}, now.Add(2*time.Millisecond))
+	b.Put("auth", "Authentication module code", []string{"code"}, now, "")
+	b.Put("auth-gotcha", "Gotcha about tokens", []string{"gotcha"}, now.Add(time.Millisecond), "")
+	b.Put("database-setup", "Uses auth credentials internally", []string{"infra"}, now.Add(2*time.Millisecond), "")
 
 	results, err := b.Search("auth", SearchOptions{})
 	if err != nil {
@@ -359,9 +360,9 @@ func TestSQLiteBackend_Search_RankingBM25(t *testing.T) {
 func TestSQLiteBackend_List_TagFilter(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("k1", "body", []string{"learning", "go"}, time.Now())
-	b.Put("k2", "body", []string{"gotcha"}, time.Now())
-	b.Put("k3", "body", []string{"learning"}, time.Now())
+	b.Put("k1", "body", []string{"learning", "go"}, time.Now(), "")
+	b.Put("k2", "body", []string{"gotcha"}, time.Now(), "")
+	b.Put("k3", "body", []string{"learning"}, time.Now(), "")
 
 	entries, err := b.List("learning")
 	if err != nil {
@@ -377,7 +378,7 @@ func TestSQLiteBackend_List_TagFilter(t *testing.T) {
 func TestSQLiteBackend_Timeline(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("today", "today's work", []string{"a"}, time.Now())
+	b.Put("today", "today's work", []string{"a"}, time.Now(), "")
 
 	days, err := b.Timeline(7)
 	if err != nil {
@@ -398,8 +399,8 @@ func TestSQLiteBackend_Timeline(t *testing.T) {
 func TestSQLiteBackend_Stats(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("e1", "hello world", []string{"a"}, time.Now())
-	b.Put("e2", strings.Repeat("x", 400), []string{"b"}, time.Now())
+	b.Put("e1", "hello world", []string{"a"}, time.Now(), "")
+	b.Put("e2", strings.Repeat("x", 400), []string{"b"}, time.Now(), "")
 
 	stats, err := b.Stats()
 	if err != nil {
@@ -425,8 +426,8 @@ func TestSQLiteBackend_Compact(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
 	t1 := time.Now().UTC()
-	b.Put("alpha", "Alpha first line\nSecond line", []string{"a"}, t1)
-	b.Put("beta", "Beta first line\nSecond line", []string{"b"}, t1.Add(time.Millisecond))
+	b.Put("alpha", "Alpha first line\nSecond line", []string{"a"}, t1, "")
+	b.Put("beta", "Beta first line\nSecond line", []string{"b"}, t1.Add(time.Millisecond), "")
 
 	compact, err := b.Compact()
 	if err != nil {
@@ -449,7 +450,7 @@ func TestSQLiteBackend_Compact(t *testing.T) {
 func TestSQLiteBackend_Remove(t *testing.T) {
 	b := setupSQLiteBackend(t)
 
-	b.Put("k1", "body", []string{}, time.Now())
+	b.Put("k1", "body", []string{}, time.Now(), "")
 	if err := b.Remove("k1"); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -544,9 +545,9 @@ func TestMigration_MultipleEntries(t *testing.T) {
 	t.Setenv("CVM_KB_BACKEND", "flat")
 	flatBackend := NewFlatBackend(config.ScopeLocal, projectPath)
 	now := time.Now().UTC()
-	flatBackend.Put("foo", "Foo body content", []string{"a"}, now)
-	flatBackend.Put("bar", "Bar body content", []string{"b"}, now.Add(time.Millisecond))
-	flatBackend.Put("baz", "Baz body content", []string{"c"}, now.Add(2*time.Millisecond))
+	flatBackend.Put("foo", "Foo body content", []string{"a"}, now, "")
+	flatBackend.Put("bar", "Bar body content", []string{"b"}, now.Add(time.Millisecond), "")
+	flatBackend.Put("baz", "Baz body content", []string{"c"}, now.Add(2*time.Millisecond), "")
 
 	// Now switch to SQLite — should trigger migration
 	t.Setenv("CVM_KB_BACKEND", "sqlite")
@@ -659,7 +660,7 @@ func TestMigration_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first NewBackend: %v", err)
 	}
-	b1.Put("k1", "body", []string{}, time.Now())
+	b1.Put("k1", "body", []string{}, time.Now(), "")
 	b1.Close()
 
 	// Now create flat files with different data
@@ -749,5 +750,111 @@ func TestNewBackend_PermissionDenied_FallbackToFlat(t *testing.T) {
 
 	if _, ok := b.(*FlatBackend); !ok {
 		t.Errorf("expected *FlatBackend as fallback, got %T", b)
+	}
+}
+
+// --- Wave 6: S-017 session system schema tests ---
+
+// TestSQLiteBackend_SessionsTableCreated verifies the sessions table exists after NewSQLiteBackend.
+// Spec: S-017 | Req: C-001 | Type: happy
+func TestSQLiteBackend_SessionsTableCreated(t *testing.T) {
+	b := setupSQLiteBackend(t)
+
+	var name string
+	err := b.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'`).Scan(&name)
+	if err != nil {
+		t.Fatalf("sessions table not found: %v", err)
+	}
+	if name != "sessions" {
+		t.Errorf("expected table name 'sessions', got %q", name)
+	}
+}
+
+// TestSQLiteBackend_SessionIDColumnExists verifies session_id column is added to entries table.
+// Spec: S-017 | Req: C-002, C-002a | Type: happy
+func TestSQLiteBackend_SessionIDColumnExists(t *testing.T) {
+	b := setupSQLiteBackend(t)
+
+	var exists int
+	err := b.db.QueryRow(`SELECT 1 FROM pragma_table_info('entries') WHERE name='session_id'`).Scan(&exists)
+	if err != nil {
+		t.Fatalf("session_id column not found in entries table: %v", err)
+	}
+	if exists != 1 {
+		t.Error("expected session_id column to exist in entries table")
+	}
+}
+
+// TestSQLiteBackend_Put_WithSessionID verifies Put stores session_id correctly.
+// Spec: S-017 | Req: C-010, B-015 | Type: happy
+func TestSQLiteBackend_Put_WithSessionID(t *testing.T) {
+	b := setupSQLiteBackend(t)
+
+	sessionID := "778a7b24-509f-4f79-a99e-cd01e631ef82"
+	now := time.Now().UTC()
+	if err := b.Put("linked-entry", "body with session", []string{"learning"}, now, sessionID); err != nil {
+		t.Fatalf("Put with sessionID: %v", err)
+	}
+
+	var stored string
+	err := b.db.QueryRow(`SELECT session_id FROM entries WHERE key = 'linked-entry'`).Scan(&stored)
+	if err != nil {
+		t.Fatalf("querying session_id: %v", err)
+	}
+	if stored != sessionID {
+		t.Errorf("expected session_id %q, got %q", sessionID, stored)
+	}
+}
+
+// TestSQLiteBackend_Put_EmptySessionID_StoresNULL verifies empty sessionID stores NULL.
+// Spec: S-017 | Req: C-010 | Type: happy
+func TestSQLiteBackend_Put_EmptySessionID_StoresNULL(t *testing.T) {
+	b := setupSQLiteBackend(t)
+
+	now := time.Now().UTC()
+	if err := b.Put("no-session-entry", "body without session", []string{"learning"}, now, ""); err != nil {
+		t.Fatalf("Put without sessionID: %v", err)
+	}
+
+	var stored sql.NullString
+	err := b.db.QueryRow(`SELECT session_id FROM entries WHERE key = 'no-session-entry'`).Scan(&stored)
+	if err != nil {
+		t.Fatalf("querying session_id: %v", err)
+	}
+	if stored.Valid {
+		t.Errorf("expected NULL session_id, got %q", stored.String)
+	}
+}
+
+// TestSQLiteBackend_SessionIDMigration_Idempotent verifies the migration runs safely on existing DB.
+// Spec: S-017 | Req: C-002a, E-010 | Type: edge
+func TestSQLiteBackend_SessionIDMigration_Idempotent(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	projectPath := filepath.Join(tmpDir, "proj")
+	os.MkdirAll(projectPath, 0755)
+
+	// First open — creates schema + migrates session_id column
+	b1, err := NewSQLiteBackend(config.ScopeLocal, projectPath)
+	if err != nil {
+		t.Fatalf("first NewSQLiteBackend: %v", err)
+	}
+	b1.Put("k1", "body", []string{}, time.Now(), "")
+	b1.Close()
+
+	// Second open — migration should be idempotent (no error on existing column)
+	b2, err := NewSQLiteBackend(config.ScopeLocal, projectPath)
+	if err != nil {
+		t.Fatalf("second NewSQLiteBackend (idempotent): %v", err)
+	}
+	defer b2.Close()
+
+	// Verify data still intact
+	doc, err := b2.Get("k1")
+	if err != nil {
+		t.Fatalf("Get after second open: %v", err)
+	}
+	if doc.Entry.Key != "k1" {
+		t.Errorf("expected key 'k1', got %q", doc.Entry.Key)
 	}
 }
