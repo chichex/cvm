@@ -81,6 +81,7 @@ type Entry struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	LastReferenced time.Time `json:"last_referenced,omitempty"`
+	SessionID      string    `json:"session_id,omitempty"` // Spec: S-020 | Req: C-001
 }
 
 type Document struct {

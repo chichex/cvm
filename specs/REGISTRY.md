@@ -10,3 +10,4 @@
 | S-017 | session-system | approved | 0.4.0 | TDD + manual | specs/session-system.spec.md |
 | S-018 | nested-retro-sessions | draft | 0.1.0 | tests post-impl + manual | specs/nested-retro-sessions.spec.md |
 | S-019 | tag-taxonomy | implemented | 0.3.1 | tests post-impl + manual browser testing | specs/tag-taxonomy.spec.md |
+| S-020 | session-knowledge-linking | verified | 0.1.0 | tests post-impl + manual browser testing | specs/session-knowledge-linking.spec.md |

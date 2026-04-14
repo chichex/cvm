@@ -456,6 +456,7 @@ func countLines(s string) int {
 
 // --- Entries (KB Browser) ---
 
+// Spec: S-020 | Req: C-002
 type entryJSON struct {
 	Key           string   `json:"key"`
 	Tags          []string `json:"tags"`
@@ -465,6 +466,7 @@ type entryJSON struct {
 	UpdatedAt     string   `json:"updated_at"`
 	Body          string   `json:"body"`
 	TokenEstimate int      `json:"token_estimate"`
+	SessionID     string   `json:"session_id,omitempty"` // Spec: S-020 | Req: C-002a
 }
 
 type entriesResponse struct {
@@ -605,6 +607,7 @@ func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
 			Body:          sd.doc.Body,
 			TokenEstimate: len(sd.doc.Body) / 4,
+			SessionID:     e.SessionID, // Spec: S-020 | Req: C-002c
 		})
 	}
 
