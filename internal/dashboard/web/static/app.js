@@ -290,11 +290,27 @@ function renderSessionCard(session) {
 
   let detailLoaded = false;
 
-  card.addEventListener('click', (e) => {
+  card.addEventListener('click', async (e) => {
     if (e.target.closest('.session-card__knowledge')) return;
     card.classList.toggle('expanded');
     if (card.classList.contains('expanded') && !detailLoaded) {
       detailLoaded = true;
+      if (session.status === 'active' || session.status === 'stale') {
+        detail.innerHTML = '';
+        detail.appendChild(el('div', 'session-empty', 'Loading events…'));
+        try {
+          const resp = await fetch(`/api/session?id=${encodeURIComponent(session.id)}`);
+          const data = await resp.json();
+          if (data.found && data.events && data.events.length) {
+            session.lines = data.events.map(ev => ({
+              timestamp: ev.ts || '',
+              type: (ev.type || '').toUpperCase(),
+              tool: ev.tool || '',
+              content: ev.content || '',
+            }));
+          }
+        } catch (_) { /* render will show empty */ }
+      }
       renderSessionDetail(detail, session);
     }
   });
