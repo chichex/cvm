@@ -314,27 +314,11 @@ function renderSessionCard(session) {
 
   let detailLoaded = false;
 
-  card.addEventListener('click', async (e) => {
+  card.addEventListener('click', (e) => {
     if (e.target.closest('.session-card__knowledge')) return;
     card.classList.toggle('expanded');
     if (card.classList.contains('expanded') && !detailLoaded) {
       detailLoaded = true;
-      if (session.status === 'active' || session.status === 'stale') {
-        detail.innerHTML = '';
-        detail.appendChild(el('div', 'session-empty', 'Loading events…'));
-        try {
-          const resp = await fetch(`/api/session?id=${encodeURIComponent(session.id)}`);
-          const data = await resp.json();
-          if (data.found && data.events && data.events.length) {
-            session.lines = data.events.map(ev => ({
-              timestamp: ev.ts || '',
-              type: (ev.type || '').toUpperCase(),
-              tool: ev.tool || '',
-              content: ev.content || '',
-            }));
-          }
-        } catch (_) { /* render will show empty */ }
-      }
       renderSessionDetail(detail, session);
     }
   });
@@ -364,48 +348,10 @@ function renderKnowledgePill(entry) {
 function renderSessionDetail(container, session) {
   container.innerHTML = '';
 
-  if (session.status === 'active') {
-    // Show full buffer lines
-    if (!session.lines || !session.lines.length) {
-      container.appendChild(el('div', 'session-empty', 'Buffer is empty.'));
-      return;
-    }
-    const bufContainer = el('div', 'session-container');
-    session.lines.forEach(line => {
-      const row = el('div', 'session-line');
-
-      const ts = el('span', 'session-ts', line.timestamp || '');
-      row.appendChild(ts);
-
-      const type = el('span', 'session-type');
-      if (line.type === 'TOOL') {
-        type.appendChild(renderBadge(line.tool || 'TOOL'));
-      } else if (line.type === 'USER') {
-        type.appendChild(el('span', 'badge badge-decision', 'USER'));
-      } else {
-        type.appendChild(el('span', 'badge badge-default', 'RAW'));
-      }
-      row.appendChild(type);
-
-      row.appendChild(el('span', 'session-content', line.content || ''));
-      bufContainer.appendChild(row);
-    });
-    container.appendChild(bufContainer);
-  } else {
-    // Show full summary
-    if (!session.summary_body) {
-      container.appendChild(el('div', 'session-empty', 'No summary body.'));
-      return;
-    }
-    const summaryFull = el('div', 'session-summary-full');
-    summaryFull.textContent = session.summary_body;
-    container.appendChild(summaryFull);
-  }
-
-  // Show full knowledge entries
+  // Show linked knowledge entries as primary content
   const knowledge = session.knowledge || [];
   if (knowledge.length > 0) {
-    const kHeader = el('div', 'session-detail-section-header', `Linked Knowledge (${knowledge.length})`);
+    const kHeader = el('div', 'session-detail-section-header', `Learnings (${knowledge.length})`);
     container.appendChild(kHeader);
     knowledge.forEach(kEntry => {
       const entryEl = el('div', 'session-detail-knowledge-entry');
@@ -423,6 +369,8 @@ function renderSessionDetail(container, session) {
       }
       container.appendChild(entryEl);
     });
+  } else {
+    container.appendChild(el('div', 'session-empty', 'No learnings linked to this session.'));
   }
 }
 
