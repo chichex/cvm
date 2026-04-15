@@ -51,6 +51,10 @@ Sin timeout. Esperar a que todos terminen.
 - Recomendacion: [...]
 ```
 
+### Paso 5: Evaluar aprendizajes
+
+Despues de reportar, ejecutar `/r` para evaluar y persistir aprendizajes de la sesion.
+
 ## MUST DO
 - Parsear y enriquecer cada prompt — no hacer pass-through
 - Diferenciar el angulo de cada agente cuando son N
@@ -58,6 +62,7 @@ Sin timeout. Esperar a que todos terminen.
 - Lanzar todos en paralelo
 - Incluir paths a archivos relevantes
 - Sintetizar cuando hay multiples resultados
+- Ejecutar `/r` al final para persistir aprendizajes
 
 ## MUST NOT DO
 - No pasar el input tal cual sin procesar
