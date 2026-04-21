@@ -54,16 +54,24 @@ El primer match en orden bug > docs > chore > feature gana. Si no matchea ningun
 
 ### Paso 4: Inferir size
 
-Combinar longitud del input y archivos detectados:
+Combinar longitud del input y archivos detectados. Los tres buckets chicos usan **AND** (ambos factores tienen que ser chicos); `l` es el fallback cuando cualquiera de los dos se dispara.
 
 | Size | Criterio |
 |------|----------|
-| `xs` | input < 50 chars Y 0-1 archivos detectados |
-| `s` | input < 150 chars Y ≤ 3 archivos |
-| `m` | input < 300 chars O ≤ 6 archivos |
-| `l` | input ≥ 300 chars O > 6 archivos |
+| `xs` | input < 50 chars **Y** ≤ 1 archivo detectado |
+| `s`  | input < 150 chars **Y** ≤ 3 archivos |
+| `m`  | input < 300 chars **Y** ≤ 6 archivos |
+| `l`  | cualquier otro caso (input ≥ 300 chars **O** > 6 archivos) |
 
-Aplicar en orden xs → s → m → l y quedarse con el primero que cumpla. Default `s` si hay duda.
+Aplicar en orden `xs → s → m → l` y quedarse con el primero que cumpla. No hay ambiguedad: si un bucket falla por longitud O por archivos, se cae al siguiente.
+
+Ejemplos:
+- input 30 chars, 0 archivos → `xs` (ambos chicos).
+- input 30 chars, 2 archivos → `s` (falla `xs` por archivos, cumple `s`).
+- input 200 chars, 0 archivos → `m` (falla `s` por longitud, cumple `m`).
+- input 100 chars, 5 archivos → `m` (falla `s` por archivos, cumple `m`).
+- input 100 chars, 8 archivos → `l` (falla `m` por archivos).
+- input 400 chars, 1 archivo → `l` (falla `m` por longitud).
 
 ### Paso 5: Armar el body
 
