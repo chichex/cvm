@@ -67,7 +67,15 @@ Aplicar en orden xs → s → m → l y quedarse con el primero que cumpla. Defa
 
 ### Paso 5: Armar el body
 
-Usar Write tool para escribir `/tmp/cvm-idea-body.md` con esta estructura exacta (los `[...]` se reemplazan):
+Generar un path temporal unico para esta invocacion y guardarlo como `$BODY_FILE` para reusarlo en Paso 6 y Paso 9:
+
+```bash
+BODY_FILE="$(mktemp -t cvm-idea-body.XXXXXX).md"
+```
+
+Si `mktemp` no esta disponible, fallback a `/tmp/cvm-idea-body-$(date +%s)-$$.md` (timestamp + PID). El path fijo `/tmp/cvm-idea-body.md` NO es seguro: dos `/idea` concurrentes (o un run previo fallido) pueden mezclar bodies.
+
+Usar Write tool para escribir `$BODY_FILE` con esta estructura exacta (los `[...]` se reemplazan):
 
 ```markdown
 ## Idea
@@ -109,7 +117,7 @@ Labels:
 
 Body:
 ---
-<contenido completo de /tmp/cvm-idea-body.md>
+<contenido completo de $BODY_FILE>
 ---
 
 (no se creo el issue. Removeti --dry-run para crear de verdad.)
@@ -159,7 +167,7 @@ El titulo se deriva de la descripcion: imperativo, max 70 chars, sin punto final
 ```bash
 gh issue create \
   --title "<titulo derivado>" \
-  --body-file /tmp/cvm-idea-body.md \
+  --body-file "$BODY_FILE" \
   --label "status:idea" \
   --label "ct:plan" \
   --label "type:<inferido>" \
