@@ -4,30 +4,39 @@ Revisar un PR o issue de GitHub lanzando agentes seleccionados en paralelo (opus
 
 ### Paso 1: Parsear input
 
-Extraer el numero y tipo explicito (si viene) desde $ARGUMENTS:
+Extraer numero, tipo explicito y (si viene URL) owner/repo desde $ARGUMENTS:
 
-- `24` → numero pelado, tipo a detectar
+- `24` → numero pelado, tipo a detectar, repo actual
 - `#24` → idem
-- `pr 24` / `PR 24` → tipo forzado a PR
-- `issue 24` → tipo forzado a issue
-- `https://github.com/<org>/<repo>/pull/24` → PR 24
-- `https://github.com/<org>/<repo>/issues/24` → issue 24
+- `pr 24` / `PR 24` → tipo forzado a PR, repo actual
+- `issue 24` → tipo forzado a issue, repo actual
+- `https://github.com/<org>/<repo>/pull/24` → PR 24 en `<org>/<repo>`
+- `https://github.com/<org>/<repo>/issues/24` → issue 24 en `<org>/<repo>`
 
 Si no se puede extraer un numero, abortar: "No pude extraer PR/issue desde '<input>'. Usa: numero, `pr N`, `issue N`, o URL completa."
 
 Guardar:
 - `NUM`: numero parseado
-- `FORCED_KIND`: `pr`, `issue`, o vacio si solo vino numero/URL sin pista
+- `FORCED_KIND`: `pr`, `issue`, o vacio si solo vino numero
+- `OWNER_REPO`: `<owner>/<repo>` si vino URL, vacio si no
+- `REPO_FLAG`: `--repo "$OWNER_REPO"` si `OWNER_REPO` no esta vacio, sino vacio
+
+`REPO_FLAG` (cuando aplique) debe usarse en TODOS los `gh pr|issue view|diff|comment` y como contexto en `gh api` (ver Paso 7). Nunca asumas el repo actual cuando vino una URL.
 
 ### Paso 2: Detectar tipo
 
-Si `FORCED_KIND` ya esta seteado, usarlo. Sino:
+Si `FORCED_KIND` ya esta seteado, usarlo. Sino, separar verificacion de asignacion (no mezclar stdout):
 
 ```bash
-gh pr view "$NUM" --json number 2>/dev/null && echo "pr" || (gh issue view "$NUM" --json number 2>/dev/null && echo "issue")
+if gh pr view "$NUM" $REPO_FLAG --json number >/dev/null 2>&1; then
+  KIND=pr
+elif gh issue view "$NUM" $REPO_FLAG --json number >/dev/null 2>&1; then
+  KIND=issue
+else
+  echo "No existe PR ni issue #$NUM en ${OWNER_REPO:-este repo}." >&2
+  exit 1
+fi
 ```
-
-Probar primero `gh pr view <NUM> --json number`; si retorna ok, es PR. Si falla, probar `gh issue view <NUM> --json number`. Si ambos fallan, abortar: "No existe PR ni issue #<NUM> en este repo."
 
 Guardar `KIND` = `pr` o `issue`.
 
@@ -36,14 +45,14 @@ Guardar `KIND` = `pr` o `issue`.
 Para PRs:
 
 ```bash
-gh pr view "$NUM" --json number,title,body,author,labels,files,baseRefName,headRefName
-gh pr diff "$NUM"
+gh pr view "$NUM" $REPO_FLAG --json number,title,body,author,labels,files,baseRefName,headRefName
+gh pr diff "$NUM" $REPO_FLAG
 ```
 
 Para issues:
 
 ```bash
-gh issue view "$NUM" --json number,title,body,author,labels,comments
+gh issue view "$NUM" $REPO_FLAG --json number,title,body,author,labels,comments
 ```
 
 Escribir el contexto con `Write` tool (no heredoc) a `/tmp/cvm-check-<NUM>-context.md` con este formato:
@@ -51,6 +60,7 @@ Escribir el contexto con `Write` tool (no heredoc) a `/tmp/cvm-check-<NUM>-conte
 ```markdown
 # <KIND> #<NUM>: <title>
 
+**Repo**: <owner>/<repo> (o "actual" si no vino URL)
 **Author**: <author>
 **Labels**: <labels>
 **Files changed** (solo PR): <lista>
@@ -111,7 +121,7 @@ Para cada agente armar un prompt que:
 Plantilla (ajustar por perspectiva):
 
 ```
-Revisa el <KIND> #<NUM> de este repo. El contexto completo (title, body, files, diff) esta en:
+Revisa el <KIND> #<NUM> de <owner>/<repo o "este repo">. El contexto completo (title, body, files, diff) esta en:
 
     /tmp/cvm-check-<NUM>-context.md
 
@@ -158,18 +168,22 @@ Para cada agente que completo:
 2. Verificar tamano del archivo. Si supera 60KB, truncar el contenido del agente y agregar al final:
    `\n\n_[review truncada: supero 60KB, contenido completo disponible localmente]_`
 
-3. Postear:
+3. Postear via `gh api` para obtener `html_url` confiable (los PR/issue comments comparten el endpoint `/repos/.../issues/<num>/comments`):
 
 ```bash
-# Si KIND=pr:
-gh pr comment "$NUM" --body-file /tmp/cvm-check-<NUM>-<agente>.md
-# Si KIND=issue:
-gh issue comment "$NUM" --body-file /tmp/cvm-check-<NUM>-<agente>.md
+# Resolver owner/repo: si vino URL, usar OWNER_REPO; si no, derivarlo del repo actual.
+TARGET_REPO="${OWNER_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
+
+URL=$(gh api \
+  --method POST \
+  "repos/$TARGET_REPO/issues/$NUM/comments" \
+  -F body=@/tmp/cvm-check-<NUM>-<agente>.md \
+  --jq .html_url)
 ```
 
-Capturar la URL del comment retornada por `gh` (stdout de `gh pr comment` / `gh issue comment` imprime la URL del comment).
+`gh api ... --jq .html_url` devuelve solo la URL del comment recien creado (es la respuesta de la API, no parsing de stdout informal). Funciona igual para PR y para issue porque ambos comparten el endpoint de issue comments.
 
-Si el post falla, registrar en `FAILED_POST` y continuar.
+Si el `gh api` falla (exit != 0 o `URL` vacio), registrar en `FAILED_POST` y continuar.
 
 ### Paso 8: Reporte final
 
@@ -191,8 +205,9 @@ Si todos fallaron, dejarlo explicito: "Ninguna review se posteo."
 No ejecutar `/r` automaticamente — las reviews viven en GitHub, no en auto-memory.
 
 ## MUST DO
-- Parsear input aceptando numero pelado, `pr N`, `issue N` y URLs completas de PR o issue
-- Detectar tipo automaticamente con fallback (`gh pr view` primero, luego `gh issue view`) cuando no viene forzado
+- Parsear input aceptando numero pelado, `pr N`, `issue N` y URLs completas de PR o issue, conservando `owner/repo` cuando viene URL
+- Pasar `--repo $OWNER/$REPO` (o equivalente) en TODOS los `gh pr|issue view|diff|comment` cuando vino URL
+- Detectar tipo automaticamente con fallback (`gh pr view` primero, luego `gh issue view`) usando `>/dev/null 2>&1` y asignando `KIND` solo segun exit code (nunca capturando stdout)
 - Fetchear contexto con `gh <pr|issue> view --json` + `gh pr diff` (solo PR) y escribirlo con `Write` a `/tmp/cvm-check-<NUM>-context.md`
 - Preguntar agentes con prompt `[O/c/g/a]` y default explicito (Opus)
 - Verificar disponibilidad de codex y gemini antes de ofrecerlos
@@ -200,7 +215,7 @@ No ejecutar `/r` automaticamente — las reviews viven en GitHub, no en auto-mem
 - Pasar el path del contexto a cada agente — NUNCA inline
 - Lanzar todos los agentes en paralelo en el mismo mensaje
 - Postear cada review como comment separado con header `## Review: <agente> (<perspectiva>)`
-- Usar `--body-file` para postear, nunca heredoc ni interpolacion shell
+- Postear via `gh api ... -F body=@<file> --jq .html_url` para obtener la URL desde la respuesta de la API (no desde stdout no documentado de `gh pr|issue comment`)
 - Truncar reviews >60KB y anotar la truncacion
 - Reportar URLs de comments posteados y fallos al final
 - Seguir sin abortar si un agente falla: reportar el fallo al final
@@ -208,6 +223,9 @@ No ejecutar `/r` automaticamente — las reviews viven en GitHub, no en auto-mem
 ## MUST NOT DO
 - No pasar contenido del diff inline en comandos shell ni en prompts
 - No interpolar $ARGUMENTS ni texto del usuario en comandos con double quotes
+- No descartar `owner/repo` cuando vino una URL — operar siempre sobre el repo correcto
+- No usar `gh pr comment` / `gh issue comment` para capturar URLs (su stdout no es contrato estable). Usar `gh api` con `--jq .html_url`
+- No mezclar verificacion (`gh ... --json number`) con asignacion en el mismo pipeline (`&& echo "pr"`); separar exit code de output
 - No lanzar agentes secuencialmente — siempre paralelo
 - No sintetizar las reviews en un unico comment (fuera de alcance)
 - No persistir reviews en auto-memory (viven en GitHub)
