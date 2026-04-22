@@ -4,6 +4,8 @@ Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto
 
 ### Paso 1: Parsear `$ARGUMENTS` y resolver target
 
+**Precheck de auth** (antes de cualquier `gh` que haga red): correr `gh auth status` una sola vez. Si falla, abortar inmediatamente con: "gh no esta autenticado o no hay red — corre `gh auth login` y reintenta.". Esto evita confundir un "not found" real con un fallo de auth/red en los pasos siguientes.
+
 Detectar el formato:
 
 1. **Vacio** → usar la branch actual. Resolver el PR asociado:
@@ -22,7 +24,7 @@ Detectar el formato:
    ```bash
    gh issue view "$N" --json number 2>/dev/null
    ```
-   Si retorna JSON valido → issue. Si ambos fallan, abortar: "No encontre PR ni issue #N en este repo.".
+   Si retorna JSON valido → issue. Si ambos fallan, abortar: "No encontre PR ni issue #N en este repo.". Con el precheck de auth al tope del Paso 1 asumimos que este fallo es "not found" real y no auth/red; si el mensaje confunde al usuario, pedirle que re-corra `gh auth status` manualmente.
 
 4. **Cualquier otro input** → abortar con mensaje de uso: "Uso: `/iterate [N | URL | (vacio para usar la branch actual)]`".
 
