@@ -189,7 +189,7 @@ Iteracion sobre <PR|Issue> #<N> completada.
 Cambios en working tree — revisa `git diff` y commitea manualmente o via `/pr`.
 ```
 
-Luego invocar el skill `/r` usando el Skill tool para persistir aprendizajes de la sesion.
+Luego, el **skill** (no el subagent) invoca `/r` usando el Skill tool para persistir aprendizajes de la sesion. Esto no contradice la restriccion "NO delegues a otros agentes" del prompt del agente: la restriccion aplica al subagent Opus despachado en el Paso 5; el orquestador (este skill) si puede invocar `/r`.
 
 ## MUST DO
 - Parsear `$ARGUMENTS` localmente (sin interpolar strings del usuario en shell).
@@ -203,11 +203,12 @@ Luego invocar el skill `/r` usando el Skill tool para persistir aprendizajes de 
 - Despues del reporte del agente, invocar `/r` via Skill tool.
 - Dejar los cambios en working tree sin commitear.
 
-## MUST NOT DO
+## MUST NOT DO (el skill)
 - No interpolar bodies de comments, titulos, o `$ARGUMENTS` crudos en double-quoted shell commands. Todo lo de github va via `gh ... --json` / `gh api` y se parsea localmente.
 - No delegar a `/o` — el skill lanza `Agent` directo.
 - No hacer commits automaticos. No hacer push. No comentar de vuelta en GitHub.
-- No crear archivos nuevos salvo que los comments lo pidan explicitamente.
 - No soportar GitLab / Bitbucket / otras plataformas en esta iteracion.
 - No resolver review threads — el skill solo modifica codigo local.
 - No lanzar el agente si no quedaron comments accionables tras el filtrado.
+
+Nota: los archivos `/tmp/cvm-iterate-context.md` y `/tmp/cvm-iterate-diff.txt` los crea el **skill** como orquestacion (no cuentan como "archivos nuevos"). La restriccion "no crear archivos nuevos" aplica al **agente** despachado (ver prompt en Paso 5).
