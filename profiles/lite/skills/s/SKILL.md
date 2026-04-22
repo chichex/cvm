@@ -97,11 +97,11 @@ Para Codex/Gemini: escribir cada prompt en un archivo temporal con Write tool pa
 
 ### Paso 6: Lanzar agentes
 
-Lanzar todos los seleccionados en paralelo en el mismo mensaje:
+Lanzar todos los seleccionados en paralelo en el mismo mensaje. Cada rama replica el flujo del skill `/o` unificado (Opus via Agent tool, Codex/Gemini via Bash + CLI externo; ver `profiles/lite/skills/o/SKILL.md`):
 
-- **Opus/Sonnet/Haiku**: `Agent(subagent_type: "general-purpose", model: "<model>")` — multiples Agent calls
-- **Codex**: `codex exec "$(cat /tmp/cvm-codex-prompt-N.txt)" 2>&1` — Bash tool call separado por instancia
-- **Gemini**: `gemini -p "$(cat /tmp/cvm-gemini-prompt-N.txt)" 2>&1` — Bash tool call separado por instancia
+- **Opus/Sonnet/Haiku** (equivalente a `/o` / `/o --opus`): `Agent(subagent_type: "general-purpose", model: "<model>")` — multiples Agent calls
+- **Codex** (equivalente a `/o --codex`): `codex exec "$(cat /tmp/cvm-codex-prompt-N.txt)" 2>&1` — Bash tool call separado por instancia
+- **Gemini** (equivalente a `/o --gemini`): `gemini -p "$(cat /tmp/cvm-gemini-prompt-N.txt)" 2>&1` — Bash tool call separado por instancia
 
 Sin timeout. Esperar a que todos terminen.
 

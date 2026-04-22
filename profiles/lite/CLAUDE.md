@@ -5,15 +5,15 @@
 | Skill | Que hace |
 |-------|----------|
 | `/s` | Selector inteligente — entry point recomendado cuando no sabes que agente usar |
-| `/o` | Subagent Opus — razonamiento profundo, review, arquitectura |
-| `/c` | Subagent Codex — validacion externa |
-| `/g` | Subagent Gemini — validacion externa |
+| `/o` | Subagent unificado — default Opus; `--codex` / `--gemini` para validacion externa |
+| `/c` | [DEPRECATED] shim que redirige a `/o --codex` |
+| `/g` | [DEPRECATED] shim que redirige a `/o --gemini` |
 | `/r` | Review de sesion + persistencia de learnings en project memory. Soporta `/r --dry-run` |
 | `/ux` | Iteracion UX con validacion multi + HTML de alternativas |
 | `/issue` | Crear GitHub issue con label `ct:plan` |
 | `/pr` | Crear PR, pregunta si ejecutar `/r` antes, espera GH Actions |
 
-Usa `/o`, `/c`, `/g` directamente cuando ya sabes que agente necesitas. Usa `/s` cuando quieras recomendacion o combinar agentes.
+Usa `/o` directamente cuando sabes que agente necesitas (default Opus; agrega `--codex` o `--gemini` para CLIs externos). Usa `/s` cuando quieras recomendacion o combinar agentes.
 
 ## Subagentes
 
