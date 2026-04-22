@@ -14,7 +14,7 @@ Detectar el formato:
 
 2. **URL** (`https://github.com/<owner>/<repo>/(pull|issues)/<N>`) → extraer `owner`, `repo`, `N`, y `kind` (`pull` o `issues`). Hacerlo con parseo local (split por `/`), NO interpolar la URL en un comando shell.
 
-3. **Numero puro** (`^[0-9]+$`) → `N`, detectar `kind` en este orden:
+3. **Numero puro** (`^[0-9]+$`) → `N`. **Validar este regex ANTES de pasar `$N` a cualquier comando shell**; si no matchea, caer al caso 4. Una vez validado, detectar `kind` en este orden:
    ```bash
    gh pr view "$N" --json number 2>/dev/null
    ```
@@ -72,8 +72,8 @@ Parsear el JSON resultante. Para cada comment / review, quedarse con: `id`, `use
 Descartar un comment / review si:
 
 - **Es del autor del PR/issue**: `user.login == AUTHOR`.
-- **Body puramente reaccional**, match case-insensitive contra regex (despues de `trim`):
-  `^(lgtm|\+1|👍|thanks?|ty)\.?$`
+- **Body puramente reaccional**, match case-insensitive contra el regex **despues de hacer strip de todo `\s+` (whitespace horizontal + newlines + tabs) al inicio y al final**:
+  `^(lgtm|\+1|-1|👍|👎|🎉|🚀|thanks?|ty|nice|great|:\+1:|:-1:|:shipit:|:tada:|:rocket:)[.!]*$`
 - **Review con `state == APPROVED` y `body` vacio o solo whitespace**.
 
 Mantener todo lo demas, incluyendo comments cortos con contenido accionable (p.ej. "rename to X"). Contar cuantos se filtraron por cada categoria para reportarlo al final.
@@ -97,9 +97,10 @@ Escribir `/tmp/cvm-iterate-context.md` via Write tool. NUNCA interpolar bodies d
 <body del PR/issue — puede estar vacio>
 
 ## Diff (solo si PR)
-\`\`\`diff
-<output de `gh pr diff "$N"` — puede ser largo, incluirlo completo>
-\`\`\`
+<si el diff <= 2000 lineas: pegarlo inline dentro de un bloque `diff`>
+<si > 2000 lineas: NO pegarlo — en su lugar escribir la nota de abajo>
+
+> Diff con <N> lineas — truncado. Disponible completo en `/tmp/cvm-iterate-diff.txt`. Leer bajo demanda.
 
 ## Comments (<total> tras filtrado; <descartados> descartados)
 
@@ -123,16 +124,14 @@ Escribir `/tmp/cvm-iterate-context.md` via Write tool. NUNCA interpolar bodies d
 
 Numerar los comments en orden cronologico (por `created_at`). Si no quedo ningun comment tras el filtrado, escribir una seccion `## Comments (0 tras filtrado)` con un aviso: "No hay comments accionables.".
 
-Para el diff del PR, usar:
-```bash
-gh pr diff "$N" 2>/dev/null
-```
-
-Redirigir la salida a archivo intermedio si es muy larga y leerlo con Read:
+Para el diff del PR, **siempre** dumpear a archivo (nunca interpolar via shell) y luego decidir si inlinearlo:
 ```bash
 gh pr diff "$N" > /tmp/cvm-iterate-diff.txt 2>/dev/null
+wc -l /tmp/cvm-iterate-diff.txt
 ```
-Luego `Read` y pegar el contenido dentro del bloque `diff` del contexto — sin interpolar via shell.
+
+- Si `wc -l` ≤ **2000**: leer con `Read` y pegar dentro del bloque `diff` en el contexto.
+- Si > **2000**: NO inlinearlo. Dejar la nota "truncado — disponible en `/tmp/cvm-iterate-diff.txt`" y el agente lo lee bajo demanda con `Read` (offset/limit) cuando necesita inspeccionar un cambio puntual. Esto evita saturar el context window del agente Opus en PRs grandes.
 
 ### Paso 5: Despachar al agente
 
@@ -194,10 +193,12 @@ Luego invocar el skill `/r` usando el Skill tool para persistir aprendizajes de 
 
 ## MUST DO
 - Parsear `$ARGUMENTS` localmente (sin interpolar strings del usuario en shell).
+- **Validar que `N` matchea `^[0-9]+$` ANTES de pasarlo a cualquier comando shell** (`gh pr view "$N"`, `gh api .../issues/$N/...`, etc). Sin esa validacion, un input tipo `42;rm -rf ~` rompe la garantia de no-interpolacion.
 - Detectar PR vs issue con fallback `gh pr view` → `gh issue view`.
 - Usar `gh api --paginate` para los tres endpoints cuando `KIND=pr`, solo `issues/<N>/comments` cuando `KIND=issue`.
-- Filtrar comments del autor, reacciones puras (regex case-insensitive), y reviews APPROVED vacios antes de pasar al agente.
+- Filtrar comments del autor, reacciones puras (regex case-insensitive, **tras strip de `\s+` incluyendo newlines**), y reviews APPROVED vacios antes de pasar al agente.
 - Escribir el contexto a `/tmp/cvm-iterate-context.md` con Write tool; el prompt del agente referencia el path.
+- Dumpear el diff a `/tmp/cvm-iterate-diff.txt` **siempre**; inlinearlo en el contexto solo si tiene ≤ 2000 lineas. Si es mas grande, dejar solo el puntero al archivo.
 - Lanzar `Agent(subagent_type='general-purpose', model='opus')` con instruccion explicita de evaluar, aplicar, reportar y terminar con `## Key Learnings:`.
 - Despues del reporte del agente, invocar `/r` via Skill tool.
 - Dejar los cambios en working tree sin commitear.
