@@ -148,10 +148,14 @@ Para codex y gemini, escribir el prompt en un archivo temporal con `Write` tool:
 Todos los agentes en el MISMO mensaje, en paralelo:
 
 - **opus**: `Agent(subagent_type: "general-purpose", model: "opus", description: "check #<NUM> arq", prompt: <prompt>)`
-- **codex**: Bash `codex exec "$(cat /tmp/cvm-check-<NUM>-prompt-codex.txt)" 2>&1`
-- **gemini**: Bash `gemini -p "$(cat /tmp/cvm-check-<NUM>-prompt-gemini.txt)" 2>&1`
+- **codex**: Bash `codex exec - < /tmp/cvm-check-<NUM>-prompt-codex.txt 2>&1`
+- **gemini**: Bash `gemini -p "" < /tmp/cvm-check-<NUM>-prompt-gemini.txt 2>&1`
 
-Sin timeout. Si un agente falla (error, exit != 0, output vacio), registrarlo en `FAILED` y continuar con los demas.
+Pasar el prompt por stdin (nunca via `$(cat file)` dentro de double quotes): si el prompt llega a contener `$var`, backticks o `$(...)`, el shell los evaluaria antes de llegar al CLI. La redireccion pasa el archivo tal cual.
+
+Timeout por agente externo: envolver cada invocacion con `gtimeout 600` (macOS via coreutils) o `timeout 600` (Linux) para que un CLI colgado no bloquee la sesion. Si el binario `gtimeout`/`timeout` no esta disponible, seguir sin timeout y anotarlo en el reporte final.
+
+Si un agente falla (error, exit != 0, output vacio, timeout alcanzado), registrarlo en `FAILED` con el motivo (`timeout`, `exit=<code>`, `empty output`) y continuar con los demas.
 
 ### Paso 7: Postear cada review como comment
 
@@ -223,6 +227,7 @@ No ejecutar `/r` automaticamente — las reviews viven en GitHub, no en auto-mem
 ## MUST NOT DO
 - No pasar contenido del diff inline en comandos shell ni en prompts
 - No interpolar $ARGUMENTS ni texto del usuario en comandos con double quotes
+- No pasar el prompt como `$(cat prompt.txt)` dentro de double quotes (expande `$var`, backticks y `$(...)` del contenido). Usar redireccion por stdin
 - No descartar `owner/repo` cuando vino una URL — operar siempre sobre el repo correcto
 - No usar `gh pr comment` / `gh issue comment` para capturar URLs (su stdout no es contrato estable). Usar `gh api` con `--jq .html_url`
 - No mezclar verificacion (`gh ... --json number`) con asignacion en el mismo pipeline (`&& echo "pr"`); separar exit code de output
@@ -232,4 +237,4 @@ No ejecutar `/r` automaticamente — las reviews viven en GitHub, no en auto-mem
 - No ejecutar `/r` al final
 - No soportar GitLab/Bitbucket — solo GitHub via `gh`
 - No ofrecer agentes no disponibles
-- No agregar timeout
+- No correr codex/gemini sin timeout cuando `gtimeout`/`timeout` este disponible — un CLI colgado bloquea la sesion completa
