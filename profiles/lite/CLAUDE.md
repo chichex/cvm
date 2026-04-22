@@ -12,6 +12,7 @@
 | `/ux` | Iteracion UX con validacion multi + HTML de alternativas |
 | `/issue` | Crear GitHub issue con label `ct:plan` |
 | `/pr` | Crear PR, pregunta si ejecutar `/r` antes, espera GH Actions |
+| `/check` | Revisar PR/issue con agentes en paralelo; postea cada review como comment separado |
 
 Usa `/o` directamente cuando sabes que agente necesitas (default Opus; agrega `--codex` o `--gemini` para CLIs externos). Usa `/s` cuando quieras recomendacion o combinar agentes.
 
