@@ -13,6 +13,7 @@
 | `/issue` | Crear GitHub issue con label `ct:plan` |
 | `/pr` | Crear PR, pregunta si ejecutar `/r` antes, espera GH Actions |
 | `/check` | Revisar PR/issue con agentes en paralelo; postea cada review como comment separado |
+| `/iterate` | Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado |
 
 Usa `/o` directamente cuando sabes que agente necesitas (default Opus; agrega `--codex` o `--gemini` para CLIs externos). Usa `/s` cuando quieras recomendacion o combinar agentes.
 
