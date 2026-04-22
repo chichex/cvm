@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Test harness for /check input parsing.
+# Spec test for /check input parsing.
 #
-# Verifies the documented parsing of $ARGUMENTS against every supported form
-# (numero, #N, pr N, issue N, URLs PR/issue) and confirms NUM, FORCED_KIND,
-# OWNER_REPO and REPO_FLAG end up correct so that downstream `gh` commands
-# target the right repo.
+# SCOPE: This validates the *documented specification* in SKILL.md — not the
+# runtime behavior of Claude executing the skill. The parse_input() below is a
+# parallel reference implementation of the rules in SKILL.md "Paso 1". If the
+# skill text changes shape and Claude parses inputs differently at runtime,
+# this harness would still pass. Treat it as a regression guard for the spec
+# (shape of NUM/FORCED_KIND/OWNER_REPO/REPO_FLAG and the gh api endpoint),
+# not proof that /check produces the right values end-to-end.
+#
+# For behavioral coverage, only a live invocation of /check against a real PR
+# in a sandbox repo would do. That remains the user's responsibility.
 #
 # Run: bash profiles/lite/skills/check/parse_input_test.sh
 # Exit code 0 = all cases pass, 1 = at least one failure.
