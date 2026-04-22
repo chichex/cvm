@@ -12,6 +12,7 @@
 | `/ux` | Iteracion UX con validacion multi + HTML de alternativas |
 | `/issue` | Crear GitHub issue con label `ct:plan` |
 | `/pr` | Crear PR, pregunta si ejecutar `/r` antes, espera GH Actions |
+| `/check` | Revisar PR/issue con agentes en paralelo; postea cada review como comment separado |
 | `/iterate` | Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado |
 
 Usa `/o` directamente cuando sabes que agente necesitas (default Opus; agrega `--codex` o `--gemini` para CLIs externos). Usa `/s` cuando quieras recomendacion o combinar agentes.
@@ -27,7 +28,8 @@ Seguridad shell: NUNCA interpolar texto del usuario en double-quoted commands. U
 - Todo va a la auto-memory del proyecto: `~/.claude/projects/<path>/memory/`
 - MEMORY.md se carga automaticamente al inicio de cada sesion (built-in de Claude Code)
 - `/r` mantiene MEMORY.md y los archivos de memory del proyecto
-- CLAUDE.md (este archivo) NUNCA se modifica. Los CLAUDE.md de proyectos tampoco.
+- La copia desplegada de CLAUDE.md (`~/.claude/CLAUDE.md` y los CLAUDE.md de proyectos) NUNCA se modifica en runtime: ni `/r` ni los skills la editan.
+- Este archivo (`profiles/lite/CLAUDE.md`) es la **fuente** del profile lite y SI es editable: cambios deliberados al profile (agregar skills, ajustar reglas) van por PR sobre este archivo y se redespliegan via `cvm`. La regla de arriba habla del runtime, no del workflow de mantenimiento del profile.
 
 ## Reglas
 
