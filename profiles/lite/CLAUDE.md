@@ -6,8 +6,6 @@
 |-------|----------|
 | `/s` | Selector inteligente — entry point recomendado cuando no sabes que agente usar |
 | `/o` | Subagent unificado — default Opus; `--codex` / `--gemini` para validacion externa |
-| `/c` | [DEPRECATED] shim que redirige a `/o --codex` |
-| `/g` | [DEPRECATED] shim que redirige a `/o --gemini` |
 | `/r` | Review de sesion + persistencia de learnings en project memory. Soporta `/r --dry-run` |
 | `/ux` | Iteracion UX con validacion multi + HTML de alternativas |
 | `/issue` | Crear GitHub issue con label `ct:plan` |
@@ -34,6 +32,7 @@ Seguridad shell: NUNCA interpolar texto del usuario en double-quoted commands. U
 ## Reglas
 
 - Sacar ambiguedades — si algo puede interpretarse de mas de una forma, clarificar antes de actuar
+- Preguntas de desambiguacion SIEMPRE en formato multiple choice (opciones numeradas + opcion libre "otro"). Nunca preguntas abiertas cuando se puede enumerar.
 - TDD siempre que sea posible
 - No agregar lo que no se pidio
 - No especular sobre codigo sin leerlo

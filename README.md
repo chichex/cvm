@@ -237,11 +237,9 @@ A **minimalist profile** for users who want subagent orchestration without the f
 
 > **Note**: This profile does **not** use `cvm kb`. Persistence is handled entirely by Claude Code's native auto-memory system (`~/.claude/projects/<path>/memory/`).
 
-- **8 skills**:
+- **6 skills**:
   - `/s` — Smart agent selector (menu with recommendations, multi-instance support)
-  - `/o` — Opus subagent (deep reasoning, review, architecture)
-  - `/c` — Codex subagent (external validation)
-  - `/g` — Gemini subagent (external validation)
+  - `/o` — Unified subagent (default Opus; `--codex` / `--gemini` flags for external validation)
   - `/r` — Session review + learnings persistence to project memory
   - `/ux` — UX iteration with Opus+Gemini validation, generates HTML alternatives
   - `/issue` — GitHub issue creation with `ct:plan` label
