@@ -96,7 +96,9 @@ Escribir `/tmp/cvm-iterate-context.md` via Write tool. NUNCA interpolar bodies d
 - Branch (solo PR): <headRefName> → <baseRefName>
 
 ## Body original
+````markdown
 <body del PR/issue — puede estar vacio>
+````
 
 ## Diff (solo si PR)
 <si el diff <= 2000 lineas: pegarlo inline dentro de un bloque `diff`>
@@ -117,7 +119,9 @@ Escribir `/tmp/cvm-iterate-context.md` via Write tool. NUNCA interpolar bodies d
 <si es review:>
 - State: <state>
 
+````markdown
 <body>
+````
 
 ---
 
@@ -125,6 +129,8 @@ Escribir `/tmp/cvm-iterate-context.md` via Write tool. NUNCA interpolar bodies d
 ```
 
 Numerar los comments en orden cronologico (por `created_at`). Si no quedo ningun comment tras el filtrado, escribir una seccion `## Comments (0 tras filtrado)` con un aviso: "No hay comments accionables.".
+
+**Nota sobre el fence de bodies**: usar fence de **4 backticks** (` ```` `) alrededor de los bodies del PR/issue y de los comments. Esto evita que headings `##` o bloques ` ``` ` dentro del body rompan la estructura del contexto. Si un body contiene literalmente 4 backticks consecutivos, escalar a 5 backticks — es extremadamente raro en la practica.
 
 Para el diff del PR, **siempre** dumpear a archivo (nunca interpolar via shell) y luego decidir si inlinearlo:
 ```bash
