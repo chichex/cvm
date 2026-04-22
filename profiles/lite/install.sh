@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 # Instala/sincroniza los skills del profile lite en ~/.claude/skills/.
 #
+# Uso:
+#   bash profiles/lite/install.sh
+# (correr desde la raiz del repo o desde cualquier cwd — usa $BASH_SOURCE)
+#
 # Los skills viven en dos locations:
 #   - profiles/lite/skills/  (versionado en el repo)
 #   - ~/.claude/skills/      (leido por Claude Code al resolver slash-commands)
 #
 # Este script copia cada SKILL.md del repo al ~/.claude/skills/ correspondiente.
 # Idempotente: re-correrlo sobrescribe con la version del repo.
+#
+# Limitacion conocida: solo copia SKILL.md de cada skill. Si un skill tiene
+# archivos auxiliares (scripts, templates, fixtures) bajo profiles/lite/skills/<name>/,
+# NO los sincroniza. Hoy ningun skill del profile lite los usa; si se agrega uno
+# que los necesite, extender el loop con `cp -R` del directorio completo.
 
 set -euo pipefail
 
