@@ -5,15 +5,19 @@
 | Skill | Que hace |
 |-------|----------|
 | `/s` | Selector inteligente — entry point recomendado cuando no sabes que agente usar |
-| `/o` | Subagent unificado — default Opus; `--codex` / `--gemini` para validacion externa |
+| `/go` | Subagent unificado — default Opus; `--codex` / `--gemini` para validacion externa |
 | `/r` | Review de sesion + persistencia de learnings en project memory. Soporta `/r --dry-run` |
 | `/ux` | Iteracion UX con validacion multi + HTML de alternativas |
 | `/issue` | Crear GitHub issue con label `ct:plan` |
 | `/pr` | Crear PR, pregunta si ejecutar `/r` antes, espera GH Actions |
-| `/check` | Revisar PR/issue con agentes en paralelo; postea cada review como comment separado |
-| `/iterate` | Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado |
+| `/idea` | Crear GitHub issue desde idea vaga (subagent Opus); aplica `che:idea` + `ct:plan` |
+| `/validate` | Revisar PR/issue (subagentes paralelos); aplica `che:validating→che:validated` + verdict |
+| `/iterate` | Aplicar comments de PR/issue (subagent Opus); aplica transitions `che:executing\|planning` |
+| `/close` | Cerrar PR (ready→CI→merge→close issues linkeados); aplica `che:closing→che:closed` |
 
-Usa `/o` directamente cuando sabes que agente necesitas (default Opus; agrega `--codex` o `--gemini` para CLIs externos). Usa `/s` cuando quieras recomendacion o combinar agentes.
+Los 4 skills "che" (`/idea`, `/validate`, `/iterate`, `/close`) replican el workflow de [che-cli](https://github.com/chichex/che-cli) en modo lenient — aplican las mismas transitions de la state machine `che:*` (ver `che-cli/internal/labels/labels.go`) pero no abortan si current state no calza con `from` (warnean y aplican igual).
+
+Usa `/go` directamente cuando sabes que agente necesitas (default Opus; agrega `--codex` o `--gemini` para CLIs externos). Usa `/s` cuando quieras recomendacion o combinar agentes.
 
 ## Subagentes
 

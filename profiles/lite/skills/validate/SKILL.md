@@ -1,4 +1,24 @@
-Revisar un PR o issue de GitHub lanzando agentes seleccionados en paralelo (opus/codex/gemini) y posteando cada review como comment separado. $ARGUMENTS es el PR/issue a revisar: numero (`24`), URL completa, o `pr 24` / `issue 24`.
+Revisar un PR o issue de GitHub lanzando agentes seleccionados en paralelo (opus/codex/gemini), posteando cada review como comment separado, y aplicando las transitions de la state machine `che:*` de che-cli en modo lenient. $ARGUMENTS es el PR/issue a revisar: numero (`24`), URL completa, o `pr 24` / `issue 24`.
+
+## Tagging (state machine de che-cli)
+
+Aplica las transitions de `che-cli/internal/labels/labels.go`:
+
+| Target | Pre (lock) | Success | Rollback |
+|---|---|---|---|
+| PR (`che:executed`) | `executed→validating` | `validating→validated` + `validated:<verdict>` | `validating→executed` |
+| issue (`che:plan`) | `plan→validating` | `validating→validated` + `plan-validated:<verdict>` | `validating→plan` |
+
+**Verdict** consolidado de los subagentes (cada uno emite `## Verdict: approve|changes-requested|needs-human` como ultima linea):
+- Si algun subagent emite `needs-human` → consolidado = `needs-human`.
+- Else si algun subagent emite `changes-requested` → consolidado = `changes-requested`.
+- Else (todos `approve`) → `approve`.
+
+Antes de aplicar el verdict label, remover los otros 2 verdicts del namespace (`validated:*` o `plan-validated:*`) — son mutuamente excluyentes.
+
+**Stateref**: para PR, si NO tiene `che:*`, leer `closingIssuesReferences` y usar el `che:*` del issue linkeado.
+
+**Lenient**: si current state no calza con el `from` esperado, warn + limpiar `che:*` previos + aplicar lock igual.
 
 ## Proceso
 
@@ -55,7 +75,7 @@ Para issues:
 gh issue view "$NUM" $REPO_FLAG --json number,title,body,author,labels,comments
 ```
 
-Escribir el contexto con `Write` tool (no heredoc) a `/tmp/cvm-check-<NUM>-context.md` con este formato:
+Escribir el contexto con `Write` tool (no heredoc) a `/tmp/cvm-validate-<NUM>-context.md` con este formato:
 
 ```markdown
 # <KIND> #<NUM>: <title>
@@ -103,6 +123,30 @@ Filtrar los que no esten disponibles y avisar. Si queda 0 agentes, abortar: "Nin
 
 Guardar `AGENTS` como la lista final (ej: `[opus, codex]`).
 
+### Paso 4.5: Pre-transition (lock → `che:validating`)
+
+1. Resolver `CURRENT_STATE` (stateref):
+   - Buscar `che:*` en los `labels` del fetch del Paso 3.
+   - Si `KIND=pr` y no hay `che:*` en el PR: `gh pr view "$NUM" $REPO_FLAG --json closingIssuesReferences` y leer labels de cada issue linkeado.
+   - Si nadie tiene `che:*` → `CURRENT_STATE=""`.
+
+2. Determinar `EXPECTED_FROM`:
+   - `KIND=pr` → `che:executed`.
+   - `KIND=issue` → `che:plan`.
+
+3. Asegurar `che:validating` existe en el repo y aplicar:
+   ```bash
+   gh label create "che:validating" --force 2>/dev/null
+   ```
+   - Si `CURRENT_STATE == EXPECTED_FROM` (path normal):
+     ```bash
+     gh api -X DELETE "repos/$TARGET_REPO/issues/$NUM/labels/$EXPECTED_FROM" 2>/dev/null
+     gh api -X POST "repos/$TARGET_REPO/issues/$NUM/labels" -f "labels[]=che:validating"
+     ```
+   - Else (lenient): warnear + remover los 9 `che:*` (DELETE con tolerancia a 404) + aplicar `che:validating`.
+
+4. Guardar `PREVIOUS_STATE=$CURRENT_STATE` para rollback.
+
 ### Paso 5: Armar prompts diferenciados
 
 Cada agente tiene una perspectiva fija:
@@ -113,17 +157,18 @@ Cada agente tiene una perspectiva fija:
 
 Para cada agente armar un prompt que:
 
-1. Referencia `/tmp/cvm-check-<NUM>-context.md` como input (NUNCA contenido inline)
+1. Referencia `/tmp/cvm-validate-<NUM>-context.md` como input (NUNCA contenido inline)
 2. Declara la perspectiva del agente
 3. Pide output en markdown listo para postear como comment de GitHub
-4. Termina con `## Key Learnings:` listando descubrimientos no-obvios
+4. Incluye seccion `## Key Learnings:` con descubrimientos no-obvios
+5. **Termina con la linea exacta `## Verdict: approve|changes-requested|needs-human`** (uno solo, parseable)
 
 Plantilla (ajustar por perspectiva):
 
 ```
 Revisa el <KIND> #<NUM> de <owner>/<repo o "este repo">. El contexto completo (title, body, files, diff) esta en:
 
-    /tmp/cvm-check-<NUM>-context.md
+    /tmp/cvm-validate-<NUM>-context.md
 
 Tu perspectiva es **<perspectiva>**. Enfocate en eso y evita comentar cosas fuera de tu angulo.
 
@@ -133,14 +178,21 @@ Output: markdown listo para postear como comment en GitHub. Estructura sugerida:
 - Recomendaciones accionables
 - Riesgos si no se atienden
 
-Termina con una seccion `## Key Learnings:` listando descubrimientos no-obvios.
+Despues de la review incluir:
+1. Una seccion `## Key Learnings:` listando descubrimientos no-obvios.
+2. Como **ultima linea del output**, exactamente uno de:
+   - `## Verdict: approve` — la review esta lista para mergear/aprobar desde tu perspectiva.
+   - `## Verdict: changes-requested` — hay cambios concretos requeridos.
+   - `## Verdict: needs-human` — hay ambigüedad o trade-off que requiere decision humana.
+
+La linea de Verdict tiene que ser la ULTIMA del output, sin texto despues. El orquestador la parsea para consolidar y aplicar el label.
 ```
 
 Para codex y gemini, escribir el prompt en un archivo temporal con `Write` tool:
 
 ```
-/tmp/cvm-check-<NUM>-prompt-codex.txt
-/tmp/cvm-check-<NUM>-prompt-gemini.txt
+/tmp/cvm-validate-<NUM>-prompt-codex.txt
+/tmp/cvm-validate-<NUM>-prompt-gemini.txt
 ```
 
 ### Paso 6: Lanzar agentes en paralelo
@@ -148,8 +200,8 @@ Para codex y gemini, escribir el prompt en un archivo temporal con `Write` tool:
 Todos los agentes en el MISMO mensaje, en paralelo:
 
 - **opus**: `Agent(subagent_type: "general-purpose", model: "opus", description: "check #<NUM> arq", prompt: <prompt>)`
-- **codex**: Bash `codex exec - < /tmp/cvm-check-<NUM>-prompt-codex.txt 2>&1`
-- **gemini**: Bash `gemini -p "" < /tmp/cvm-check-<NUM>-prompt-gemini.txt 2>&1`
+- **codex**: Bash `codex exec - < /tmp/cvm-validate-<NUM>-prompt-codex.txt 2>&1`
+- **gemini**: Bash `gemini -p "" < /tmp/cvm-validate-<NUM>-prompt-gemini.txt 2>&1`
 
 Pasar el prompt por stdin (nunca via `$(cat file)` dentro de double quotes): si el prompt llega a contener `$var`, backticks o `$(...)`, el shell los evaluaria antes de llegar al CLI. La redireccion pasa el archivo tal cual.
 
@@ -161,7 +213,7 @@ Si un agente falla (error, exit != 0, output vacio, timeout alcanzado), registra
 
 Para cada agente que completo:
 
-1. Escribir el cuerpo del comment con `Write` tool a `/tmp/cvm-check-<NUM>-<agente>.md` con este header:
+1. Escribir el cuerpo del comment con `Write` tool a `/tmp/cvm-validate-<NUM>-<agente>.md` con este header:
 
 ```markdown
 ## Review: <agente> (<perspectiva>)
@@ -181,13 +233,61 @@ TARGET_REPO="${OWNER_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner
 URL=$(gh api \
   --method POST \
   "repos/$TARGET_REPO/issues/$NUM/comments" \
-  -F body=@/tmp/cvm-check-<NUM>-<agente>.md \
+  -F body=@/tmp/cvm-validate-<NUM>-<agente>.md \
   --jq .html_url)
 ```
 
 `gh api ... --jq .html_url` devuelve solo la URL del comment recien creado (es la respuesta de la API, no parsing de stdout informal). Funciona igual para PR y para issue porque ambos comparten el endpoint de issue comments.
 
 Si el `gh api` falla (exit != 0 o `URL` vacio), registrar en `FAILED_POST` y continuar.
+
+### Paso 7.5: Parsear verdicts y consolidar
+
+Para cada agente que completo (no fallo), parsear la ultima linea no vacia de su output. Buscar match exacto:
+- `## Verdict: approve` → verdict = `approve`
+- `## Verdict: changes-requested` → verdict = `changes-requested`
+- `## Verdict: needs-human` → verdict = `needs-human`
+- Cualquier otra cosa (no matchea) → verdict = `needs-human` (default conservador) y warn al usuario: "Subagent <agente> no emitio verdict parseable, asumiendo needs-human".
+
+Consolidar:
+- Si algun verdict es `needs-human` → `CONSOLIDATED=needs-human`.
+- Else si algun verdict es `changes-requested` → `CONSOLIDATED=changes-requested`.
+- Else (todos `approve`) → `CONSOLIDATED=approve`.
+
+Si TODOS los agentes fallaron (no hay verdicts), `CONSOLIDATED=""` → ir directo a rollback en Paso 7.6.b.
+
+### Paso 7.6: Post-transition (success o rollback)
+
+Determinar `VERDICT_NS` segun `KIND`:
+- `KIND=pr` → namespace `validated:*`. Labels: `validated:approve`, `validated:changes-requested`, `validated:needs-human`.
+- `KIND=issue` → namespace `plan-validated:*`. Labels: `plan-validated:approve`, `plan-validated:changes-requested`, `plan-validated:needs-human`.
+
+**7.6.a Success** — si `CONSOLIDATED` no esta vacio:
+
+1. Aplicar transition `che:validating→che:validated`:
+   ```bash
+   gh label create "che:validated" --force 2>/dev/null
+   gh api -X DELETE "repos/$TARGET_REPO/issues/$NUM/labels/che:validating" 2>/dev/null
+   gh api -X POST "repos/$TARGET_REPO/issues/$NUM/labels" -f "labels[]=che:validated"
+   ```
+
+2. Aplicar verdict label (los 3 son mutuamente excluyentes — remover los otros 2 antes):
+   ```bash
+   TARGET_VERDICT="$VERDICT_NS:$CONSOLIDATED"
+   gh label create "$TARGET_VERDICT" --force 2>/dev/null
+   for v in approve changes-requested needs-human; do
+     [[ "$v" == "$CONSOLIDATED" ]] && continue
+     gh api -X DELETE "repos/$TARGET_REPO/issues/$NUM/labels/$VERDICT_NS:$v" 2>/dev/null
+   done
+   gh api -X POST "repos/$TARGET_REPO/issues/$NUM/labels" -f "labels[]=$TARGET_VERDICT"
+   ```
+
+**7.6.b Rollback** — si `CONSOLIDATED` esta vacio (todos los agentes fallaron):
+
+- `KIND=pr`: aplicar `che:validating→che:executed` (o `PREVIOUS_STATE` si era distinto y no vacio; lenient si era vacio: solo remover `che:validating`).
+- `KIND=issue`: aplicar `che:validating→che:plan` (mismas reglas).
+
+NO aplicar verdict label en rollback (no hubo verdict valido).
 
 ### Paso 8: Reporte final
 
@@ -196,15 +296,24 @@ Mostrar al usuario:
 ```
 Review de <KIND> #<NUM> completa.
 
+Verdicts:
+- <agente1>: <verdict>
+- <agente2>: <verdict>
+Consolidado: <CONSOLIDATED>
+
 Comments posteados:
 - <agente1> (<perspectiva>): <url>
 - <agente2> (<perspectiva>): <url>
+
+Estado final:
+- che:* → <che:validated | che:executed (rollback) | che:plan (rollback)>
+- verdict label → <validated:<x> | plan-validated:<x> | "(no aplicado: rollback)">
 
 Agentes que fallaron (si hubo): <lista con motivo breve>
 Posts que fallaron (si hubo): <lista>
 ```
 
-Si todos fallaron, dejarlo explicito: "Ninguna review se posteo."
+Si todos fallaron, dejarlo explicito: "Ninguna review se posteo. Rollback aplicado a <state previo>."
 
 No ejecutar `/r` automaticamente — las reviews viven en GitHub, no en auto-memory.
 
@@ -212,7 +321,7 @@ No ejecutar `/r` automaticamente — las reviews viven en GitHub, no en auto-mem
 - Parsear input aceptando numero pelado, `pr N`, `issue N` y URLs completas de PR o issue, conservando `owner/repo` cuando viene URL
 - Pasar `--repo $OWNER/$REPO` (o equivalente) en TODOS los `gh pr|issue view|diff|comment` cuando vino URL
 - Detectar tipo automaticamente con fallback (`gh pr view` primero, luego `gh issue view`) usando `>/dev/null 2>&1` y asignando `KIND` solo segun exit code (nunca capturando stdout)
-- Fetchear contexto con `gh <pr|issue> view --json` + `gh pr diff` (solo PR) y escribirlo con `Write` a `/tmp/cvm-check-<NUM>-context.md`
+- Fetchear contexto con `gh <pr|issue> view --json` + `gh pr diff` (solo PR) y escribirlo con `Write` a `/tmp/cvm-validate-<NUM>-context.md`
 - Preguntar agentes con prompt `[O/c/g/a]` y default explicito (Opus)
 - Verificar disponibilidad de codex y gemini antes de ofrecerlos
 - Armar prompts diferenciados por perspectiva (opus=arq, codex=correctness, gemini=legibilidad)
@@ -223,6 +332,13 @@ No ejecutar `/r` automaticamente — las reviews viven en GitHub, no en auto-mem
 - Truncar reviews >60KB y anotar la truncacion
 - Reportar URLs de comments posteados y fallos al final
 - Seguir sin abortar si un agente falla: reportar el fallo al final
+- Resolver `CURRENT_STATE` via stateref (PR labels primero, fallback issue linkeado).
+- Aplicar pre-transition `→che:validating` ANTES de lanzar agentes. Lenient si current no es el `from` esperado.
+- Pedir verdict explicito como ultima linea del output de cada subagent (`## Verdict: approve|changes-requested|needs-human`).
+- Consolidar verdicts con regla: needs-human > changes-requested > approve.
+- Aplicar `che:validating→che:validated` + `<ns>:<verdict>` (removiendo los otros 2 verdicts) si hubo al menos 1 verdict.
+- Rollback `che:validating→<previous>` si todos los agentes fallaron.
+- Usar `gh api` REST para labels (NO `gh issue edit --add-label`).
 
 ## MUST NOT DO
 - No pasar contenido del diff inline en comandos shell ni en prompts

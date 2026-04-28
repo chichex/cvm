@@ -1,4 +1,17 @@
-Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado. `$ARGUMENTS` puede ser un numero (`/iterate 42`), una URL (`/iterate https://github.com/owner/repo/pull/42`), o vacio (`/iterate` usa la branch actual). El skill NO commitea — deja los cambios en el working tree para que el humano los revise.
+Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado. `$ARGUMENTS` puede ser un numero (`/iterate 42`), una URL (`/iterate https://github.com/owner/repo/pull/42`), o vacio (`/iterate` usa la branch actual). El skill NO commitea — deja los cambios en el working tree para que el humano los revise. Aplica las transitions de la state machine `che:*` de che-cli en modo lenient (ver "Tagging" abajo).
+
+## Tagging (state machine de che-cli)
+
+Aplica las transitions de `che-cli/internal/labels/labels.go`:
+
+| Target | Pre (lock) | Success | Rollback |
+|---|---|---|---|
+| PR (`che:validated`) | `validated→executing` | `executing→executed` | `executing→validated` |
+| issue (`che:validated`) | `validated→planning` | `planning→plan` | `planning→validated` |
+
+**Stateref**: para PR, si NO tiene label `che:*`, leer `closingIssuesReferences` y usar el `che:*` del issue linkeado. Si tampoco hay → `CURRENT_STATE=""` (lenient, warnear).
+
+**Lenient**: si `CURRENT_STATE` no es `che:validated`, warn al usuario y aplicar el lock igual (limpiar `che:*` previos, aplicar `che:executing` o `che:planning`).
 
 ## Proceso
 
@@ -33,7 +46,7 @@ Resolver `owner` y `repo` si vienen de URL usando los valores parseados; en el r
 gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"' 2>/dev/null
 ```
 
-Guardar en variables: `OWNER`, `REPO`, `N`, `KIND` (`pr` o `issue`).
+Guardar en variables: `OWNER`, `REPO`, `N`, `KIND` (`pr` o `issue`). Para `KIND=pr` tambien guardar `HEAD_REF` (de `headRefName`) — se usa en Paso 4.6 (branch check) y Paso 5.5 (push).
 
 ### Paso 2: Fetch de comments
 
@@ -141,9 +154,59 @@ wc -l /tmp/cvm-iterate-diff.txt
 - Si `wc -l` ≤ **2000**: leer con `Read` y pegar dentro del bloque `diff` en el contexto.
 - Si > **2000**: NO inlinearlo. Dejar la nota "truncado — disponible en `/tmp/cvm-iterate-diff.txt`" y el agente lo lee bajo demanda con `Read` (offset/limit) cuando necesita inspeccionar un cambio puntual. Esto evita saturar el context window del agente Opus en PRs grandes.
 
+### Paso 4.5: Pre-transition (lock)
+
+Antes de lanzar el agente, aplicar el lock segun `KIND`:
+
+1. Resolver `CURRENT_STATE` (stateref):
+   - Buscar `che:*` en los `labels` del fetch del Paso 2.
+   - Si `KIND=pr` y el PR no tiene `che:*`: hacer fetch extra `gh pr view "$N" --json closingIssuesReferences` y leer labels de cada issue linkeado. Usar el primer `che:*` encontrado.
+   - Si nadie tiene `che:*` → `CURRENT_STATE=""`.
+
+2. Determinar transition:
+   - `KIND=pr`: target lock es `che:executing`. Esperado `from=che:validated`.
+   - `KIND=issue`: target lock es `che:planning`. Esperado `from=che:validated`.
+
+3. Si `CURRENT_STATE == che:validated` (path normal):
+   ```bash
+   gh label create "<target_lock>" --force 2>/dev/null
+   gh api -X DELETE "repos/$OWNER/$REPO/issues/$N/labels/che:validated" 2>/dev/null
+   gh api -X POST "repos/$OWNER/$REPO/issues/$N/labels" -f "labels[]=<target_lock>"
+   ```
+
+4. Si `CURRENT_STATE != che:validated` (lenient):
+   - Warn: "Target #<N> no esta en che:validated (esta en `<CURRENT_STATE>` o sin che:*). Aplicando lock igual."
+   - Remover TODOS los `che:*` que tenga (loop sobre los 9 estados, tolerando 404).
+   - Aplicar `<target_lock>`.
+
+5. Guardar `PREVIOUS_STATE=$CURRENT_STATE` (para rollback).
+
+### Paso 4.6: Verificar branch (solo `KIND=pr`)
+
+Si `KIND=pr`, el subagent va a editar archivos y al final el orquestador hace commit + push. Para que el commit termine en la branch correcta, la branch local actual debe coincidir con `headRefName` del PR:
+
+```bash
+CURRENT_BRANCH=$(git branch --show-current)
+if [[ "$CURRENT_BRANCH" != "$HEAD_REF" ]]; then
+  echo "Branch local '$CURRENT_BRANCH' != headRefName del PR '$HEAD_REF'."
+  echo "Hace 'git checkout $HEAD_REF' (o 'gh pr checkout $N') antes de /iterate."
+  # rollback del lock
+  exit 1
+fi
+
+# Working tree limpio para no mezclar cambios pre-existentes con los del subagent
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Working tree no limpio. Stashea o commitea los cambios actuales antes de /iterate."
+  # rollback del lock
+  exit 1
+fi
+```
+
+Si alguno falla, hacer rollback del lock (Paso 6.b) y abortar.
+
 ### Paso 5: Despachar al agente
 
-Si quedaron 0 comments tras el filtrado, NO lanzar el agente. Reportar al usuario que no hay nada accionable y salir.
+Si quedaron 0 comments tras el filtrado, NO lanzar el agente. Hacer rollback del lock (Paso 6.b) y reportar al usuario que no hay nada accionable, salir.
 
 En caso contrario, lanzar:
 
@@ -156,12 +219,14 @@ Agent(
 )
 ```
 
-El prompt del agente debe ser literalmente (sustituyendo `<N>` y `<KIND>`):
+El prompt del agente difiere segun `KIND`:
+
+**Si `KIND=pr`** (sustituyendo `<N>`):
 
 ```
 Tenes acceso al filesystem del worktree actual. El contexto completo esta en /tmp/cvm-iterate-context.md — leelo primero.
 
-Tarea: evaluar los comments/reviews del <KIND> #<N> y aplicar al codigo los cambios que sean accionables.
+Tarea: evaluar los comments/reviews del PR #<N> y aplicar al codigo los cambios que sean accionables.
 
 Criterios:
 1. Para cada comment, decidi si es accionable (pide un cambio concreto), informativo (solo comenta sin pedir accion), o ruido residual que el filtrado no atrapo.
@@ -170,7 +235,7 @@ Criterios:
 4. Si un comment es ambiguo, NO inventar interpretacion — marcarlo como "no aplicado, requiere aclaracion".
 
 Restricciones:
-- NO hagas commits. Solo modifica archivos en el working tree.
+- NO hagas commits ni push — eso lo hace el orquestador despues.
 - NO crees archivos nuevos salvo que un comment lo pida explicitamente.
 - NO respondas a los comments en GitHub. Solo tocas codigo local.
 - NO delegues a otros agentes.
@@ -184,7 +249,82 @@ Reporte estructurado con:
 Termina tu respuesta con una seccion `## Key Learnings:` listando descubrimientos no-obvios sobre el codebase o el feedback que puedan ser utiles en futuras iteraciones.
 ```
 
-### Paso 6: Reportar y persistir aprendizajes
+**Si `KIND=issue`** (plan iteration — sustituyendo `<N>`):
+
+```
+Tenes acceso al filesystem del worktree actual. El contexto completo esta en /tmp/cvm-iterate-context.md — leelo primero.
+
+Tarea: el issue #<N> es un plan que recibio comments/reviews pidiendo cambios. Re-escribi el body del issue incorporando el feedback accionable. NO toques archivos del repo — el resultado es un nuevo body para el issue.
+
+Criterios:
+1. Mantener la estructura del body original (mismas secciones: Idea/Contexto/Criterios/Notas/Clasificacion si aplica).
+2. Para cada comment accionable, integrarlo en la seccion correspondiente del body. Si pide ajustar criterios, criterios. Si pide aclarar contexto, contexto. Etc.
+3. Comments contradictorios: priorizar el mas reciente y anotar el conflicto en "Notas".
+4. Comments ambiguos: anotarlos en "Notas" como "pendiente de aclaracion" — NO inventar interpretacion.
+
+Output del subagent (ESTRICTO):
+1. Escribir el nuevo body completo (markdown) a `/tmp/cvm-iterate-new-body.md` con Write tool.
+2. En tu respuesta, devolver un reporte con:
+   - ## Aplicados — comments incorporados al body y donde
+   - ## Ignorados — comments no aplicados y la razon
+   - ## Body actualizado — confirmar que escribiste a `/tmp/cvm-iterate-new-body.md`
+
+Restricciones:
+- NO modifiques archivos del repo.
+- NO commitees, NO pushees.
+- NO respondas a los comments en GitHub.
+- NO delegues a otros agentes.
+
+Termina tu respuesta con una seccion `## Key Learnings:`.
+```
+
+### Paso 5.5: Persistir cambios
+
+**Si `KIND=pr`** y el agente reporto ≥1 cambio aplicado (`## Aplicados` no vacio):
+
+```bash
+# El check de Paso 4.6 garantiza que estamos en HEAD_REF y el WT estaba limpio antes.
+# Los unicos cambios ahora son los que aplico el subagent.
+git add -A
+git commit -m "iterate(#$N): apply review feedback"
+git push origin "HEAD:$HEAD_REF"
+```
+
+Capturar exit code de cada paso:
+- Si `git commit` falla (raro, ej: pre-commit hook bloquea): rollback del lock (Paso 6.b) + warn al humano que tiene los cambios stageados sin commitear.
+- Si `git push` falla (non-fast-forward, conflicto, network): rollback del lock + warn al humano que el commit local existe pero no se pudo pushear. El humano resuelve el conflicto a mano y reintenta.
+
+Si el agente reporto 0 aplicados → saltar este paso (no hay nada que commitear); ir directo a rollback en Paso 6.b.
+
+**Si `KIND=issue`** y el agente escribio `/tmp/cvm-iterate-new-body.md`:
+
+```bash
+# Verificar que el archivo existe y no esta vacio
+[[ -s /tmp/cvm-iterate-new-body.md ]] || { echo "Subagent no genero nuevo body"; exit 1; }
+gh issue edit "$N" --repo "$OWNER/$REPO" --body-file /tmp/cvm-iterate-new-body.md
+```
+
+Si `gh issue edit` falla → rollback del lock + warnear.
+
+Si el agente NO escribio el archivo → saltar (no hay cambio que persistir); ir directo a rollback.
+
+### Paso 6: Post-transition (success o rollback)
+
+**6.a Success** — si el agente reporto al menos 1 comment aplicado (no vacio en `## Aplicados`):
+- `KIND=pr`: aplicar `che:executing→che:executed`.
+- `KIND=issue`: aplicar `che:planning→che:plan`.
+
+```bash
+gh label create "<target_success>" --force 2>/dev/null
+gh api -X DELETE "repos/$OWNER/$REPO/issues/$N/labels/<target_lock>" 2>/dev/null
+gh api -X POST "repos/$OWNER/$REPO/issues/$N/labels" -f "labels[]=<target_success>"
+```
+
+**6.b Rollback** — si el agente reporto 0 aplicados, todos ignorados, o el agente fallo:
+- `KIND=pr`: aplicar `che:executing→che:validated` (volver a `PREVIOUS_STATE` solo si era `che:validated`; sino, aplicar `PREVIOUS_STATE` o limpiar `che:*` si era vacio).
+- `KIND=issue`: aplicar `che:planning→che:validated` (mismas reglas).
+
+### Paso 7: Reportar y persistir aprendizajes
 
 Mostrar al usuario el reporte del agente tal cual, seguido de un resumen corto:
 
@@ -193,9 +333,12 @@ Iteracion sobre <PR|Issue> #<N> completada.
 - Comments totales: <X>
 - Filtrados (ruido/autor/APPROVED-vacio): <Y>
 - Procesados por el agente: <Z>
-- Archivos modificados: <lista>
-Cambios en working tree — revisa `git diff` y commitea manualmente o via `/pr`.
+- Archivos modificados (PR) / body actualizado (issue): <lista o "body de issue #<N>">
+- Persistencia: <commit + push <hash> a <branch> | gh issue edit OK | sin cambios>
+- Estado final: <che:executed|che:plan|che:validated (rollback)>
 ```
+
+Si hubo failure de commit/push o `gh issue edit`, dejar explicito que el lock se rolleo y que el humano debe reintentar a mano (con el detalle del error).
 
 Luego, el **skill** (no el subagent) invoca `/r` usando el Skill tool para persistir aprendizajes de la sesion. Esto no contradice la restriccion "NO delegues a otros agentes" del prompt del agente: la restriccion aplica al subagent Opus despachado en el Paso 5; el orquestador (este skill) si puede invocar `/r`.
 
@@ -207,16 +350,25 @@ Luego, el **skill** (no el subagent) invoca `/r` usando el Skill tool para persi
 - Filtrar comments del autor, reacciones puras (regex case-insensitive, **tras strip de `\s+` incluyendo newlines**), y reviews APPROVED vacios antes de pasar al agente.
 - Escribir el contexto a `/tmp/cvm-iterate-context.md` con Write tool; el prompt del agente referencia el path.
 - Dumpear el diff a `/tmp/cvm-iterate-diff.txt` **siempre**; inlinearlo en el contexto solo si tiene ≤ 2000 lineas. Si es mas grande, dejar solo el puntero al archivo.
-- Lanzar `Agent(subagent_type='general-purpose', model='opus')` con instruccion explicita de evaluar, aplicar, reportar y terminar con `## Key Learnings:`.
+- Resolver `CURRENT_STATE` via stateref: PR labels primero, fallback a labels del issue linkeado (`closingIssuesReferences`).
+- Aplicar pre-transition (lock) ANTES del subagent. Lenient: si state actual no es `che:validated`, warn + limpiar `che:*` previos + aplicar el lock.
+- Para `KIND=pr`: verificar branch local == `headRefName` y working tree limpio ANTES del subagent. Si no, rollback + abortar.
+- Para `KIND=pr`: despues del subagent, si reporto ≥1 cambio aplicado: `git add -A && git commit -m "iterate(#$N): apply review feedback" && git push origin HEAD:$HEAD_REF`.
+- Para `KIND=issue`: el subagent escribe el nuevo body a `/tmp/cvm-iterate-new-body.md`; despues hacer `gh issue edit "$N" --body-file <path>`.
+- Si commit/push o `gh issue edit` falla → rollback del lock + reportar error explicito al humano.
+- Aplicar post-transition (success o rollback) DESPUES de persistir cambios.
+- Usar `gh api` REST para labels (NO `gh issue edit --add-label` — REST evita scope `read:org`).
+- Lanzar `Agent(subagent_type='general-purpose', model='opus')` con prompt KIND-aware (PR edita archivos; issue escribe body al archivo temp).
 - Despues del reporte del agente, invocar `/r` via Skill tool.
-- Dejar los cambios en working tree sin commitear.
 
 ## MUST NOT DO (el skill)
 - No interpolar bodies de comments, titulos, o `$ARGUMENTS` crudos en double-quoted shell commands. Todo lo de github va via `gh ... --json` / `gh api` y se parsea localmente.
-- No delegar a `/o` — el skill lanza `Agent` directo.
-- No hacer commits automaticos. No hacer push. No comentar de vuelta en GitHub.
+- No delegar a `/go` — el skill lanza `Agent` directo.
+- No commitear si el agente reporto 0 aplicados. No hacer `git push --force`. No saltarse hooks (`--no-verify`).
+- No hacer checkout automatico a `headRefName` ni stashear cambios del usuario — abortar y pedirle al humano que prepare el WT.
+- No comentar de vuelta en GitHub (replies a comments).
 - No soportar GitLab / Bitbucket / otras plataformas en esta iteracion.
-- No resolver review threads — el skill solo modifica codigo local.
+- No resolver review threads — el skill solo modifica codigo local + persiste.
 - No lanzar el agente si no quedaron comments accionables tras el filtrado.
 
 Nota: los archivos `/tmp/cvm-iterate-context.md` y `/tmp/cvm-iterate-diff.txt` los crea el **skill** como orquestacion (no cuentan como "archivos nuevos"). La restriccion "no crear archivos nuevos" aplica al **agente** despachado (ver prompt en Paso 5).

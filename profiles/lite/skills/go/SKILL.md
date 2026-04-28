@@ -59,7 +59,7 @@ Antes de lanzar, verificar disponibilidad:
 codex exec "echo ok" 2>/dev/null
 ```
 
-Si falla: informar al usuario que Codex no esta disponible y sugerir omitir el flag para fallback a Opus (`/o <tarea>` sin `--codex`).
+Si falla: informar al usuario que Codex no esta disponible y sugerir omitir el flag para fallback a Opus (`/go <tarea>` sin `--codex`).
 
 Lanzar cada instancia como un Bash tool call separado en paralelo (multiples Bash calls en el mismo mensaje). Leer el stdout directo del tool output:
 
