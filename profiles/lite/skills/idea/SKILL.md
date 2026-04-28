@@ -10,12 +10,14 @@ Si el usuario ya sabe que quiere y como, usar `/issue`. Si esta tirando una idea
 ## Esquema de labels
 
 Cada issue creado por `/idea` lleva exactamente:
-- `status:idea` — exclusivo de `/idea`, distingue ideas crudas de planes.
+- `che:idea` — estado inicial de la maquina de estados de che-cli; distingue ideas crudas de planes.
 - `ct:plan` — convencion del repo (compartido con `/issue`).
 - `type:<inferido>` — uno de: `feature`, `bug`, `chore`, `docs`.
 - `size:<inferido>` — uno de: `xs`, `s`, `m`, `l`.
 
 La clasificacion es heuristica y se documenta como "inferida automaticamente" en el body. El usuario puede editarla a mano si falla.
+
+> **Contrato vs local**: `che:idea` y `ct:plan` siguen el contrato canonico de che-cli (ver `che-cli/internal/labels/labels.go`). `type:*` y `size:*` son metadata local del profile lite — che-cli las ignora; viven solo para clasificacion humana y filtrado en GitHub.
 
 ## Proceso
 
@@ -118,7 +120,7 @@ Si dry-run, imprimir por stdout:
 Title: <titulo derivado de la descripcion, max 70 chars, imperativo>
 
 Labels:
-  - status:idea
+  - che:idea
   - ct:plan
   - type:<inferido>
   - size:<inferido>
@@ -143,7 +145,7 @@ Si falla, abortar: "No hay un repo GitHub configurado en este directorio."
 
 ### Paso 8: Verificar y crear labels
 
-Para cada label requerido (`status:idea`, `ct:plan`, `type:<inferido>`, `size:<inferido>`), verificar con match exacto y `--limit 200`:
+Para cada label requerido (`che:idea`, `ct:plan`, `type:<inferido>`, `size:<inferido>`), verificar con match exacto y `--limit 200`:
 
 ```bash
 gh label list --limit 200 --json name --jq '.[] | select(.name == "<label>") | .name' 2>/dev/null
@@ -151,7 +153,7 @@ gh label list --limit 200 --json name --jq '.[] | select(.name == "<label>") | .
 
 Si no retorna nada, crearlo. Colores sugeridos (consistente con labels existentes del repo):
 
-- `status:idea` → color `1D76DB`, descripcion "Idea capturada, sin plan"
+- `che:idea` → color `1D76DB`, descripcion "Idea capturada, sin plan"
 - `ct:plan` → color `0E8A16`, descripcion "Planned work"
 - `type:feature` → color `BFDADC`
 - `type:bug` → color `D73A4A`
@@ -176,7 +178,7 @@ El titulo se deriva de la descripcion: imperativo, max 70 chars, sin punto final
 gh issue create \
   --title "<titulo derivado>" \
   --body-file "$BODY_FILE" \
-  --label "status:idea" \
+  --label "che:idea" \
   --label "ct:plan" \
   --label "type:<inferido>" \
   --label "size:<inferido>"
@@ -188,7 +190,7 @@ Mostrar la URL del issue creado:
 
 ```
 Issue creado: <url>
-Labels: status:idea, ct:plan, type:<x>, size:<y>
+Labels: che:idea, ct:plan, type:<x>, size:<y>
 ```
 
 ## MUST DO
@@ -210,4 +212,4 @@ Labels: status:idea, ct:plan, type:<x>, size:<y>
 - No leer el contenido completo de los archivos detectados — solo identificarlos.
 - No generar esqueletos de plan, archivos locales, ni notas en memory — el unico output es el issue en GitHub.
 - No modificar `/issue` ni los CLAUDE.md.
-- No omitir ninguno de los 4 labels (`status:idea`, `ct:plan`, `type:*`, `size:*`).
+- No omitir ninguno de los 4 labels (`che:idea`, `ct:plan`, `type:*`, `size:*`).
