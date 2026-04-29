@@ -193,12 +193,22 @@ JQ_FILTER='.[] | (.body // "") | select((. | ltrimstr(" ") | ltrimstr("\n") | lt
 
 CURRENT_FP=$(shasum "$FINGERPRINT_FILE" | awk '{print $1}')
 
-if [[ "$ITER" -gt 1 && "$CURRENT_FP" == "$PREV_FP" ]]; then
-  EXIT_REASON="idempotent"
-  break
+# Guard: NO disparar idempotencia con set post-filtro vacio.
+# Caso autonomo (solo /che-validate como reviewer): tras excluir bodies que empiezan
+# con "## Review:", el set queda vacio en cada iteracion, y dos vacios consecutivos
+# hashean igual. Eso disparaba idempotencia falsa en iter 2 ANTES de invocar /che-iterate,
+# aunque el validate recien hubiera generado feedback nuevo y accionable.
+# Sin senal humana sobre la cual decidir idempotencia, dejamos que el loop avance
+# y que /che-iterate decida via "0 aplicados" si no hay nada que hacer (Paso 4.9).
+if [[ ! -s "$FINGERPRINT_FILE" ]]; then
+  PREV_FP="$CURRENT_FP"
+else
+  if [[ "$ITER" -gt 1 && "$CURRENT_FP" == "$PREV_FP" ]]; then
+    EXIT_REASON="idempotent"
+    break
+  fi
+  PREV_FP="$CURRENT_FP"
 fi
-
-PREV_FP="$CURRENT_FP"
 ```
 
 Esto da: false positives bajos (solo si dos sets distintos hashearan al mismo valor — extremadamente raro con SHA-1) y cubre el caso real (reviewer humano dejando los mismos comments accionables sin que el commit los resuelva). El loop sigue siendo conservador (preferimos abortar de mas que loopear de menos), pero ahora la senal **si dispara**.

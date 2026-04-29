@@ -4,12 +4,14 @@ Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto
 
 Outputs observables que otros skills (especialmente `/che-loop`) pueden parsear con garantia de estabilidad. Cambiar estos strings es breaking change — sincronizar con consumers.
 
-- **Resumen final** (Paso 7): el reporte termina con un bloque que incluye literalmente la linea `Procesados por el agente: <Z>` donde `<Z>` es un entero (`0`, `1`, `2`, ...). Este es el campo parseable canonico para "cuantos comments aplico el iterate".
-  - `Z == 0` → no hubo cambios accionables / nada se commiteo (rollback aplicado).
-  - `Z >= 1` → hubo cambios; `git commit + push` (PR) o `gh issue edit` (issue) ya corrieron antes de retornar.
+- **Resumen final** (Paso 7): el reporte termina con un bloque markdown formateado como bullet-list, donde cada linea arranca con el prefijo literal `- ` (guion + espacio). Las lineas parseables del contrato son **exactamente**:
+  - `- Procesados por el agente: <Z>` donde `<Z>` es un entero (`0`, `1`, `2`, ...). Este es el campo parseable canonico para "cuantos comments aplico el iterate". El prefijo `- ` es parte del contrato — el consumer (`/che-loop` Paso 4.9) usa el regex `^- Procesados por el agente: [0-9]+$` y depende del bullet.
+    - `Z == 0` → no hubo cambios accionables / nada se commiteo (rollback aplicado).
+    - `Z >= 1` → hubo cambios; `git commit + push` (PR) o `gh issue edit` (issue) ya corrieron antes de retornar.
+  - `- Persistencia: <detalle>`. Si la persistencia fallo, el detalle arranca con `failed:` literal — la linea completa tiene el shape `- Persistencia: failed: <error>`. El consumer usa `^- Persistencia: failed:` para detectar la falla. El prefijo `- ` tambien es parte del contrato.
 - **Persistencia previa al return**: para `KIND=pr` con `Z >= 1`, el commit ya esta en `origin/<headRefName>` cuando el skill retorna. Para `KIND=issue` con `Z >= 1`, el body ya esta editado en GitHub. Es seguro lanzar `/che-validate` inmediatamente despues — vera el estado nuevo.
 - **Labels post-return**: aplica `che:executed` (PR) / `che:plan` (issue) en success, o vuelve a `che:validated` (rollback) si el agente reporto 0 aplicados o si la persistencia fallo. Leer label es deterministico; el resumen markdown es para el humano.
-- **Falla de persistencia**: si `git commit` / `git push` (PR) o `gh issue edit` (issue) falla, el resumen incluye explicitamente la palabra `failed` en la linea `Persistencia: ...` y el lock se rolleo a `che:validated`. El consumer (ej `/che-loop`) debe tratar esto como exit reason terminal — el humano resuelve a mano.
+- **Falla de persistencia**: si `git commit` / `git push` (PR) o `gh issue edit` (issue) falla, el resumen incluye explicitamente la palabra `failed` en la linea `- Persistencia: ...` y el lock se rolleo a `che:validated`. El consumer (ej `/che-loop`) debe tratar esto como exit reason terminal — el humano resuelve a mano.
 
 ## Tagging (state machine de che-cli)
 
@@ -29,6 +31,14 @@ Aplica las transitions de `che-cli/internal/labels/labels.go`:
 ### Paso 1: Parsear `$ARGUMENTS` y resolver target
 
 **Precheck de auth** (antes de cualquier `gh` que haga red): correr `gh auth status` una sola vez. Si falla, abortar inmediatamente con: "gh no esta autenticado o no hay red — corre `gh auth login` y reintenta.". Esto evita confundir un "not found" real con un fallo de auth/red en los pasos siguientes.
+
+**Crear directorio temp namespaced por PID** (antes de escribir cualquier scratch file). Asi dos runs concurrentes de `/che-iterate` (o de `/che-loop` componiendo iterate) no se pisan contexto/diff/body:
+
+```bash
+ITER_TMP=$(mktemp -d -t cvm-iterate-XXXXXX)
+```
+
+Todos los scratch paths del skill (`$ITER_TMP/context.md`, `$ITER_TMP/diff.txt`, `$ITER_TMP/new-body.md`) viven dentro de `$ITER_TMP`. NO usar paths globales `/tmp/cvm-iterate-*` — corrompen runs paralelos.
 
 Detectar el formato:
 
@@ -106,7 +116,7 @@ Mantener todo lo demas, incluyendo comments cortos con contenido accionable (p.e
 
 ### Paso 4: Armar archivo de contexto
 
-Escribir `/tmp/cvm-iterate-context.md` via Write tool. NUNCA interpolar bodies de comments en shell. Estructura:
+Escribir `$ITER_TMP/context.md` via Write tool. NUNCA interpolar bodies de comments en shell. Estructura:
 
 ```markdown
 # Iteracion sobre <PR|Issue> #<N>
@@ -128,7 +138,7 @@ Escribir `/tmp/cvm-iterate-context.md` via Write tool. NUNCA interpolar bodies d
 <si el diff <= 2000 lineas: pegarlo inline dentro de un bloque `diff`>
 <si > 2000 lineas: NO pegarlo — en su lugar escribir la nota de abajo>
 
-> Diff con <N> lineas — truncado. Disponible completo en `/tmp/cvm-iterate-diff.txt`. Leer bajo demanda.
+> Diff con <N> lineas — truncado. Disponible completo en `$ITER_TMP/diff.txt`. Leer bajo demanda.
 
 ## Comments (<total> tras filtrado; <descartados> descartados)
 
@@ -158,12 +168,12 @@ Numerar los comments en orden cronologico (por `created_at`). Si no quedo ningun
 
 Para el diff del PR, **siempre** dumpear a archivo (nunca interpolar via shell) y luego decidir si inlinearlo:
 ```bash
-gh pr diff "$N" > /tmp/cvm-iterate-diff.txt 2>/dev/null
-wc -l /tmp/cvm-iterate-diff.txt
+gh pr diff "$N" > "$ITER_TMP/diff.txt" 2>/dev/null
+wc -l "$ITER_TMP/diff.txt"
 ```
 
 - Si `wc -l` ≤ **2000**: leer con `Read` y pegar dentro del bloque `diff` en el contexto.
-- Si > **2000**: NO inlinearlo. Dejar la nota "truncado — disponible en `/tmp/cvm-iterate-diff.txt`" y el agente lo lee bajo demanda con `Read` (offset/limit) cuando necesita inspeccionar un cambio puntual. Esto evita saturar el context window del agente Opus en PRs grandes.
+- Si > **2000**: NO inlinearlo. Dejar la nota "truncado — disponible en `$ITER_TMP/diff.txt`" y el agente lo lee bajo demanda con `Read` (offset/limit) cuando necesita inspeccionar un cambio puntual. Esto evita saturar el context window del agente Opus en PRs grandes.
 
 ### Paso 4.5: Pre-transition (lock)
 
@@ -232,10 +242,10 @@ Agent(
 
 El prompt del agente difiere segun `KIND`:
 
-**Si `KIND=pr`** (sustituyendo `<N>`):
+**Si `KIND=pr`** (sustituyendo `<N>` y `<ITER_TMP>` por los valores reales antes de despachar):
 
 ```
-Tenes acceso al filesystem del worktree actual. El contexto completo esta en /tmp/cvm-iterate-context.md — leelo primero.
+Tenes acceso al filesystem del worktree actual. El contexto completo esta en <ITER_TMP>/context.md — leelo primero.
 
 Tarea: evaluar los comments/reviews del PR #<N> y aplicar al codigo los cambios que sean accionables.
 
@@ -260,10 +270,10 @@ Reporte estructurado con:
 Termina tu respuesta con una seccion `## Key Learnings:` listando descubrimientos no-obvios sobre el codebase o el feedback que puedan ser utiles en futuras iteraciones.
 ```
 
-**Si `KIND=issue`** (plan iteration — sustituyendo `<N>`):
+**Si `KIND=issue`** (plan iteration — sustituyendo `<N>` y `<ITER_TMP>` por los valores reales antes de despachar):
 
 ```
-Tenes acceso al filesystem del worktree actual. El contexto completo esta en /tmp/cvm-iterate-context.md — leelo primero.
+Tenes acceso al filesystem del worktree actual. El contexto completo esta en <ITER_TMP>/context.md — leelo primero.
 
 Tarea: el issue #<N> es un plan que recibio comments/reviews pidiendo cambios. Re-escribi el body del issue incorporando el feedback accionable. NO toques archivos del repo — el resultado es un nuevo body para el issue.
 
@@ -274,11 +284,11 @@ Criterios:
 4. Comments ambiguos: anotarlos en "Notas" como "pendiente de aclaracion" — NO inventar interpretacion.
 
 Output del subagent (ESTRICTO):
-1. Escribir el nuevo body completo (markdown) a `/tmp/cvm-iterate-new-body.md` con Write tool.
+1. Escribir el nuevo body completo (markdown) a `<ITER_TMP>/new-body.md` con Write tool.
 2. En tu respuesta, devolver un reporte con:
    - ## Aplicados — comments incorporados al body y donde
    - ## Ignorados — comments no aplicados y la razon
-   - ## Body actualizado — confirmar que escribiste a `/tmp/cvm-iterate-new-body.md`
+   - ## Body actualizado — confirmar que escribiste a `<ITER_TMP>/new-body.md`
 
 Restricciones:
 - NO modifiques archivos del repo.
@@ -307,12 +317,12 @@ Capturar exit code de cada paso:
 
 Si el agente reporto 0 aplicados → saltar este paso (no hay nada que commitear); ir directo a rollback en Paso 6.b.
 
-**Si `KIND=issue`** y el agente escribio `/tmp/cvm-iterate-new-body.md`:
+**Si `KIND=issue`** y el agente escribio `$ITER_TMP/new-body.md`:
 
 ```bash
 # Verificar que el archivo existe y no esta vacio
-[[ -s /tmp/cvm-iterate-new-body.md ]] || { echo "Subagent no genero nuevo body"; exit 1; }
-gh issue edit "$N" --repo "$OWNER/$REPO" --body-file /tmp/cvm-iterate-new-body.md
+[[ -s "$ITER_TMP/new-body.md" ]] || { echo "Subagent no genero nuevo body"; exit 1; }
+gh issue edit "$N" --repo "$OWNER/$REPO" --body-file "$ITER_TMP/new-body.md"
 ```
 
 Si `gh issue edit` falla → rollback del lock + warnear.
@@ -359,13 +369,14 @@ Luego, el **skill** (no el subagent) invoca `/r` usando el Skill tool para persi
 - Detectar PR vs issue con fallback `gh pr view` → `gh issue view`.
 - Usar `gh api --paginate` para los tres endpoints cuando `KIND=pr`, solo `issues/<N>/comments` cuando `KIND=issue`.
 - Filtrar comments del autor (excepto si empiezan con `## Review:` — reviews machine-generated de `/che-validate`), reacciones puras (regex case-insensitive, **tras strip de `\s+` incluyendo newlines**), y reviews APPROVED vacios antes de pasar al agente.
-- Escribir el contexto a `/tmp/cvm-iterate-context.md` con Write tool; el prompt del agente referencia el path.
-- Dumpear el diff a `/tmp/cvm-iterate-diff.txt` **siempre**; inlinearlo en el contexto solo si tiene ≤ 2000 lineas. Si es mas grande, dejar solo el puntero al archivo.
+- Crear `ITER_TMP=$(mktemp -d -t cvm-iterate-XXXXXX)` al inicio del Paso 1 y usar `$ITER_TMP/context.md`, `$ITER_TMP/diff.txt`, `$ITER_TMP/new-body.md` para todos los scratch files. NO usar paths globales `/tmp/cvm-iterate-*` (corrompen runs concurrentes).
+- Escribir el contexto a `$ITER_TMP/context.md` con Write tool; el prompt del agente referencia el path (sustituir `<ITER_TMP>` por el valor real antes de despachar).
+- Dumpear el diff a `$ITER_TMP/diff.txt` **siempre**; inlinearlo en el contexto solo si tiene ≤ 2000 lineas. Si es mas grande, dejar solo el puntero al archivo.
 - Resolver `CURRENT_STATE` via stateref: PR labels primero, fallback a labels del issue linkeado (`closingIssuesReferences`).
 - Aplicar pre-transition (lock) ANTES del subagent. Lenient: si state actual no es `che:validated`, warn + limpiar `che:*` previos + aplicar el lock.
 - Para `KIND=pr`: verificar branch local == `headRefName` y working tree limpio ANTES del subagent. Si no, rollback + abortar.
 - Para `KIND=pr`: despues del subagent, si reporto ≥1 cambio aplicado: `git add -A && git commit -m "iterate(#$N): apply review feedback" && git push origin HEAD:$HEAD_REF`.
-- Para `KIND=issue`: el subagent escribe el nuevo body a `/tmp/cvm-iterate-new-body.md`; despues hacer `gh issue edit "$N" --body-file <path>`.
+- Para `KIND=issue`: el subagent escribe el nuevo body a `$ITER_TMP/new-body.md`; despues hacer `gh issue edit "$N" --body-file "$ITER_TMP/new-body.md"`.
 - Si commit/push o `gh issue edit` falla → rollback del lock + reportar error explicito al humano.
 - Aplicar post-transition (success o rollback) DESPUES de persistir cambios.
 - Usar `gh api` REST para labels (NO `gh issue edit --add-label` — REST evita scope `read:org`).
@@ -382,4 +393,4 @@ Luego, el **skill** (no el subagent) invoca `/r` usando el Skill tool para persi
 - No resolver review threads — el skill solo modifica codigo local + persiste.
 - No lanzar el agente si no quedaron comments accionables tras el filtrado.
 
-Nota: los archivos `/tmp/cvm-iterate-context.md` y `/tmp/cvm-iterate-diff.txt` los crea el **skill** como orquestacion (no cuentan como "archivos nuevos"). La restriccion "no crear archivos nuevos" aplica al **agente** despachado (ver prompt en Paso 5).
+Nota: los archivos `$ITER_TMP/context.md` y `$ITER_TMP/diff.txt` los crea el **skill** como orquestacion dentro del temp dir namespaced por PID (no cuentan como "archivos nuevos"). La restriccion "no crear archivos nuevos" aplica al **agente** despachado (ver prompt en Paso 5).
