@@ -1,4 +1,15 @@
-Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado. `$ARGUMENTS` puede ser un numero (`/che-iterate 42`), una URL (`/che-iterate https://github.com/owner/repo/pull/42`), o vacio (`/che-iterate` usa la branch actual). El skill NO commitea — deja los cambios en el working tree para que el humano los revise. Aplica las transitions de la state machine `che:*` de che-cli en modo lenient (ver "Tagging" abajo).
+Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado. `$ARGUMENTS` puede ser un numero (`/che-iterate 42`), una URL (`/che-iterate https://github.com/owner/repo/pull/42`), o vacio (`/che-iterate` usa la branch actual). El skill **persiste los cambios automaticamente**: para PR hace `git add -A && git commit && git push origin HEAD:<headRefName>`; para issue hace `gh issue edit --body-file`. Aplica las transitions de la state machine `che:*` de che-cli en modo lenient (ver "Tagging" abajo).
+
+## Contract
+
+Outputs observables que otros skills (especialmente `/che-loop`) pueden parsear con garantia de estabilidad. Cambiar estos strings es breaking change — sincronizar con consumers.
+
+- **Resumen final** (Paso 7): el reporte termina con un bloque que incluye literalmente la linea `Procesados por el agente: <Z>` donde `<Z>` es un entero (`0`, `1`, `2`, ...). Este es el campo parseable canonico para "cuantos comments aplico el iterate".
+  - `Z == 0` → no hubo cambios accionables / nada se commiteo (rollback aplicado).
+  - `Z >= 1` → hubo cambios; `git commit + push` (PR) o `gh issue edit` (issue) ya corrieron antes de retornar.
+- **Persistencia previa al return**: para `KIND=pr` con `Z >= 1`, el commit ya esta en `origin/<headRefName>` cuando el skill retorna. Para `KIND=issue` con `Z >= 1`, el body ya esta editado en GitHub. Es seguro lanzar `/che-validate` inmediatamente despues — vera el estado nuevo.
+- **Labels post-return**: aplica `che:executed` (PR) / `che:plan` (issue) en success, o vuelve a `che:validated` (rollback) si el agente reporto 0 aplicados o si la persistencia fallo. Leer label es deterministico; el resumen markdown es para el humano.
+- **Falla de persistencia**: si `git commit` / `git push` (PR) o `gh issue edit` (issue) falla, el resumen incluye explicitamente la palabra `failed` en la linea `Persistencia: ...` y el lock se rolleo a `che:validated`. El consumer (ej `/che-loop`) debe tratar esto como exit reason terminal — el humano resuelve a mano.
 
 ## Tagging (state machine de che-cli)
 
@@ -334,11 +345,11 @@ Iteracion sobre <PR|Issue> #<N> completada.
 - Filtrados (ruido/autor/APPROVED-vacio): <Y>
 - Procesados por el agente: <Z>
 - Archivos modificados (PR) / body actualizado (issue): <lista o "body de issue #<N>">
-- Persistencia: <commit + push <hash> a <branch> | gh issue edit OK | sin cambios>
+- Persistencia: <commit + push <hash> a <branch> | gh issue edit OK | sin cambios | failed: <detalle>>
 - Estado final: <che:executed|che:plan|che:validated (rollback)>
 ```
 
-Si hubo failure de commit/push o `gh issue edit`, dejar explicito que el lock se rolleo y que el humano debe reintentar a mano (con el detalle del error).
+Si hubo failure de commit/push o `gh issue edit`, la linea `Persistencia:` debe arrancar con `failed:` seguido del detalle del error (es el marcador parseable que el contrato expone). Ademas dejar explicito que el lock se rolleo y que el humano debe reintentar a mano.
 
 Luego, el **skill** (no el subagent) invoca `/r` usando el Skill tool para persistir aprendizajes de la sesion. Esto no contradice la restriccion "NO delegues a otros agentes" del prompt del agente: la restriccion aplica al subagent Opus despachado en el Paso 5; el orquestador (este skill) si puede invocar `/r`.
 
