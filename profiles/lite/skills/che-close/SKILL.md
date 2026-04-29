@@ -19,10 +19,10 @@ Para cada issue linkeado al PR, al cerrarlo aplicar la transition correspondient
 **Precheck auth**: `gh auth status` una vez. Si falla, abortar: "gh no esta autenticado o no hay red — corre `gh auth login` y reintenta."
 
 Detectar formato:
-- **Vacio** → `gh pr view --json number,title,url,headRefName,isDraft,labels,closingIssuesReferences,baseRefName,state 2>/dev/null`. Si falla, abortar: "No hay PR asociado a la branch actual. Pasa `/close <numero>` o URL."
+- **Vacio** → `gh pr view --json number,title,url,headRefName,isDraft,labels,closingIssuesReferences,baseRefName,state 2>/dev/null`. Si falla, abortar: "No hay PR asociado a la branch actual. Pasa `/che-close <numero>` o URL."
 - **URL** (`https://github.com/<owner>/<repo>/pull/N`) → parsear localmente (split por `/`), guardar `OWNER`, `REPO`, `N`.
 - **Numero puro** (validar `^[0-9]+$` ANTES de pasar a shell) → `N`. Resolver `OWNER/REPO` via `gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"'`.
-- **Cualquier otro input** → abortar: "Uso: `/close [N | URL | vacio para branch actual]` [--merge-type=squash|merge|rebase]"
+- **Cualquier otro input** → abortar: "Uso: `/che-close [N | URL | vacio para branch actual]` [--merge-type=squash|merge|rebase]"
 
 Parsear flag `--merge-type=`. Solo aceptar `squash`, `merge`, `rebase`. Default `squash`. Cualquier otro valor → abortar.
 
@@ -169,5 +169,5 @@ No ejecutar `/r` automaticamente.
 - No persistir nada en auto-memory (el resultado vive en GitHub).
 - No soportar GitLab/Bitbucket — solo GitHub via `gh`.
 - No correr `/r` al final.
-- No delegar a `/go`, `/iterate`, etc — el skill maneja todo el flow con un solo subagent Opus.
+- No delegar a `/go`, `/che-iterate`, etc — el skill maneja todo el flow con un solo subagent Opus.
 - No bloquear el rollback en errores de label REST: `DELETE` debe tolerar 404 (label no existe en el repo o no aplicado al PR).

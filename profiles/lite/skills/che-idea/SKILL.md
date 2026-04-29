@@ -2,14 +2,14 @@ Crear un issue en GitHub a partir de una idea vaga, enriqueciendola automaticame
 
 ## Diferencia con /issue
 
-- `/idea <descripcion vaga>` — idea sin clasificar, sin pensar todavia. El skill enriquece y clasifica automaticamente. Issue resultante sirve de input al flujo de planificacion (`/go`, plan, etc).
+- `/che-idea <descripcion vaga>` — idea sin clasificar, sin pensar todavia. El skill enriquece y clasifica automaticamente. Issue resultante sirve de input al flujo de planificacion (`/go`, plan, etc).
 - `/issue <descripcion concreta>` — tarea ya pensada, con titulo claro y criterio de exito definido por el usuario. Sin enriquecimiento heuristico.
 
-Si el usuario ya sabe que quiere y como, usar `/issue`. Si esta tirando una idea suelta, usar `/idea`.
+Si el usuario ya sabe que quiere y como, usar `/issue`. Si esta tirando una idea suelta, usar `/che-idea`.
 
 ## Esquema de labels
 
-Cada issue creado por `/idea` lleva exactamente:
+Cada issue creado por `/che-idea` lleva exactamente:
 - `che:idea` — estado inicial de la maquina de estados de che-cli (ver `che-cli/internal/labels/labels.go`); distingue ideas crudas de planes.
 - `ct:plan` — convencion del repo (compartido con `/issue`).
 - `type:<inferido>` — uno de: `feature`, `bug`, `chore`, `docs`.
@@ -25,7 +25,7 @@ De `$ARGUMENTS` extraer:
 - **Descripcion**: el texto, quitando flags conocidos.
 - **Dry-run**: `true` si `$ARGUMENTS` contiene `--dry-run`.
 
-Si la descripcion queda vacia, abortar: "Pasale una descripcion. Ej: `/idea agregar dark mode al dashboard`".
+Si la descripcion queda vacia, abortar: "Pasale una descripcion. Ej: `/che-idea agregar dark mode al dashboard`".
 
 Verificar repo: `gh repo view --json name --jq '.name' 2>/dev/null`. Si falla, abortar: "No hay un repo GitHub configurado en este directorio."
 
@@ -178,7 +178,7 @@ Si tiene `dry_run: true`, agregar:
 (no se creo el issue. Removeti --dry-run para crear de verdad.)
 ```
 
-No ejecutar `/r` automaticamente — `/idea` no genera "aprendizajes" persistibles.
+No ejecutar `/r` automaticamente — `/che-idea` no genera "aprendizajes" persistibles.
 
 ## MUST DO
 

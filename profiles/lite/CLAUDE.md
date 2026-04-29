@@ -7,14 +7,14 @@
 | `/go` | Subagent unificado — default Opus; `--codex` / `--gemini` para validacion externa |
 | `/r` | Review de sesion + persistencia de learnings en project memory. Soporta `/r --dry-run` |
 | `/ux` | Iteracion UX con validacion multi + HTML de alternativas |
-| `/idea` | Crear GitHub issue desde idea vaga (subagent Opus); aplica `che:idea` + `ct:plan` |
-| `/explore` | Analizar issue + prepender plan consolidado al body + comment con paths/riesgos; aplica `che:planning→che:plan` |
-| `/execute` | Implementar issue/tarea en worktree aislado + abrir PR draft; aplica `che:executing→che:executed` |
-| `/validate` | Revisar PR/issue (subagentes paralelos); aplica `che:validating→che:validated` + verdict |
-| `/iterate` | Aplicar comments de PR/issue (subagent Opus); aplica transitions `che:executing\|planning` |
-| `/close` | Cerrar PR (ready→CI→merge→close issues linkeados); aplica `che:closing→che:closed` |
+| `/che-idea` | Crear GitHub issue desde idea vaga (subagent Opus); aplica `che:idea` + `ct:plan` |
+| `/che-explore` | Analizar issue + prepender plan consolidado al body + comment con paths/riesgos; aplica `che:planning→che:plan` |
+| `/che-execute` | Implementar issue/tarea en worktree aislado + abrir PR draft; aplica `che:executing→che:executed` |
+| `/che-validate` | Revisar PR/issue (subagentes paralelos); aplica `che:validating→che:validated` + verdict |
+| `/che-iterate` | Aplicar comments de PR/issue (subagent Opus); aplica transitions `che:executing\|planning` |
+| `/che-close` | Cerrar PR (ready→CI→merge→close issues linkeados); aplica `che:closing→che:closed` |
 
-Los 6 skills "che" (`/idea`, `/explore`, `/execute`, `/validate`, `/iterate`, `/close`) replican el workflow de [che-cli](https://github.com/chichex/che-cli) en modo lenient — aplican las mismas transitions de la state machine `che:*` (ver `che-cli/internal/labels/labels.go`) pero no abortan si current state no calza con `from` (warnean y aplican igual).
+Los 6 skills "che" (`/che-idea`, `/che-explore`, `/che-execute`, `/che-validate`, `/che-iterate`, `/che-close`) replican el workflow de [che-cli](https://github.com/chichex/che-cli) en modo lenient — aplican las mismas transitions de la state machine `che:*` (ver `che-cli/internal/labels/labels.go`) pero no abortan si current state no calza con `from` (warnean y aplican igual).
 
 Usa `/go` directamente cuando sabes que agente necesitas (default Opus; agrega `--codex` o `--gemini` para CLIs externos).
 

@@ -1,4 +1,4 @@
-Toma un issue (numero/URL) o un input libre y ejecuta la implementacion en un worktree aislado, abriendo un PR draft contra la base. `$ARGUMENTS` puede ser un numero (`/execute 42`), una URL del repo actual (`/execute https://github.com/owner/repo/issues/42`), o texto libre describiendo la tarea (`/execute agregar endpoint /health`). Flags `--codex` / `--gemini` / `--opus` (default) eligen el agente. Aplica las transitions de la state machine `che:*` solo si `KIND=issue` (modo lenient).
+Toma un issue (numero/URL) o un input libre y ejecuta la implementacion en un worktree aislado, abriendo un PR draft contra la base. `$ARGUMENTS` puede ser un numero (`/che-execute 42`), una URL del repo actual (`/che-execute https://github.com/owner/repo/issues/42`), o texto libre describiendo la tarea (`/che-execute agregar endpoint /health`). Flags `--codex` / `--gemini` / `--opus` (default) eligen el agente. Aplica las transitions de la state machine `che:*` solo si `KIND=issue` (modo lenient).
 
 Inspirado en `che-cli/internal/flow/execute/execute.go`, simplificado para el profile lite (sin `internal/plan` parser; usa el body crudo del issue como contexto).
 
@@ -34,11 +34,11 @@ Remover el flag de `$ARGUMENTS` antes del Paso 1.
 
 Detectar formato del `$ARGUMENTS` (sin flag, trim de whitespace):
 
-1. **Vacio** → abortar con uso: "Uso: `/execute [N | URL | <descripcion libre>] [--codex|--gemini]`".
+1. **Vacio** → abortar con uso: "Uso: `/che-execute [N | URL | <descripcion libre>] [--codex|--gemini]`".
 
 2. **Numero puro** (`^[0-9]+$`) → `KIND=issue`, `N=$ARGUMENTS`. **Validar el regex ANTES de pasar `$N` a cualquier comando shell.**
 
-3. **URL** (`^https://github\.com/<owner>/<repo>/issues/<N>$`) → parsear via split por `/`. NUNCA interpolar la URL en un comando shell. `KIND=issue`. Si la URL es de `pull/` (PR), abortar: "/execute opera sobre issues, no PRs. Usa `/iterate` para PRs.".
+3. **URL** (`^https://github\.com/<owner>/<repo>/issues/<N>$`) → parsear via split por `/`. NUNCA interpolar la URL en un comando shell. `KIND=issue`. Si la URL es de `pull/` (PR), abortar: "/che-execute opera sobre issues, no PRs. Usa `/che-iterate` para PRs.".
 
 4. **Cualquier otro texto** → `KIND=freeform`. Guardar el texto crudo en `FREEFORM_INPUT` para el Paso 4.
 
@@ -307,7 +307,7 @@ Se abrio un PR draft con los cambios:
 
 - PR: <PR_URL>
 
-El issue quedo en `che:executed`. Revisa el PR + CI; si queres validacion automatica antes de mergear, corre `/validate <PR_URL>`.
+El issue quedo en `che:executed`. Revisa el PR + CI; si queres validacion automatica antes de mergear, corre `/che-validate <PR_URL>`.
 ```
 
 ### Paso 10: Reportar y persistir aprendizajes
@@ -344,7 +344,7 @@ Solo rama Opus: invocar `/r` via Skill tool al final para persistir aprendizajes
 ## MUST NOT DO
 - No interpolar `TITLE`/`BODY`/`FREEFORM_INPUT`/`$ARGUMENTS` crudos en double-quoted shell commands. Todo via `gh ... --json` parseado o Write tool a archivos temp.
 - No procesar URLs cross-repo (abortar si OWNER/REPO de la URL != current).
-- No procesar URLs de `pull/` (redirigir a `/iterate`).
+- No procesar URLs de `pull/` (redirigir a `/che-iterate`).
 - No commitear si el agente no genero cambios. No `git push --force`. No `--no-verify`.
 - No hacer rollback del PR si la post-transition falla — el PR remoto es prioridad.
 - No reusar `WT_PATH` existente sin pedir cleanup explicito al usuario.

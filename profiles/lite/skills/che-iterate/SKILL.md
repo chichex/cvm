@@ -1,4 +1,4 @@
-Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado. `$ARGUMENTS` puede ser un numero (`/iterate 42`), una URL (`/iterate https://github.com/owner/repo/pull/42`), o vacio (`/iterate` usa la branch actual). El skill NO commitea — deja los cambios en el working tree para que el humano los revise. Aplica las transitions de la state machine `che:*` de che-cli en modo lenient (ver "Tagging" abajo).
+Aplica comments/reviews de un PR o issue lanzando un agente Opus con el contexto consolidado. `$ARGUMENTS` puede ser un numero (`/che-iterate 42`), una URL (`/che-iterate https://github.com/owner/repo/pull/42`), o vacio (`/che-iterate` usa la branch actual). El skill NO commitea — deja los cambios en el working tree para que el humano los revise. Aplica las transitions de la state machine `che:*` de che-cli en modo lenient (ver "Tagging" abajo).
 
 ## Tagging (state machine de che-cli)
 
@@ -25,7 +25,7 @@ Detectar el formato:
    ```bash
    gh pr view --json number,headRefName,author,title,url,baseRefName 2>/dev/null
    ```
-   Si falla, abortar: "No hay PR asociado a la branch actual. Pasa `/iterate <numero>` o una URL.".
+   Si falla, abortar: "No hay PR asociado a la branch actual. Pasa `/che-iterate <numero>` o una URL.".
 
 2. **URL** (`https://github.com/<owner>/<repo>/(pull|issues)/<N>`) → extraer `owner`, `repo`, `N`, y `kind` (`pull` o `issues`). Hacerlo con parseo local (split por `/`), NO interpolar la URL en un comando shell.
 
@@ -39,7 +39,7 @@ Detectar el formato:
    ```
    Si retorna JSON valido → issue. Si ambos fallan, abortar: "No encontre PR ni issue #N en este repo.". Con el precheck de auth al tope del Paso 1 asumimos que este fallo es "not found" real y no auth/red; si el mensaje confunde al usuario, pedirle que re-corra `gh auth status` manualmente.
 
-4. **Cualquier otro input** → abortar con mensaje de uso: "Uso: `/iterate [N | URL | (vacio para usar la branch actual)]`".
+4. **Cualquier otro input** → abortar con mensaje de uso: "Uso: `/che-iterate [N | URL | (vacio para usar la branch actual)]`".
 
 Resolver `owner` y `repo` si vienen de URL usando los valores parseados; en el resto de los casos usar:
 ```bash
@@ -189,14 +189,14 @@ Si `KIND=pr`, el subagent va a editar archivos y al final el orquestador hace co
 CURRENT_BRANCH=$(git branch --show-current)
 if [[ "$CURRENT_BRANCH" != "$HEAD_REF" ]]; then
   echo "Branch local '$CURRENT_BRANCH' != headRefName del PR '$HEAD_REF'."
-  echo "Hace 'git checkout $HEAD_REF' (o 'gh pr checkout $N') antes de /iterate."
+  echo "Hace 'git checkout $HEAD_REF' (o 'gh pr checkout $N') antes de /che-iterate."
   # rollback del lock
   exit 1
 fi
 
 # Working tree limpio para no mezclar cambios pre-existentes con los del subagent
 if [[ -n "$(git status --porcelain)" ]]; then
-  echo "Working tree no limpio. Stashea o commitea los cambios actuales antes de /iterate."
+  echo "Working tree no limpio. Stashea o commitea los cambios actuales antes de /che-iterate."
   # rollback del lock
   exit 1
 fi

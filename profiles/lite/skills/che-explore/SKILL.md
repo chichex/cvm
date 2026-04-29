@@ -1,4 +1,4 @@
-Toma un issue (numero o URL) y lo enriquece con un analisis estructurado: postea un comment con paths/preguntas/riesgos + prepende un plan consolidado al body. `$ARGUMENTS` puede ser un numero (`/explore 42`) o una URL (`/explore https://github.com/owner/repo/issues/42`). Flags `--codex` / `--gemini` / `--opus` (default) eligen el agente. Aplica las transitions de la state machine `che:*` de che-cli en modo lenient.
+Toma un issue (numero o URL) y lo enriquece con un analisis estructurado: postea un comment con paths/preguntas/riesgos + prepende un plan consolidado al body. `$ARGUMENTS` puede ser un numero (`/che-explore 42`) o una URL (`/che-explore https://github.com/owner/repo/issues/42`). Flags `--codex` / `--gemini` / `--opus` (default) eligen el agente. Aplica las transitions de la state machine `che:*` de che-cli en modo lenient.
 
 Inspirado en `che-cli/internal/flow/explore/explore.go`, simplificado para el profile lite (output del agente en markdown, no JSON parseado).
 
@@ -32,11 +32,11 @@ Remover el flag de `$ARGUMENTS` antes del Paso 1.
 
 Detectar formato del `$ARGUMENTS` (sin flag, trim de whitespace):
 
-1. **Vacio** → abortar: "Uso: `/explore [N | URL] [--codex|--gemini]`".
+1. **Vacio** → abortar: "Uso: `/che-explore [N | URL] [--codex|--gemini]`".
 
 2. **Numero puro** (`^[0-9]+$`) → `N=$ARGUMENTS`. **Validar el regex ANTES de pasar `$N` a cualquier comando shell.**
 
-3. **URL** (`^https://github\.com/<owner>/<repo>/issues/<N>$`) → parsear via split por `/`. NUNCA interpolar la URL en shell. Si la URL es de `pull/`, abortar: "/explore opera sobre issues, no PRs.".
+3. **URL** (`^https://github\.com/<owner>/<repo>/issues/<N>$`) → parsear via split por `/`. NUNCA interpolar la URL en shell. Si la URL es de `pull/`, abortar: "/che-explore opera sobre issues, no PRs.".
 
 4. **Cualquier otro input** → abortar (no acepta freeform; el output requiere un issue concreto que actualizar).
 
@@ -161,7 +161,7 @@ size: xs | s | m | l | xl
 - ...
 
 ## Proximo paso
-<una linea: ej "correr /execute <N>", "esperar respuesta a preguntas", etc>
+<una linea: ej "correr /che-execute <N>", "esperar respuesta a preguntas", etc>
 ```
 
 Si `HAS_CT_PLAN=true`, **omitir** la seccion `## Clasificacion` del prompt esperado y avisar al agente que no la genere.
@@ -282,7 +282,7 @@ NOTA: el `PLAN_BLOCK` extraido en Paso 6 incluye su header `## Plan consolidado`
 
 Elegir Variante A en la implementacion. El resultado debe tener un solo `## Plan consolidado`.
 
-**Idempotencia**: si el `BODY` original ya contiene `## Plan consolidado`, NO duplicar — strippear el bloque viejo (de `## Plan consolidado` hasta el siguiente `---` o `## ` H2) antes de prepender el nuevo. Esto permite re-correr `/explore` sobre un issue sin acumular planes.
+**Idempotencia**: si el `BODY` original ya contiene `## Plan consolidado`, NO duplicar — strippear el bloque viejo (de `## Plan consolidado` hasta el siguiente `---` o `## ` H2) antes de prepender el nuevo. Esto permite re-correr `/che-explore` sobre un issue sin acumular planes.
 
 ```bash
 gh issue edit "$N" --body-file /tmp/cvm-explore-new-body.md
