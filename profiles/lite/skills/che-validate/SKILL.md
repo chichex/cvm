@@ -1,5 +1,13 @@
 Revisar un PR o issue de GitHub lanzando agentes seleccionados en paralelo (opus/codex/gemini), posteando cada review como comment separado, y aplicando las transitions de la state machine `che:*` de che-cli en modo lenient. $ARGUMENTS es el PR/issue a revisar: numero (`24`), URL completa, o `pr 24` / `issue 24`.
 
+## Contract
+
+Outputs observables que otros skills (especialmente `/che-loop`) componen y dependen de su estabilidad. Cambiar estos strings/comportamientos es breaking change — sincronizar con consumers.
+
+- **Modo non-interactive (default Opus)**: el Paso 4 muestra el prompt `Que agentes? [O/c/g/a] (default: O):`. Cuando se invoca desde un orquestador (ej. `/che-loop`) sin respuesta humana, la entrada vacia se trata como aceptacion del default → `AGENTS=[opus]`. Ese contrato permite componer `/che-validate` en cadena sin que el prompt bloquee. Si se necesita otro agente desde un orquestador, hay que extender la API del skill (ej. flag explicito `--agents O,c`) y forwardearlo desde el caller; mientras tanto, default-Opus es el unico modo non-interactive estable.
+- **Header canonico de cada review**: cada comment posteado en el Paso 7 arranca **literalmente** con `## Review: <agente> (<perspectiva>)` (ver Paso 7 step 1). Ese prefijo es contract estable — `/che-iterate` Paso 3 lo usa como excepcion al filtro de autor (no descarta reviews machine-generated del propio bot), y `/che-loop` Paso 4.6 lo usa para excluir reviews del fingerprint de idempotencia. Cambiar ese formato rompe ambos consumers silenciosamente.
+- **Verdict label persistido**: el Paso 7.6.a aplica `<VERDICT_NS>:<verdict>` (`validated:approve` / `validated:changes-requested` / `validated:needs-human` para PR; `plan-validated:*` para issue) ANTES de retornar al caller. Leer ese label es la forma deterministica de obtener el verdict (no parsear stdout). En rollback (todos los agentes fallaron) NO se aplica verdict label — el consumer debe distinguir "sin verdict label" como senal de fallo.
+
 ## Tagging (state machine de che-cli)
 
 Aplica las transitions de `che-cli/internal/labels/labels.go`:

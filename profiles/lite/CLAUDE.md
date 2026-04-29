@@ -12,9 +12,10 @@
 | `/che-execute` | Implementar issue/tarea en worktree aislado + abrir PR draft; aplica `che:executing→che:executed` |
 | `/che-validate` | Revisar PR/issue (subagentes paralelos); aplica `che:validating→che:validated` + verdict |
 | `/che-iterate` | Aplicar comments de PR/issue (subagent Opus); aplica transitions `che:executing\|planning` |
+| `/che-loop` | Automatiza `che-validate→che-iterate→...` hasta verdict=approve, 0 comments accionables, `--max N` (default 3), o idempotencia. No toca labels `che:*` directamente — compone los skills hermanos |
 | `/che-close` | Cerrar PR (ready→CI→merge→close issues linkeados); aplica `che:closing→che:closed` |
 
-Los 6 skills "che" (`/che-idea`, `/che-explore`, `/che-execute`, `/che-validate`, `/che-iterate`, `/che-close`) replican el workflow de [che-cli](https://github.com/chichex/che-cli) en modo lenient — aplican las mismas transitions de la state machine `che:*` (ver `che-cli/internal/labels/labels.go`) pero no abortan si current state no calza con `from` (warnean y aplican igual).
+Los skills "che" que tocan la state machine (`/che-idea`, `/che-explore`, `/che-execute`, `/che-validate`, `/che-iterate`, `/che-close`) replican el workflow de [che-cli](https://github.com/chichex/che-cli) en modo lenient — aplican las mismas transitions de la state machine `che:*` (ver `che-cli/internal/labels/labels.go`) pero no abortan si current state no calza con `from` (warnean y aplican igual). `/che-loop` es un orquestador puro que compone `/che-validate` y `/che-iterate` via Skill tool y NO aplica labels `che:*` por su cuenta.
 
 Usa `/go` directamente cuando sabes que agente necesitas (default Opus; agrega `--codex` o `--gemini` para CLIs externos).
 
