@@ -86,7 +86,7 @@ Parsear el JSON resultante. Para cada comment / review, quedarse con: `id`, `use
 
 Descartar un comment / review si:
 
-- **Es del autor del PR/issue**: `user.login == AUTHOR`.
+- **Es del autor del PR/issue**: `user.login == AUTHOR` — **EXCEPTO** si el body (despues de hacer strip de `\s+` al inicio) empieza con `## Review:` (header canonico que `/che-validate` Paso 7 step 1 prepende a cada review machine-generated). Esa excepcion existe para que `/che-loop` componiendo `/che-validate` → `/che-iterate` bajo la misma `gh auth` no se canibalize a si mismo: las reviews del propio validate tienen el mismo `user.login` que el PR author, pero son feedback accionable y no ruido.
 - **Body puramente reaccional**, match case-insensitive contra el regex **despues de hacer strip de todo `\s+` (whitespace horizontal + newlines + tabs) al inicio y al final**:
   `^(lgtm|\+1|-1|👍|👎|🎉|🚀|thanks?|ty|nice|great|:\+1:|:-1:|:shipit:|:tada:|:rocket:)[.!]*$`
 - **Review con `state == APPROVED` y `body` vacio o solo whitespace**.
@@ -347,7 +347,7 @@ Luego, el **skill** (no el subagent) invoca `/r` usando el Skill tool para persi
 - **Validar que `N` matchea `^[0-9]+$` ANTES de pasarlo a cualquier comando shell** (`gh pr view "$N"`, `gh api .../issues/$N/...`, etc). Sin esa validacion, un input tipo `42;rm -rf ~` rompe la garantia de no-interpolacion.
 - Detectar PR vs issue con fallback `gh pr view` → `gh issue view`.
 - Usar `gh api --paginate` para los tres endpoints cuando `KIND=pr`, solo `issues/<N>/comments` cuando `KIND=issue`.
-- Filtrar comments del autor, reacciones puras (regex case-insensitive, **tras strip de `\s+` incluyendo newlines**), y reviews APPROVED vacios antes de pasar al agente.
+- Filtrar comments del autor (excepto si empiezan con `## Review:` — reviews machine-generated de `/che-validate`), reacciones puras (regex case-insensitive, **tras strip de `\s+` incluyendo newlines**), y reviews APPROVED vacios antes de pasar al agente.
 - Escribir el contexto a `/tmp/cvm-iterate-context.md` con Write tool; el prompt del agente referencia el path.
 - Dumpear el diff a `/tmp/cvm-iterate-diff.txt` **siempre**; inlinearlo en el contexto solo si tiene ≤ 2000 lineas. Si es mas grande, dejar solo el puntero al archivo.
 - Resolver `CURRENT_STATE` via stateref: PR labels primero, fallback a labels del issue linkeado (`closingIssuesReferences`).
