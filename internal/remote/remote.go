@@ -29,14 +29,9 @@ func normalizeRepo(repo string) string {
 	return "https://github.com/" + repo
 }
 
-// looksLikeProfile checks if a directory contains Claude Code config files.
+// looksLikeProfile checks if a directory contains a cvm profile layout.
 func looksLikeProfile(dir string) bool {
-	for _, item := range config.ProfileDiscoveryItems() {
-		if _, err := os.Stat(filepath.Join(dir, item)); err == nil {
-			return true
-		}
-	}
-	return false
+	return profile.LooksLikeProfileDir(dir)
 }
 
 // discoverProfilePath tries to find a profile inside a cloned repo.
@@ -99,7 +94,7 @@ func discoverProfilePath(cacheDir, profileName string) (string, error) {
 		return "", errors.New(msg)
 	}
 
-	return "", fmt.Errorf("no profile found in repo. Make sure it contains CLAUDE.md, skills/, or other Claude Code config")
+	return "", fmt.Errorf("no profile found in repo. Make sure it contains cvm profile assets or a cvm.profile.toml manifest")
 }
 
 // Add registers a remote profile source and clones it.
@@ -146,7 +141,7 @@ func Add(profileName, repo, path, branch string, scope config.Scope, projectPath
 	}
 
 	if !looksLikeProfile(srcDir) {
-		return fmt.Errorf("path %q exists but doesn't look like a Claude Code profile (no CLAUDE.md, skills/, etc.)", path)
+		return fmt.Errorf("path %q exists but doesn't look like a cvm profile", path)
 	}
 
 	// Copy to profile

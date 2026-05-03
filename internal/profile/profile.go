@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/harness"
 	"github.com/chichex/cvm/internal/state"
 )
 
@@ -37,10 +38,7 @@ func profilesDir(scope config.Scope) string {
 }
 
 func targetDir(scope config.Scope, projectPath string) string {
-	if scope == config.ScopeGlobal {
-		return config.ClaudeHome()
-	}
-	return config.ProjectClaudeDir(projectPath)
+	return defaultHarness().TargetDir(scope, projectPath)
 }
 
 func ProfileDir(scope config.Scope, name string) string {
@@ -65,7 +63,7 @@ func Init(scope config.Scope, name string, from string, projectPath string) erro
 		}
 	} else {
 		tgt := targetDir(scope, projectPath)
-		if err := captureManagedItems(scope, tgt, dir, projectPath); err != nil {
+		if err := captureManagedItems(defaultHarness(), scope, tgt, dir, projectPath); err != nil {
 			return fmt.Errorf("copying managed items: %w", err)
 		}
 	}
@@ -73,8 +71,13 @@ func Init(scope config.Scope, name string, from string, projectPath string) erro
 }
 
 func Use(scope config.Scope, name string, projectPath string) error {
-	dir := ProfileDir(scope, name)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	h := defaultHarness()
+	profileDir := ProfileDir(scope, name)
+	dir, err := profileAssetDir(profileDir, h)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
 
@@ -103,16 +106,16 @@ func Use(scope config.Scope, name string, projectPath string) error {
 
 	// Clean and apply
 	tgt := targetDir(scope, projectPath)
-	if err := CleanManagedItems(scope, tgt, projectPath); err != nil {
+	if err := CleanManagedItems(h, scope, tgt, projectPath); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
 	if err := os.MkdirAll(tgt, 0755); err != nil {
 		return err
 	}
-	if err := CopyManagedItems(scope, dir, tgt, projectPath); err != nil {
+	if err := CopyManagedItems(h, scope, dir, tgt, projectPath); err != nil {
 		return fmt.Errorf("applying profile: %w", err)
 	}
-	if err := ApplyOverrides(scope, name, tgt, projectPath); err != nil {
+	if err := ApplyOverrides(h, scope, name, tgt, projectPath); err != nil {
 		return fmt.Errorf("applying overrides: %w", err)
 	}
 
@@ -126,6 +129,7 @@ func Use(scope config.Scope, name string, projectPath string) error {
 }
 
 func UseNone(scope config.Scope, projectPath string) error {
+	h := defaultHarness()
 	st, err := state.Load()
 	if err != nil {
 		return err
@@ -144,7 +148,7 @@ func UseNone(scope config.Scope, projectPath string) error {
 	}
 
 	tgt := targetDir(scope, projectPath)
-	if err := CleanManagedItems(scope, tgt, projectPath); err != nil {
+	if err := CleanManagedItems(h, scope, tgt, projectPath); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
 	if err := RestoreVanilla(scope, projectPath); err != nil {
@@ -181,12 +185,17 @@ func List(scope config.Scope, projectPath string) ([]ProfileInfo, error) {
 		active = st.GetLocal(projectPath)
 	}
 
+	h := defaultHarness()
 	var profiles []ProfileInfo
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		items := countItems(scope, filepath.Join(dir, e.Name()))
+		assetDir, err := profileAssetDir(filepath.Join(dir, e.Name()), h)
+		if err != nil {
+			return nil, err
+		}
+		items := countItems(h, scope, assetDir, projectPath)
 		profiles = append(profiles, ProfileInfo{
 			Name:   e.Name(),
 			Active: e.Name() == active,
@@ -208,7 +217,12 @@ func Current(scope config.Scope, projectPath string) (string, error) {
 }
 
 func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
-	dir := ProfileDir(scope, name)
+	h := defaultHarness()
+	profileDir := ProfileDir(scope, name)
+	dir, err := profileAssetDir(profileDir, h)
+	if err != nil {
+		return nil, err
+	}
 	info := &Inventory{
 		Name:  name,
 		Scope: scope,
@@ -244,17 +258,15 @@ func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
 	sort.Strings(info.Files)
 
 	// Extract MCP server names from the config file
-	mcpFile := ".claude.json"
-	if scope == config.ScopeLocal {
-		mcpFile = ".mcp.json"
-	}
-	mcpPath := filepath.Join(dir, mcpFile)
-	if cfg, err := readJSONFile(mcpPath); err == nil {
-		if servers, ok := cfg["mcpServers"].(map[string]any); ok {
-			for name := range servers {
-				info.MCPServers = append(info.MCPServers, name)
+	if extra, ok := h.ExternalManagedPath(scope, projectPath); ok {
+		mcpPath := filepath.Join(dir, extra.ProfilePath)
+		if cfg, err := readJSONFile(mcpPath); err == nil {
+			if servers, ok := cfg["mcpServers"].(map[string]any); ok {
+				for name := range servers {
+					info.MCPServers = append(info.MCPServers, name)
+				}
+				sort.Strings(info.MCPServers)
 			}
-			sort.Strings(info.MCPServers)
 		}
 	}
 
@@ -262,27 +274,26 @@ func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
 }
 
 func Save(scope config.Scope, name string, projectPath string) error {
-	dir := ProfileDir(scope, name)
+	h := defaultHarness()
+	profileDir := ProfileDir(scope, name)
+	dir, err := profileAssetDir(profileDir, h)
+	if err != nil {
+		return err
+	}
 	tgt := targetDir(scope, projectPath)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
 	// Strip overrides from live dir before capturing to prevent
 	// baking them into the base profile
-	if err := StripOverrides(scope, name, tgt, projectPath); err != nil {
+	if err := StripOverrides(h, scope, name, tgt, projectPath); err != nil {
 		return fmt.Errorf("stripping overrides before save: %w", err)
 	}
 	// Always re-apply overrides to live dir, even if capture fails
-	defer ApplyOverrides(scope, name, tgt, projectPath) //nolint:errcheck
+	defer ApplyOverrides(h, scope, name, tgt, projectPath) //nolint:errcheck
 
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if err := clearDirContents(dir); err != nil {
 		return err
-	}
-	for _, e := range entries {
-		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
-			return err
-		}
 	}
 	if _, err := os.Stat(tgt); err != nil {
 		if os.IsNotExist(err) {
@@ -290,7 +301,7 @@ func Save(scope config.Scope, name string, projectPath string) error {
 		}
 		return err
 	}
-	return captureManagedItems(scope, tgt, dir, projectPath)
+	return captureManagedItems(h, scope, tgt, dir, projectPath)
 }
 
 func Remove(scope config.Scope, name string, projectPath string) error {
@@ -332,7 +343,7 @@ func EnsureVanilla(scope config.Scope, projectPath string) error {
 		return err
 	}
 	src := targetDir(scope, projectPath)
-	return captureManagedItems(scope, src, vdir, projectPath)
+	return captureManagedItems(defaultHarness(), scope, src, vdir, projectPath)
 }
 
 func RestoreVanilla(scope config.Scope, projectPath string) error {
@@ -344,7 +355,7 @@ func RestoreVanilla(scope config.Scope, projectPath string) error {
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
-	return CopyManagedItems(scope, vdir, dst, projectPath)
+	return CopyManagedItems(defaultHarness(), scope, vdir, dst, projectPath)
 }
 
 func HasVanilla(scope config.Scope, projectPath string) bool {
@@ -354,7 +365,7 @@ func HasVanilla(scope config.Scope, projectPath string) bool {
 
 func Nuke(scope config.Scope, projectPath string) error {
 	dst := targetDir(scope, projectPath)
-	return CleanManagedItems(scope, dst, projectPath)
+	return CleanManagedItems(defaultHarness(), scope, dst, projectPath)
 }
 
 // --- File operations ---
@@ -364,9 +375,9 @@ type managedPath struct {
 	LivePath    string
 }
 
-func CleanManagedItems(scope config.Scope, liveDir, projectPath string) error {
-	for _, item := range managedPaths(scope, liveDir, projectPath) {
-		if item.ProfilePath == ".claude.json" {
+func CleanManagedItems(h harness.Harness, scope config.Scope, liveDir, projectPath string) error {
+	for _, item := range managedPaths(h, scope, liveDir, projectPath) {
+		if isClaudeUserMCPPath(item.ProfilePath) {
 			if err := removeUserMCPServers(item.LivePath); err != nil {
 				return err
 			}
@@ -379,10 +390,10 @@ func CleanManagedItems(scope config.Scope, liveDir, projectPath string) error {
 	return nil
 }
 
-func CopyManagedItems(scope config.Scope, srcProfileDir, dstLiveDir, projectPath string) error {
-	for _, item := range managedPaths(scope, dstLiveDir, projectPath) {
+func CopyManagedItems(h harness.Harness, scope config.Scope, srcProfileDir, dstLiveDir, projectPath string) error {
+	for _, item := range managedPaths(h, scope, dstLiveDir, projectPath) {
 		srcPath := filepath.Join(srcProfileDir, item.ProfilePath)
-		if item.ProfilePath == ".claude.json" {
+		if isClaudeUserMCPPath(item.ProfilePath) {
 			if err := applyUserMCPServers(srcPath, item.LivePath); err != nil {
 				return err
 			}
@@ -410,10 +421,10 @@ func CopyManagedItems(scope config.Scope, srcProfileDir, dstLiveDir, projectPath
 	return nil
 }
 
-func captureManagedItems(scope config.Scope, srcLiveDir, dstProfileDir, projectPath string) error {
-	for _, item := range managedPaths(scope, srcLiveDir, projectPath) {
+func captureManagedItems(h harness.Harness, scope config.Scope, srcLiveDir, dstProfileDir, projectPath string) error {
+	for _, item := range managedPaths(h, scope, srcLiveDir, projectPath) {
 		srcPath := item.LivePath
-		if item.ProfilePath == ".claude.json" {
+		if isClaudeUserMCPPath(item.ProfilePath) {
 			if err := captureUserMCPServers(srcPath, filepath.Join(dstProfileDir, item.ProfilePath)); err != nil {
 				return err
 			}
@@ -441,9 +452,9 @@ func captureManagedItems(scope config.Scope, srcLiveDir, dstProfileDir, projectP
 	return nil
 }
 
-func countItems(scope config.Scope, dir string) int {
+func countItems(h harness.Harness, scope config.Scope, dir, projectPath string) int {
 	count := 0
-	for _, item := range config.ManagedProfileItems(scope) {
+	for _, item := range harness.ManagedProfileItems(h, scope, projectPath) {
 		if _, err := os.Stat(filepath.Join(dir, item)); err == nil {
 			count++
 		}
@@ -451,25 +462,19 @@ func countItems(scope config.Scope, dir string) int {
 	return count
 }
 
-func managedPaths(scope config.Scope, liveDir, projectPath string) []managedPath {
-	paths := make([]managedPath, 0, len(config.ManagedProfileItems(scope)))
-	for _, item := range config.ManagedClaudeDirItems {
+func managedPaths(h harness.Harness, scope config.Scope, liveDir, projectPath string) []managedPath {
+	paths := make([]managedPath, 0, len(harness.ManagedProfileItems(h, scope, projectPath)))
+	for _, item := range h.ManagedDirItems() {
 		paths = append(paths, managedPath{
 			ProfilePath: item,
 			LivePath:    filepath.Join(liveDir, item),
 		})
 	}
 
-	switch scope {
-	case config.ScopeGlobal:
+	if extra, ok := h.ExternalManagedPath(scope, projectPath); ok {
 		paths = append(paths, managedPath{
-			ProfilePath: ".claude.json",
-			LivePath:    config.ClaudeUserConfigPath(),
-		})
-	case config.ScopeLocal:
-		paths = append(paths, managedPath{
-			ProfilePath: ".mcp.json",
-			LivePath:    config.ProjectMCPConfigPath(projectPath),
+			ProfilePath: extra.ProfilePath,
+			LivePath:    extra.LivePath,
 		})
 	}
 
@@ -609,13 +614,13 @@ func OverrideDir(scope config.Scope, name string, projectPath string) string {
 
 // ApplyOverrides merges the user's override layer on top of the already-applied
 // profile in the live directory. This is called after CopyManagedItems.
-func ApplyOverrides(scope config.Scope, name string, liveDir string, projectPath string) error {
+func ApplyOverrides(h harness.Harness, scope config.Scope, name string, liveDir string, projectPath string) error {
 	overDir := OverrideDir(scope, name, projectPath)
 	if _, err := os.Stat(overDir); os.IsNotExist(err) {
 		return nil // no overrides — nothing to do
 	}
 
-	for _, item := range managedPaths(scope, liveDir, projectPath) {
+	for _, item := range managedPaths(h, scope, liveDir, projectPath) {
 		overSrc := filepath.Join(overDir, item.ProfilePath)
 		if _, err := os.Stat(overSrc); os.IsNotExist(err) {
 			continue
@@ -629,13 +634,13 @@ func ApplyOverrides(scope config.Scope, name string, liveDir string, projectPath
 			}
 
 		// CLAUDE.md: append override content
-		case item.ProfilePath == "CLAUDE.md":
+		case item.ProfilePath == h.InstructionsFile():
 			if err := appendFile(overSrc, item.LivePath); err != nil {
-				return fmt.Errorf("appending override CLAUDE.md: %w", err)
+				return fmt.Errorf("appending override %s: %w", h.InstructionsFile(), err)
 			}
 
 		// MCP config: sub-key merge for mcpServers (additive), top-level for others
-		case item.ProfilePath == ".claude.json" || item.ProfilePath == ".mcp.json":
+		case isClaudeMCPProfilePath(item.ProfilePath):
 			override, err := readJSONFile(overSrc)
 			if err != nil {
 				return fmt.Errorf("reading override %s: %w", item.ProfilePath, err)
@@ -779,7 +784,7 @@ func isJSONFile(name string) bool {
 // StripOverrides removes override contributions from the live directory so that
 // Save() captures only the base profile state. This prevents overrides from being
 // permanently baked into the base profile on profile switch.
-func StripOverrides(scope config.Scope, name string, liveDir string, projectPath string) error {
+func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir string, projectPath string) error {
 	overDir := OverrideDir(scope, name, projectPath)
 	if _, err := os.Stat(overDir); os.IsNotExist(err) {
 		return nil
@@ -787,7 +792,7 @@ func StripOverrides(scope config.Scope, name string, liveDir string, projectPath
 
 	profileDir := ProfileDir(scope, name)
 
-	for _, item := range managedPaths(scope, liveDir, projectPath) {
+	for _, item := range managedPaths(h, scope, liveDir, projectPath) {
 		overSrc := filepath.Join(overDir, item.ProfilePath)
 		if _, err := os.Stat(overSrc); os.IsNotExist(err) {
 			continue
@@ -827,7 +832,7 @@ func StripOverrides(scope config.Scope, name string, liveDir string, projectPath
 			}
 
 		// CLAUDE.md: truncate at the override separator
-		case item.ProfilePath == "CLAUDE.md":
+		case item.ProfilePath == h.InstructionsFile():
 			data, err := os.ReadFile(item.LivePath)
 			if err != nil {
 				continue
@@ -835,12 +840,12 @@ func StripOverrides(scope config.Scope, name string, liveDir string, projectPath
 			separator := "\n\n# --- User Overrides ---\n\n"
 			if idx := strings.Index(string(data), separator); idx >= 0 {
 				if err := os.WriteFile(item.LivePath, data[:idx], 0644); err != nil {
-					return fmt.Errorf("stripping override from CLAUDE.md: %w", err)
+					return fmt.Errorf("stripping override from %s: %w", h.InstructionsFile(), err)
 				}
 			}
 
 		// MCP config: strip at sub-key level for mcpServers, top-level for others
-		case item.ProfilePath == ".claude.json" || item.ProfilePath == ".mcp.json":
+		case isClaudeMCPProfilePath(item.ProfilePath):
 			override, err := readJSONFile(overSrc)
 			if err != nil {
 				continue
@@ -924,26 +929,70 @@ func StripOverrides(scope config.Scope, name string, liveDir string, projectPath
 // Reapply re-applies the active profile and its overrides to the live directory
 // without saving the current state first. Used by "cvm override apply".
 func Reapply(scope config.Scope, name string, projectPath string) error {
-	dir := ProfileDir(scope, name)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	h := defaultHarness()
+	profileDir := ProfileDir(scope, name)
+	dir, err := profileAssetDir(profileDir, h)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
 	tgt := targetDir(scope, projectPath)
 	// Strip current overrides to clean stale keys before fresh re-apply
-	if err := StripOverrides(scope, name, tgt, projectPath); err != nil {
+	if err := StripOverrides(h, scope, name, tgt, projectPath); err != nil {
 		return fmt.Errorf("stripping overrides: %w", err)
 	}
-	if err := CleanManagedItems(scope, tgt, projectPath); err != nil {
+	if err := CleanManagedItems(h, scope, tgt, projectPath); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
 	if err := os.MkdirAll(tgt, 0755); err != nil {
 		return err
 	}
-	if err := CopyManagedItems(scope, dir, tgt, projectPath); err != nil {
+	if err := CopyManagedItems(h, scope, dir, tgt, projectPath); err != nil {
 		return fmt.Errorf("applying profile: %w", err)
 	}
-	if err := ApplyOverrides(scope, name, tgt, projectPath); err != nil {
+	if err := ApplyOverrides(h, scope, name, tgt, projectPath); err != nil {
 		return fmt.Errorf("applying overrides: %w", err)
 	}
 	return nil
+}
+
+func defaultHarness() harness.Harness {
+	return harness.Claude()
+}
+
+func profileAssetDir(profileDir string, h harness.Harness) (string, error) {
+	manifest, err := LoadManifest(profileDir)
+	if err != nil {
+		return "", fmt.Errorf("loading manifest for profile %q: %w", filepath.Base(profileDir), err)
+	}
+	if !manifest.SupportsHarness(h.Name()) {
+		return "", fmt.Errorf("profile %q does not support harness %q", filepath.Base(profileDir), h.Name())
+	}
+	return manifest.AssetDir(profileDir, h)
+}
+
+func clearDirContents(dir string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isClaudeUserMCPPath(profilePath string) bool {
+	return profilePath == ".claude.json"
+}
+
+func isClaudeMCPProfilePath(profilePath string) bool {
+	return profilePath == ".claude.json" || profilePath == ".mcp.json"
 }

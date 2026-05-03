@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/harness"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/state"
 	"github.com/spf13/cobra"
@@ -257,34 +258,40 @@ var overrideSetCmd = &cobra.Command{
 			return fmt.Errorf(".mcp.json is only valid for local profiles — use .claude.json for global profiles")
 		}
 
+		claude := harness.Claude()
+
 		// Determine live directory
 		var liveDir string
 		if scope == config.ScopeGlobal {
-			liveDir = config.ClaudeHome()
+			liveDir = claude.TargetDir(config.ScopeGlobal, "")
 		} else {
-			liveDir = config.ProjectClaudeDir(projectPath)
+			liveDir = claude.TargetDir(config.ScopeLocal, projectPath)
 		}
 
 		// Find the correct source file path
 		var src string
-		if filename == ".claude.json" {
-			// Special case: .claude.json lives at ~/.claude.json (not inside ~/.claude/)
-			src = config.ClaudeUserConfigPath()
-		} else if filename == ".mcp.json" {
-			src = config.ProjectMCPConfigPath(projectPath)
+		if extra, ok := claude.ExternalManagedPath(scope, projectPath); ok && filename == extra.ProfilePath {
+			src = extra.LivePath
+		} else if filename == ".claude.json" && scope == config.ScopeGlobal {
+			if extra, ok := claude.ExternalManagedPath(config.ScopeGlobal, ""); ok {
+				src = extra.LivePath
+			}
 		} else {
 			src = filepath.Join(liveDir, filename)
 		}
 
 		// Validate it is a known managed item and that it's a file, not a directory
 		known := false
-		for _, item := range config.ManagedClaudeDirItems {
+		for _, item := range claude.ManagedDirItems() {
 			if item == filename {
 				known = true
 				break
 			}
 		}
-		if filename == ".claude.json" || filename == ".mcp.json" {
+		if extra, ok := claude.ExternalManagedPath(scope, projectPath); ok && filename == extra.ProfilePath {
+			known = true
+		}
+		if filename == ".claude.json" && scope == config.ScopeGlobal {
 			known = true
 		}
 		if !known {
