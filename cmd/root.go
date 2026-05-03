@@ -33,18 +33,13 @@ func init() {
 	rootCmd.AddCommand(rmCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(healthCmd)
 	rootCmd.AddCommand(nukeCmd)
 	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(bypassCmd)
 
 	// Subsystems
-	rootCmd.AddCommand(kbCmd)
-	rootCmd.AddCommand(dashboardCmd)
-	rootCmd.AddCommand(sessionCmd)
 	rootCmd.AddCommand(remoteCmd)
 	rootCmd.AddCommand(overrideCmd)
-	rootCmd.AddCommand(mcpKbCmd)
 
 	// Legacy (still work, but simplified API is preferred)
 	rootCmd.AddCommand(globalCmd)
