@@ -106,6 +106,39 @@ cvm remote ls          # list remote-linked profiles
 cvm remote rm chiche   # unlink from remote (keeps local copy)
 ```
 
+### Inspect
+
+```bash
+cvm status             # show active profiles (global + local)
+cvm profile            # inspect active profile contents
+cvm profile show work  # inspect a specific stored profile
+```
+
+### Bypass permissions
+
+Toggle bypass mode on the active profile. Stored as an override, so it survives `cvm pull`.
+
+```bash
+cvm bypass on           # enable bypass on active global profile
+cvm bypass off          # disable
+cvm bypass status       # show current state
+cvm bypass on --local   # affect the active local profile instead
+```
+
+### Overrides
+
+User customizations that persist across `cvm pull`. Stored separately from the base profile and merged on top when applied.
+
+```bash
+cvm override ls                  # list overrides for the active profile
+cvm override show                # structured inventory
+cvm override add skill foo       # scaffold a new override file
+cvm override set ~/.claude/...   # capture a live file as an override
+cvm override edit                # open override dir in $EDITOR
+cvm override apply               # re-apply active profile + overrides
+cvm override rm skill foo        # remove an override file
+```
+
 ## Two scopes
 
 | Scope | What it manages | Flag |
@@ -146,19 +179,24 @@ When you run `cvm use work`:
 
 ## The "lite" profile
 
-A **minimalist profile** for users who want subagent orchestration without the full SDD workflow. No specs, no KB, no complex hooks — just skills and Claude Code's built-in auto-memory.
+A **minimalist profile** for subagent orchestration. No specs, no complex hooks — just skills and Claude Code's built-in auto-memory (`~/.claude/projects/<path>/memory/`).
 
-> **Note**: This profile does **not** use `cvm kb`. Persistence is handled entirely by Claude Code's native auto-memory system (`~/.claude/projects/<path>/memory/`).
+Skills:
 
-- **6 skills**:
-  - `/s` — Smart agent selector (menu with recommendations, multi-instance support)
-  - `/o` — Unified subagent (default Opus; `--codex` / `--gemini` flags for external validation)
-  - `/r` — Session review + learnings persistence to project memory
-  - `/ux` — UX iteration with Opus+Gemini validation, generates HTML alternatives
-  - `/issue` — GitHub issue creation with `ct:plan` label
-  - `/pr` — Pull request creation with optional `/r`, waits for GitHub Actions
-- **No hooks, no rules, no agents, no KB**
-- **TDD encouraged** by default
+| Skill | What it does |
+|-------|--------------|
+| `/go` | Unified subagent — default Opus; `--codex` / `--gemini` for external validation |
+| `/r` | Session review + learnings persistence to project memory |
+| `/ux` | UX iteration with multi-validator + HTML alternatives |
+| `/che-idea` | Create a GitHub issue from a vague idea (auto-classified) |
+| `/che-explore` | Enrich an issue with structured analysis + consolidated plan |
+| `/che-execute` | Implement an issue in an isolated worktree + open draft PR |
+| `/che-validate` | Review a PR/issue with parallel subagents (opus/codex/gemini) |
+| `/che-iterate` | Apply comments/reviews on a PR or issue |
+| `/che-loop` | Automate `che-validate → che-iterate → ...` until approved |
+| `/che-close` | Ready-for-review → wait CI → merge → close linked issues |
+
+The `che-*` skills mirror [che-cli](https://github.com/chichex/che-cli)'s state machine (`che:idea → planning → plan → executing → executed → validating → validated → closing → closed`) in lenient mode.
 
 ```bash
 cvm add lite git@github.com:chichex/cvm.git
