@@ -97,3 +97,70 @@ func TestLoadMigratesLegacyRemoteKeys(t *testing.T) {
 		t.Fatalf("unexpected migrated repo: %s", remote.Repo)
 	}
 }
+
+func TestLoadInterpretsLegacyActiveAsClaudeHarness(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	raw := map[string]any{
+		"global": map[string]any{"active": "work"},
+		"local": map[string]any{
+			"/tmp/project": map[string]any{"active": "dev"},
+		},
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal legacy state: %v", err)
+	}
+	if err := os.MkdirAll(config.CvmHome(), 0755); err != nil {
+		t.Fatalf("mkdir cvm home: %v", err)
+	}
+	if err := os.WriteFile(config.StatePath(), data, 0644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	st, err := Load()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+
+	if got := st.GetGlobalHarness("claude"); got != "work" {
+		t.Fatalf("expected legacy global active to map to claude, got %q", got)
+	}
+	if got := st.GetLocalHarness("/tmp/project", "claude"); got != "dev" {
+		t.Fatalf("expected legacy local active to map to claude, got %q", got)
+	}
+	if got := st.GetGlobalHarness("opencode"); got != "" {
+		t.Fatalf("expected unrelated harness to stay vanilla, got %q", got)
+	}
+}
+
+func TestHarnessStateDoesNotOverwriteOtherHarnesses(t *testing.T) {
+	st := &State{
+		Local:   make(map[string]LocalState),
+		Remotes: make(map[string]Remote),
+	}
+
+	st.SetGlobalHarness("claude", "work")
+	st.SetGlobalHarness("opencode", "open")
+	st.ClearGlobalHarness("claude")
+
+	if got := st.GetGlobalHarness("claude"); got != "" {
+		t.Fatalf("expected claude to be vanilla, got %q", got)
+	}
+	if got := st.GetGlobalHarness("opencode"); got != "open" {
+		t.Fatalf("expected opencode to remain active, got %q", got)
+	}
+
+	st.SetLocalHarness("/tmp/project", "claude", "dev")
+	st.SetLocalHarness("/tmp/project", "opencode", "open-dev")
+	st.ClearLocalHarness("/tmp/project", "claude")
+
+	if got := st.GetLocalHarness("/tmp/project", "claude"); got != "" {
+		t.Fatalf("expected local claude to be vanilla, got %q", got)
+	}
+	if got := st.GetLocalHarness("/tmp/project", "opencode"); got != "open-dev" {
+		t.Fatalf("expected local opencode to remain active, got %q", got)
+	}
+}

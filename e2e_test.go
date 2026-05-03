@@ -244,6 +244,59 @@ func TestStatus(t *testing.T) {
 	assertContains(t, out, "statustest")
 }
 
+func TestUseHarnessPersistsActiveByHarness(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+
+	e.mustRun("global", "init", "work")
+	out := e.mustRun("use", "work", "--harness", "claude")
+	assertContains(t, out, "Switched claude harness")
+
+	statePath := filepath.Join(e.home, ".cvm", "state.json")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+
+	var raw struct {
+		Global struct {
+			Active    string            `json:"active"`
+			Harnesses map[string]string `json:"harnesses"`
+		} `json:"global"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("parse state: %v", err)
+	}
+	if raw.Global.Harnesses["claude"] != "work" {
+		t.Fatalf("expected claude harness active profile to be work, got state: %s", string(data))
+	}
+	if raw.Global.Active != "work" {
+		t.Fatalf("expected legacy active mirror to be work, got state: %s", string(data))
+	}
+
+	out = e.mustRun("status", "--harness", "claude")
+	assertContains(t, out, "claude harness:")
+	assertContains(t, out, "work")
+
+	e.mustRun("nuke", "--global", "--harness", "claude", "--force")
+	data, err = os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read nuked state: %v", err)
+	}
+	raw = struct {
+		Global struct {
+			Active    string            `json:"active"`
+			Harnesses map[string]string `json:"harnesses"`
+		} `json:"global"`
+	}{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("parse nuked state: %v", err)
+	}
+	if raw.Global.Harnesses != nil && raw.Global.Harnesses["claude"] != "" {
+		t.Fatalf("expected claude harness to be cleared after nuke, got state: %s", string(data))
+	}
+}
+
 func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
@@ -496,6 +549,31 @@ func TestRestore(t *testing.T) {
 	data, err := os.ReadFile(claudeMD)
 	if err != nil {
 		t.Fatalf("CLAUDE.md should exist after restore: %v", err)
+	}
+	if !strings.Contains(string(data), "original vanilla content") {
+		t.Fatalf("expected vanilla content, got: %s", string(data))
+	}
+}
+
+func TestRestoreWithHarness(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# original vanilla content")
+
+	e.mustRun("global", "init", "temp")
+	e.mustRun("use", "temp", "--harness", "claude")
+
+	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
+	if err := os.WriteFile(claudeMD, []byte("# modified by profile"), 0644); err != nil {
+		t.Fatalf("modify CLAUDE.md: %v", err)
+	}
+
+	e.mustRun("nuke", "--global", "--harness", "claude", "--force")
+	out := e.mustRun("restore", "--global", "--harness", "claude")
+	assertContains(t, out, "Restored global config to vanilla")
+
+	data, err := os.ReadFile(claudeMD)
+	if err != nil {
+		t.Fatalf("CLAUDE.md should exist after harness restore: %v", err)
 	}
 	if !strings.Contains(string(data), "original vanilla content") {
 		t.Fatalf("expected vanilla content, got: %s", string(data))

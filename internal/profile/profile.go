@@ -41,6 +41,10 @@ func targetDir(scope config.Scope, projectPath string) string {
 	return defaultHarness().TargetDir(scope, projectPath)
 }
 
+func targetDirForHarness(h harness.Harness, scope config.Scope, projectPath string) string {
+	return h.TargetDir(scope, projectPath)
+}
+
 func ProfileDir(scope config.Scope, name string) string {
 	return filepath.Join(profilesDir(scope), name)
 }
@@ -71,7 +75,10 @@ func Init(scope config.Scope, name string, from string, projectPath string) erro
 }
 
 func Use(scope config.Scope, name string, projectPath string) error {
-	h := defaultHarness()
+	return UseWithHarness(scope, name, projectPath, defaultHarness())
+}
+
+func UseWithHarness(scope config.Scope, name string, projectPath string, h harness.Harness) error {
 	profileDir := ProfileDir(scope, name)
 	dir, err := profileAssetDir(profileDir, h)
 	if err != nil {
@@ -87,25 +94,25 @@ func Use(scope config.Scope, name string, projectPath string) error {
 	}
 
 	// Ensure vanilla backup exists
-	if err := EnsureVanilla(scope, projectPath); err != nil {
+	if err := EnsureVanillaWithHarness(scope, projectPath, h); err != nil {
 		return fmt.Errorf("ensuring vanilla backup: %w", err)
 	}
 
 	// Save current state to active profile
 	var currentActive string
 	if scope == config.ScopeGlobal {
-		currentActive = st.Global.Active
+		currentActive = st.GetGlobalHarness(h.Name())
 	} else {
-		currentActive = st.GetLocal(projectPath)
+		currentActive = st.GetLocalHarness(projectPath, h.Name())
 	}
 	if currentActive != "" {
-		if err := Save(scope, currentActive, projectPath); err != nil {
+		if err := SaveWithHarness(scope, currentActive, projectPath, h); err != nil {
 			return fmt.Errorf("saving current active profile %q: %w", currentActive, err)
 		}
 	}
 
 	// Clean and apply
-	tgt := targetDir(scope, projectPath)
+	tgt := targetDirForHarness(h, scope, projectPath)
 	if err := CleanManagedItems(h, scope, tgt, projectPath); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
@@ -121,15 +128,18 @@ func Use(scope config.Scope, name string, projectPath string) error {
 
 	// Update state
 	if scope == config.ScopeGlobal {
-		st.SetGlobal(name)
+		st.SetGlobalHarness(h.Name(), name)
 	} else {
-		st.SetLocal(projectPath, name)
+		st.SetLocalHarness(projectPath, h.Name(), name)
 	}
 	return st.Save()
 }
 
 func UseNone(scope config.Scope, projectPath string) error {
-	h := defaultHarness()
+	return UseNoneWithHarness(scope, projectPath, defaultHarness())
+}
+
+func UseNoneWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
 	st, err := state.Load()
 	if err != nil {
 		return err
@@ -137,33 +147,37 @@ func UseNone(scope config.Scope, projectPath string) error {
 
 	var currentActive string
 	if scope == config.ScopeGlobal {
-		currentActive = st.Global.Active
+		currentActive = st.GetGlobalHarness(h.Name())
 	} else {
-		currentActive = st.GetLocal(projectPath)
+		currentActive = st.GetLocalHarness(projectPath, h.Name())
 	}
 	if currentActive != "" {
-		if err := Save(scope, currentActive, projectPath); err != nil {
+		if err := SaveWithHarness(scope, currentActive, projectPath, h); err != nil {
 			return fmt.Errorf("saving current active profile %q: %w", currentActive, err)
 		}
 	}
 
-	tgt := targetDir(scope, projectPath)
+	tgt := targetDirForHarness(h, scope, projectPath)
 	if err := CleanManagedItems(h, scope, tgt, projectPath); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
-	if err := RestoreVanilla(scope, projectPath); err != nil {
+	if err := RestoreVanillaWithHarness(scope, projectPath, h); err != nil {
 		return fmt.Errorf("restoring vanilla backup: %w", err)
 	}
 
 	if scope == config.ScopeGlobal {
-		st.SetGlobal("")
+		st.ClearGlobalHarness(h.Name())
 	} else {
-		st.ClearLocal(projectPath)
+		st.ClearLocalHarness(projectPath, h.Name())
 	}
 	return st.Save()
 }
 
 func List(scope config.Scope, projectPath string) ([]ProfileInfo, error) {
+	return ListWithHarness(scope, projectPath, defaultHarness())
+}
+
+func ListWithHarness(scope config.Scope, projectPath string, h harness.Harness) ([]ProfileInfo, error) {
 	dir := profilesDir(scope)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -180,12 +194,11 @@ func List(scope config.Scope, projectPath string) ([]ProfileInfo, error) {
 
 	var active string
 	if scope == config.ScopeGlobal {
-		active = st.Global.Active
+		active = st.GetGlobalHarness(h.Name())
 	} else {
-		active = st.GetLocal(projectPath)
+		active = st.GetLocalHarness(projectPath, h.Name())
 	}
 
-	h := defaultHarness()
 	var profiles []ProfileInfo
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
@@ -206,14 +219,18 @@ func List(scope config.Scope, projectPath string) ([]ProfileInfo, error) {
 }
 
 func Current(scope config.Scope, projectPath string) (string, error) {
+	return CurrentWithHarness(scope, projectPath, defaultHarness())
+}
+
+func CurrentWithHarness(scope config.Scope, projectPath string, h harness.Harness) (string, error) {
 	st, err := state.Load()
 	if err != nil {
 		return "", err
 	}
 	if scope == config.ScopeGlobal {
-		return st.Global.Active, nil
+		return st.GetGlobalHarness(h.Name()), nil
 	}
-	return st.GetLocal(projectPath), nil
+	return st.GetLocalHarness(projectPath, h.Name()), nil
 }
 
 func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
@@ -274,13 +291,16 @@ func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
 }
 
 func Save(scope config.Scope, name string, projectPath string) error {
-	h := defaultHarness()
+	return SaveWithHarness(scope, name, projectPath, defaultHarness())
+}
+
+func SaveWithHarness(scope config.Scope, name string, projectPath string, h harness.Harness) error {
 	profileDir := ProfileDir(scope, name)
 	dir, err := profileAssetDir(profileDir, h)
 	if err != nil {
 		return err
 	}
-	tgt := targetDir(scope, projectPath)
+	tgt := targetDirForHarness(h, scope, projectPath)
 	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
@@ -311,9 +331,9 @@ func Remove(scope config.Scope, name string, projectPath string) error {
 	}
 	var active string
 	if scope == config.ScopeGlobal {
-		active = st.Global.Active
+		active = st.GetGlobalHarness(defaultHarness().Name())
 	} else {
-		active = st.GetLocal(projectPath)
+		active = st.GetLocalHarness(projectPath, defaultHarness().Name())
 	}
 	if active == name {
 		return fmt.Errorf("cannot remove active profile %q, switch first with 'cvm %s use --none'", name, scope)
@@ -328,44 +348,70 @@ func Remove(scope config.Scope, name string, projectPath string) error {
 // --- Backup/Vanilla operations (inlined to avoid import cycle) ---
 
 func vanillaDir(scope config.Scope, projectPath string) string {
+	return vanillaDirForHarness(scope, projectPath, defaultHarness())
+}
+
+func vanillaDirForHarness(scope config.Scope, projectPath string, h harness.Harness) string {
+	baseDir := config.GlobalVanillaDir()
 	if scope == config.ScopeGlobal {
-		return config.GlobalVanillaDir()
+		baseDir = config.GlobalVanillaDir()
+	} else {
+		baseDir = config.LocalVanillaDir(projectPath)
 	}
-	return config.LocalVanillaDir(projectPath)
+	if h.Name() == defaultHarness().Name() {
+		return baseDir
+	}
+	return filepath.Join(baseDir, h.Name())
 }
 
 func EnsureVanilla(scope config.Scope, projectPath string) error {
-	vdir := vanillaDir(scope, projectPath)
+	return EnsureVanillaWithHarness(scope, projectPath, defaultHarness())
+}
+
+func EnsureVanillaWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
+	vdir := vanillaDirForHarness(scope, projectPath, h)
 	if _, err := os.Stat(vdir); err == nil {
 		return nil
 	}
 	if err := os.MkdirAll(vdir, 0755); err != nil {
 		return err
 	}
-	src := targetDir(scope, projectPath)
-	return captureManagedItems(defaultHarness(), scope, src, vdir, projectPath)
+	src := targetDirForHarness(h, scope, projectPath)
+	return captureManagedItems(h, scope, src, vdir, projectPath)
 }
 
 func RestoreVanilla(scope config.Scope, projectPath string) error {
-	vdir := vanillaDir(scope, projectPath)
+	return RestoreVanillaWithHarness(scope, projectPath, defaultHarness())
+}
+
+func RestoreVanillaWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
+	vdir := vanillaDirForHarness(scope, projectPath, h)
 	if _, err := os.Stat(vdir); os.IsNotExist(err) {
 		return nil
 	}
-	dst := targetDir(scope, projectPath)
+	dst := targetDirForHarness(h, scope, projectPath)
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
-	return CopyManagedItems(defaultHarness(), scope, vdir, dst, projectPath)
+	return CopyManagedItems(h, scope, vdir, dst, projectPath)
 }
 
 func HasVanilla(scope config.Scope, projectPath string) bool {
-	_, err := os.Stat(vanillaDir(scope, projectPath))
+	return HasVanillaWithHarness(scope, projectPath, defaultHarness())
+}
+
+func HasVanillaWithHarness(scope config.Scope, projectPath string, h harness.Harness) bool {
+	_, err := os.Stat(vanillaDirForHarness(scope, projectPath, h))
 	return err == nil
 }
 
 func Nuke(scope config.Scope, projectPath string) error {
-	dst := targetDir(scope, projectPath)
-	return CleanManagedItems(defaultHarness(), scope, dst, projectPath)
+	return NukeWithHarness(scope, projectPath, defaultHarness())
+}
+
+func NukeWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
+	dst := targetDirForHarness(h, scope, projectPath)
+	return CleanManagedItems(h, scope, dst, projectPath)
 }
 
 // --- File operations ---

@@ -11,13 +11,17 @@ import (
 
 var nukeCmd = &cobra.Command{
 	Use:   "nuke",
-	Short: "Remove all managed config from Claude Code",
-	Long: `Removes all cvm-managed configuration files from ~/.claude/ and .claude/.
+	Short: "Remove managed config from harness targets",
+	Long: `Removes cvm-managed configuration files from harness target directories.
 Runtime files (sessions, cache, history) are never touched.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		globalOnly, _ := cmd.Flags().GetBool("global")
 		localOnly, _ := cmd.Flags().GetBool("local")
 		force, _ := cmd.Flags().GetBool("force")
+		harnesses, err := selectedHarnesses(cmd)
+		if err != nil {
+			return err
+		}
 
 		if !globalOnly && !localOnly {
 			globalOnly = true
@@ -40,11 +44,13 @@ Runtime files (sessions, cache, history) are never touched.`,
 		}
 
 		if globalOnly {
-			if err := profile.Nuke(config.ScopeGlobal, ""); err != nil {
-				return fmt.Errorf("nuking global: %w", err)
+			for _, h := range harnesses {
+				if err := profile.NukeWithHarness(config.ScopeGlobal, "", h); err != nil {
+					return fmt.Errorf("nuking global %s: %w", h.Name(), err)
+				}
+				st.ClearGlobalHarness(h.Name())
+				fmt.Printf("Nuked global config (%s harness: %s)\n", h.Name(), h.TargetDir(config.ScopeGlobal, ""))
 			}
-			st.SetGlobal("")
-			fmt.Println("Nuked global config (~/.claude/)")
 		}
 
 		if localOnly {
@@ -52,11 +58,13 @@ Runtime files (sessions, cache, history) are never touched.`,
 			if err != nil {
 				return err
 			}
-			if err := profile.Nuke(config.ScopeLocal, projectPath); err != nil {
-				return fmt.Errorf("nuking local: %w", err)
+			for _, h := range harnesses {
+				if err := profile.NukeWithHarness(config.ScopeLocal, projectPath, h); err != nil {
+					return fmt.Errorf("nuking local %s: %w", h.Name(), err)
+				}
+				st.ClearLocalHarness(projectPath, h.Name())
+				fmt.Printf("Nuked local config (%s harness: %s)\n", h.Name(), h.TargetDir(config.ScopeLocal, projectPath))
 			}
-			st.ClearLocal(projectPath)
-			fmt.Println("Nuked local config (.claude/)")
 		}
 
 		return st.Save()
@@ -67,4 +75,5 @@ func init() {
 	nukeCmd.Flags().Bool("global", false, "Only nuke global config")
 	nukeCmd.Flags().Bool("local", false, "Only nuke local config")
 	nukeCmd.Flags().BoolP("force", "f", false, "Skip confirmation")
+	nukeCmd.Flags().String("harness", "", "Only nuke one harness")
 }

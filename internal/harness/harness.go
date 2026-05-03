@@ -34,3 +34,7 @@ func ByName(name string) (Harness, bool) {
 		return nil, false
 	}
 }
+
+func All() []Harness {
+	return []Harness{Claude()}
+}

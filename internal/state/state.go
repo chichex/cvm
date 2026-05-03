@@ -27,11 +27,13 @@ type State struct {
 }
 
 type GlobalState struct {
-	Active string `json:"active"` // empty = vanilla
+	Active    string            `json:"active,omitempty"`    // legacy Claude active profile; empty = vanilla
+	Harnesses map[string]string `json:"harnesses,omitempty"` // use State setters to keep Active mirror in sync
 }
 
 type LocalState struct {
-	Active string `json:"active"` // empty = vanilla
+	Active    string            `json:"active,omitempty"`    // legacy Claude active profile; empty = vanilla
+	Harnesses map[string]string `json:"harnesses,omitempty"` // use State setters to keep Active mirror in sync
 }
 
 // Load reads state from disk. Returns empty state if file doesn't exist.
@@ -56,6 +58,11 @@ func Load() (*State, error) {
 	if s.Local == nil {
 		s.Local = make(map[string]LocalState)
 	}
+	s.Global.normalize()
+	for projectPath, local := range s.Local {
+		local.normalize()
+		s.Local[projectPath] = local
+	}
 	s.Remotes = normalizeRemotes(s.Remotes)
 
 	return s, nil
@@ -78,37 +85,82 @@ func (s *State) Save() error {
 
 // SetGlobal sets the active global profile.
 func (s *State) SetGlobal(name string) {
-	s.Global.Active = name
+	s.SetGlobalHarness("claude", name)
+}
+
+// SetGlobalHarness sets the active global profile for a harness.
+func (s *State) SetGlobalHarness(harnessName, name string) {
+	s.Global.setHarness(harnessName, name)
 }
 
 // SetLocal sets the active local profile for a project path.
 func (s *State) SetLocal(projectPath, name string) {
+	s.SetLocalHarness(projectPath, "claude", name)
+}
+
+// SetLocalHarness sets the active local profile for a project path and harness.
+func (s *State) SetLocalHarness(projectPath, harnessName, name string) {
 	abs, err := filepath.Abs(projectPath)
 	if err != nil {
 		abs = projectPath
 	}
-	s.Local[abs] = LocalState{Active: name}
+	ls := s.Local[abs]
+	ls.setHarness(harnessName, name)
+	if ls.isEmpty() {
+		delete(s.Local, abs)
+		return
+	}
+	s.Local[abs] = ls
 }
 
 // GetLocal returns the active local profile for a project path.
 func (s *State) GetLocal(projectPath string) string {
+	return s.GetLocalHarness(projectPath, "claude")
+}
+
+// GetGlobalHarness returns the active global profile for a harness.
+func (s *State) GetGlobalHarness(harnessName string) string {
+	return s.Global.getHarness(harnessName)
+}
+
+// GetLocalHarness returns the active local profile for a project path and harness.
+func (s *State) GetLocalHarness(projectPath, harnessName string) string {
 	abs, err := filepath.Abs(projectPath)
 	if err != nil {
 		abs = projectPath
 	}
 	if ls, ok := s.Local[abs]; ok {
-		return ls.Active
+		return ls.getHarness(harnessName)
 	}
 	return ""
 }
 
 // ClearLocal removes local state for a project path.
 func (s *State) ClearLocal(projectPath string) {
+	s.ClearLocalHarness(projectPath, "claude")
+}
+
+// ClearGlobalHarness clears the active global profile for a harness.
+func (s *State) ClearGlobalHarness(harnessName string) {
+	s.SetGlobalHarness(harnessName, "")
+}
+
+// ClearLocalHarness clears the active local profile for a project path and harness.
+func (s *State) ClearLocalHarness(projectPath, harnessName string) {
 	abs, err := filepath.Abs(projectPath)
 	if err != nil {
 		abs = projectPath
 	}
-	delete(s.Local, abs)
+	ls, ok := s.Local[abs]
+	if !ok {
+		return
+	}
+	ls.setHarness(harnessName, "")
+	if ls.isEmpty() {
+		delete(s.Local, abs)
+		return
+	}
+	s.Local[abs] = ls
 }
 
 // PutRemote stores a remote using a composite key so global and local remotes
@@ -212,4 +264,71 @@ func normalizeProjectPath(projectPath string) string {
 		return projectPath
 	}
 	return abs
+}
+
+func (gs *GlobalState) normalize() {
+	gs.Harnesses = normalizeHarnesses(gs.Active, gs.Harnesses)
+	gs.Active = gs.Harnesses["claude"]
+}
+
+func (gs *GlobalState) getHarness(harnessName string) string {
+	if gs.Harnesses != nil {
+		return gs.Harnesses[harnessName]
+	}
+	if harnessName == "claude" {
+		return gs.Active
+	}
+	return ""
+}
+
+func (gs *GlobalState) setHarness(harnessName, name string) {
+	gs.Harnesses = setHarness(gs.Active, gs.Harnesses, harnessName, name)
+	gs.Active = gs.Harnesses["claude"]
+}
+
+func (ls *LocalState) normalize() {
+	ls.Harnesses = normalizeHarnesses(ls.Active, ls.Harnesses)
+	ls.Active = ls.Harnesses["claude"]
+}
+
+func (ls *LocalState) getHarness(harnessName string) string {
+	if ls.Harnesses != nil {
+		return ls.Harnesses[harnessName]
+	}
+	if harnessName == "claude" {
+		return ls.Active
+	}
+	return ""
+}
+
+func (ls *LocalState) setHarness(harnessName, name string) {
+	ls.Harnesses = setHarness(ls.Active, ls.Harnesses, harnessName, name)
+	ls.Active = ls.Harnesses["claude"]
+}
+
+func (ls LocalState) isEmpty() bool {
+	return ls.Active == "" && len(ls.Harnesses) == 0
+}
+
+func normalizeHarnesses(legacyActive string, harnesses map[string]string) map[string]string {
+	normalized := make(map[string]string)
+	for harnessName, active := range harnesses {
+		if active != "" {
+			normalized[harnessName] = active
+		}
+	}
+	if _, ok := normalized["claude"]; !ok && legacyActive != "" {
+		normalized["claude"] = legacyActive
+	}
+	return normalized
+}
+
+func setHarness(legacyActive string, harnesses map[string]string, harnessName, name string) map[string]string {
+	normalized := normalizeHarnesses(legacyActive, harnesses)
+	if name == "" {
+		delete(normalized, harnessName)
+		return normalized
+	}
+	normalized[harnessName] = name
+	return normalized
 }
