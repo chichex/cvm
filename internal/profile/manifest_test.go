@@ -68,3 +68,45 @@ func TestManifestRejectsEscapingAssetDir(t *testing.T) {
 		t.Fatal("expected AssetDir to reject escaping path")
 	}
 }
+
+func TestManifestRejectsExplicitEmptyHarnesses(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("harnesses = []\n")
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), body, 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("expected empty harness list to fail")
+	}
+}
+
+func TestLooksLikeProfileDirRejectsInvalidManifest(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("harnesses = [\n")
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), body, 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("legacy fallback"), 0644); err != nil {
+		t.Fatalf("write legacy CLAUDE.md: %v", err)
+	}
+
+	if LooksLikeProfileDir(dir) {
+		t.Fatal("manifest-backed profiles should not fall back to legacy discovery when manifest is invalid")
+	}
+}
+
+func TestLooksLikeProfileDirDoesNotFallBackWhenManifestDeclaresAssetDir(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("harnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n")
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), body, 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("legacy fallback"), 0644); err != nil {
+		t.Fatalf("write legacy CLAUDE.md: %v", err)
+	}
+
+	if LooksLikeProfileDir(dir) {
+		t.Fatal("manifest-backed profiles should only discover assets from manifest-declared locations")
+	}
+}

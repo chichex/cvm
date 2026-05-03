@@ -288,6 +288,40 @@ func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
 	}
 }
 
+func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "manifested")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"manifested\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "claude", "skills", "deploy", "SKILL.md"), "base skill")
+
+	e.mustRun("use", "manifested")
+
+	liveSkill := filepath.Join(e.home, ".claude", "skills", "deploy", "SKILL.md")
+	overrideSkill := filepath.Join(e.home, ".cvm", "global", "overrides", "manifested", "skills", "deploy", "SKILL.md")
+	writeTestFile(t, overrideSkill, "override skill")
+	e.mustRun("override", "apply")
+
+	data, err := os.ReadFile(liveSkill)
+	if err != nil {
+		t.Fatalf("read live skill after apply: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "override skill" {
+		t.Fatalf("unexpected live override content: %q", strings.TrimSpace(string(data)))
+	}
+
+	e.mustRun("global", "save")
+
+	data, err = os.ReadFile(filepath.Join(profileRoot, "claude", "skills", "deploy", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read base skill after save: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "base skill" {
+		t.Fatalf("base skill should have been restored from manifest asset dir before save, got %q", strings.TrimSpace(string(data)))
+	}
+}
+
 func TestProfileInspect(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
@@ -845,5 +879,15 @@ func assertJSONKeyExists(t *testing.T, path, want string) {
 	}
 	if _, ok := cfg[want]; !ok {
 		t.Fatalf("json %s missing key %q", path, want)
+	}
+}
+
+func writeTestFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }

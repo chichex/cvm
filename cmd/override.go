@@ -272,10 +272,6 @@ var overrideSetCmd = &cobra.Command{
 		var src string
 		if extra, ok := claude.ExternalManagedPath(scope, projectPath); ok && filename == extra.ProfilePath {
 			src = extra.LivePath
-		} else if filename == ".claude.json" && scope == config.ScopeGlobal {
-			if extra, ok := claude.ExternalManagedPath(config.ScopeGlobal, ""); ok {
-				src = extra.LivePath
-			}
 		} else {
 			src = filepath.Join(liveDir, filename)
 		}
@@ -289,9 +285,6 @@ var overrideSetCmd = &cobra.Command{
 			}
 		}
 		if extra, ok := claude.ExternalManagedPath(scope, projectPath); ok && filename == extra.ProfilePath {
-			known = true
-		}
-		if filename == ".claude.json" && scope == config.ScopeGlobal {
 			known = true
 		}
 		if !known {
