@@ -13,7 +13,9 @@ type Harness interface {
 	ManagedDirItems() []string
 	ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool)
 	ProfileDiscoveryItems() []string
-	InstructionsFile() string
+	MarkdownInstructionsFile() string
+	IsUserMCPPath(profilePath string) bool
+	IsMCPPath(profilePath string) bool
 }
 
 func ManagedProfileItems(h Harness, scope config.Scope, projectPath string) []string {

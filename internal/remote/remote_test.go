@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/harness"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/state"
 )
@@ -58,7 +59,7 @@ func TestPullByProfileUpdatesGlobalAndLocalMatches(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", withFakeGit(t))
 
-	writeFile(t, filepath.Join(config.ClaudeHome(), "CLAUDE.md"), "old global active")
+	writeFile(t, filepath.Join(harness.Claude().TargetDir(config.ScopeGlobal, ""), "CLAUDE.md"), "old global active")
 	writeFile(t, filepath.Join(project, ".claude", "CLAUDE.md"), "old local active")
 	writeFile(t, filepath.Join(profile.ProfileDir(config.ScopeGlobal, "work"), "CLAUDE.md"), "old global profile")
 	writeFile(t, filepath.Join(profile.ProfileDir(config.ScopeLocal, "work"), "CLAUDE.md"), "old local profile")
@@ -98,7 +99,7 @@ func TestPullByProfileUpdatesGlobalAndLocalMatches(t *testing.T) {
 		t.Fatalf("expected both remotes to update, got %v", updated)
 	}
 
-	assertFileContent(t, filepath.Join(config.ClaudeHome(), "CLAUDE.md"), "new remote global")
+	assertFileContent(t, filepath.Join(harness.Claude().TargetDir(config.ScopeGlobal, ""), "CLAUDE.md"), "new remote global")
 	assertFileContent(t, filepath.Join(project, ".claude", "CLAUDE.md"), "new remote local")
 }
 
@@ -110,6 +111,15 @@ func TestLooksLikeProfileWithManifestBackedClaudeAssets(t *testing.T) {
 
 	if !looksLikeProfile(root) {
 		t.Fatal("expected manifest-backed profile layout to be detected")
+	}
+}
+
+func TestLooksLikeProfileDetectsLocalMCPOnlyClaudeProfile(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".mcp.json"), `{"mcpServers":{"local":{}}}`)
+
+	if !looksLikeProfile(root) {
+		t.Fatal("expected .mcp.json-only Claude profile to be detected")
 	}
 }
 

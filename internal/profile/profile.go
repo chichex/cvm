@@ -377,7 +377,7 @@ type managedPath struct {
 
 func CleanManagedItems(h harness.Harness, scope config.Scope, liveDir, projectPath string) error {
 	for _, item := range managedPaths(h, scope, liveDir, projectPath) {
-		if isClaudeUserMCPPath(item.ProfilePath) {
+		if h.IsUserMCPPath(item.ProfilePath) {
 			if err := removeUserMCPServers(item.LivePath); err != nil {
 				return err
 			}
@@ -393,7 +393,7 @@ func CleanManagedItems(h harness.Harness, scope config.Scope, liveDir, projectPa
 func CopyManagedItems(h harness.Harness, scope config.Scope, srcProfileDir, dstLiveDir, projectPath string) error {
 	for _, item := range managedPaths(h, scope, dstLiveDir, projectPath) {
 		srcPath := filepath.Join(srcProfileDir, item.ProfilePath)
-		if isClaudeUserMCPPath(item.ProfilePath) {
+		if h.IsUserMCPPath(item.ProfilePath) {
 			if err := applyUserMCPServers(srcPath, item.LivePath); err != nil {
 				return err
 			}
@@ -424,7 +424,7 @@ func CopyManagedItems(h harness.Harness, scope config.Scope, srcProfileDir, dstL
 func captureManagedItems(h harness.Harness, scope config.Scope, srcLiveDir, dstProfileDir, projectPath string) error {
 	for _, item := range managedPaths(h, scope, srcLiveDir, projectPath) {
 		srcPath := item.LivePath
-		if isClaudeUserMCPPath(item.ProfilePath) {
+		if h.IsUserMCPPath(item.ProfilePath) {
 			if err := captureUserMCPServers(srcPath, filepath.Join(dstProfileDir, item.ProfilePath)); err != nil {
 				return err
 			}
@@ -633,14 +633,14 @@ func ApplyOverrides(h harness.Harness, scope config.Scope, name string, liveDir 
 				return fmt.Errorf("merging override dir %s: %w", item.ProfilePath, err)
 			}
 
-		// CLAUDE.md: append override content
-		case item.ProfilePath == h.InstructionsFile():
+		// Markdown instructions files are additive so user guidance layers on top.
+		case item.ProfilePath == h.MarkdownInstructionsFile():
 			if err := appendFile(overSrc, item.LivePath); err != nil {
-				return fmt.Errorf("appending override %s: %w", h.InstructionsFile(), err)
+				return fmt.Errorf("appending override %s: %w", h.MarkdownInstructionsFile(), err)
 			}
 
 		// MCP config: sub-key merge for mcpServers (additive), top-level for others
-		case isClaudeMCPProfilePath(item.ProfilePath):
+		case h.IsMCPPath(item.ProfilePath):
 			override, err := readJSONFile(overSrc)
 			if err != nil {
 				return fmt.Errorf("reading override %s: %w", item.ProfilePath, err)
@@ -791,6 +791,10 @@ func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir 
 	}
 
 	profileDir := ProfileDir(scope, name)
+	baseProfileDir, err := profileAssetDir(profileDir, h)
+	if err != nil {
+		return err
+	}
 
 	for _, item := range managedPaths(h, scope, liveDir, projectPath) {
 		overSrc := filepath.Join(overDir, item.ProfilePath)
@@ -811,7 +815,7 @@ func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir 
 					return err
 				}
 				// Restore from base profile if this file existed there too
-				basePath := filepath.Join(profileDir, item.ProfilePath, rel)
+				basePath := filepath.Join(baseProfileDir, item.ProfilePath, rel)
 				if _, err := os.Stat(basePath); err == nil {
 					if err := CopyFile(basePath, target); err != nil {
 						return err
@@ -831,8 +835,8 @@ func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir 
 				return fmt.Errorf("stripping override dir %s: %w", item.ProfilePath, err)
 			}
 
-		// CLAUDE.md: truncate at the override separator
-		case item.ProfilePath == h.InstructionsFile():
+		// Markdown instructions files are additive; strip back to the base content.
+		case item.ProfilePath == h.MarkdownInstructionsFile():
 			data, err := os.ReadFile(item.LivePath)
 			if err != nil {
 				continue
@@ -840,12 +844,12 @@ func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir 
 			separator := "\n\n# --- User Overrides ---\n\n"
 			if idx := strings.Index(string(data), separator); idx >= 0 {
 				if err := os.WriteFile(item.LivePath, data[:idx], 0644); err != nil {
-					return fmt.Errorf("stripping override from %s: %w", h.InstructionsFile(), err)
+					return fmt.Errorf("stripping override from %s: %w", h.MarkdownInstructionsFile(), err)
 				}
 			}
 
 		// MCP config: strip at sub-key level for mcpServers, top-level for others
-		case isClaudeMCPProfilePath(item.ProfilePath):
+		case h.IsMCPPath(item.ProfilePath):
 			override, err := readJSONFile(overSrc)
 			if err != nil {
 				continue
@@ -854,7 +858,7 @@ func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir 
 			if err != nil {
 				continue
 			}
-			baseSrc := filepath.Join(profileDir, item.ProfilePath)
+			baseSrc := filepath.Join(baseProfileDir, item.ProfilePath)
 			base, _ := readJSONFile(baseSrc)
 			if base == nil {
 				base = map[string]any{}
@@ -902,7 +906,7 @@ func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir 
 
 		// Other files (JSON, scripts, etc.): restore from base profile
 		default:
-			baseSrc := filepath.Join(profileDir, item.ProfilePath)
+			baseSrc := filepath.Join(baseProfileDir, item.ProfilePath)
 			if baseInfo, err := os.Stat(baseSrc); err == nil {
 				if baseInfo.IsDir() {
 					if err := os.RemoveAll(item.LivePath); err != nil {
@@ -987,12 +991,4 @@ func clearDirContents(dir string) error {
 		}
 	}
 	return nil
-}
-
-func isClaudeUserMCPPath(profilePath string) bool {
-	return profilePath == ".claude.json"
-}
-
-func isClaudeMCPProfilePath(profilePath string) bool {
-	return profilePath == ".claude.json" || profilePath == ".mcp.json"
 }

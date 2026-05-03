@@ -63,9 +63,19 @@ func (claudeHarness) ExternalManagedPath(scope config.Scope, projectPath string)
 }
 
 func (h claudeHarness) ProfileDiscoveryItems() []string {
-	return ManagedProfileItems(h, config.ScopeGlobal, "")
+	items := append([]string{}, h.ManagedDirItems()...)
+	items = append(items, ".claude.json", ".mcp.json")
+	return items
 }
 
-func (claudeHarness) InstructionsFile() string {
+func (claudeHarness) MarkdownInstructionsFile() string {
 	return "CLAUDE.md"
+}
+
+func (claudeHarness) IsUserMCPPath(profilePath string) bool {
+	return profilePath == ".claude.json"
+}
+
+func (claudeHarness) IsMCPPath(profilePath string) bool {
+	return profilePath == ".claude.json" || profilePath == ".mcp.json"
 }

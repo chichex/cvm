@@ -13,6 +13,8 @@ import (
 
 const manifestFileName = "cvm.profile.toml"
 
+// LoadManifest intentionally supports only the small manifest subset cvm owns
+// today. Replace this with a real TOML parser before expanding the schema.
 type Manifest struct {
 	Name      string
 	Harnesses []string
@@ -35,6 +37,7 @@ func LoadManifest(profileDir string) (*Manifest, error) {
 	}
 
 	section := ""
+	parsedHarnesses := false
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	for scanner.Scan() {
 		line := strings.TrimSpace(stripComment(scanner.Text()))
@@ -67,9 +70,11 @@ func LoadManifest(profileDir string) (*Manifest, error) {
 				if err != nil {
 					return nil, fmt.Errorf("parsing harnesses: %w", err)
 				}
-				if len(parsed) > 0 {
-					manifest.Harnesses = parsed
+				parsedHarnesses = true
+				if len(parsed) == 0 {
+					return nil, fmt.Errorf("harnesses must not be empty")
 				}
+				manifest.Harnesses = parsed
 			}
 		case "assets":
 			parsed, err := parseStringValue(value)
@@ -83,7 +88,7 @@ func LoadManifest(profileDir string) (*Manifest, error) {
 		return nil, err
 	}
 
-	if len(manifest.Harnesses) == 0 {
+	if !parsedHarnesses && len(manifest.Harnesses) == 0 {
 		manifest.Harnesses = []string{"claude"}
 	}
 	return manifest, nil
@@ -140,6 +145,7 @@ func LooksLikeProfileDir(profileDir string) bool {
 				}
 			}
 		}
+		return false
 	}
 
 	claude := harness.Claude()

@@ -17,62 +17,10 @@ const (
 	ClaudeDirName = ".claude"
 )
 
-// ManagedClaudeDirItems are the config files/dirs that cvm manages inside
-// ~/.claude/ or .claude/. Additional MCP config files live outside those
-// directories and are handled per-scope.
-// Everything else (sessions/, cache/, history.jsonl, etc.) is runtime and never touched.
-var ManagedClaudeDirItems = []string{
-	"CLAUDE.md",
-	"settings.json",
-	"settings.local.json",
-	"keybindings.json",
-	"statusline-command.sh",
-	"commands",
-	"skills",
-	"agents",
-	"hooks",
-	"rules",
-	"output-styles",
-	"teams",
-}
-
-func ManagedProfileItems(scope Scope) []string {
-	items := append([]string{}, ManagedClaudeDirItems...)
-	if scope == ScopeGlobal {
-		items = append(items, ".claude.json")
-	} else {
-		items = append(items, ".mcp.json")
-	}
-	return items
-}
-
-func ProfileDiscoveryItems() []string {
-	items := append([]string{}, ManagedClaudeDirItems...)
-	items = append(items, ".claude.json", ".mcp.json")
-	return items
-}
-
 // CvmHome returns ~/.cvm
 func CvmHome() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, CvmDirName)
-}
-
-// ClaudeHome returns ~/.claude
-func ClaudeHome() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ClaudeDirName)
-}
-
-// ClaudeUserConfigPath returns ~/.claude.json
-func ClaudeUserConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".claude.json")
-}
-
-// ProjectMCPConfigPath returns <projectPath>/.mcp.json
-func ProjectMCPConfigPath(projectPath string) string {
-	return filepath.Join(projectPath, ".mcp.json")
 }
 
 // GlobalProfilesDir returns ~/.cvm/global/profiles
@@ -116,11 +64,6 @@ func OverrideDir(scope Scope, name string, projectPath string) string {
 // StatePath returns ~/.cvm/state.json
 func StatePath() string {
 	return filepath.Join(CvmHome(), "state.json")
-}
-
-// ProjectClaudeDir returns <projectPath>/.claude
-func ProjectClaudeDir(projectPath string) string {
-	return filepath.Join(projectPath, ClaudeDirName)
 }
 
 // hashPath creates a filesystem-safe hash of a path for per-project storage
