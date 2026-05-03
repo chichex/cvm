@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/harness"
 	"github.com/chichex/cvm/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +24,7 @@ var statusCmd = &cobra.Command{
 		if globalProfile == "" {
 			globalProfile = "(vanilla)"
 		}
-		fmt.Printf("Global:  %-20s  → %s\n", globalProfile, config.ClaudeHome())
+		fmt.Printf("Global:  %-20s  → %s\n", globalProfile, harness.Claude().TargetDir(config.ScopeGlobal, ""))
 
 		// Local
 		cwd, _ := os.Getwd()
@@ -31,7 +32,7 @@ var statusCmd = &cobra.Command{
 		if localProfile == "" {
 			localProfile = "(vanilla)"
 		}
-		fmt.Printf("Local:   %-20s  → %s/.claude\n", localProfile, cwd)
+		fmt.Printf("Local:   %-20s  → %s\n", localProfile, harness.Claude().TargetDir(config.ScopeLocal, cwd))
 
 		return nil
 	},

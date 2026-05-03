@@ -244,6 +244,50 @@ func TestStatus(t *testing.T) {
 	assertContains(t, out, "statustest")
 }
 
+func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "manifested")
+	if err := os.MkdirAll(filepath.Join(profileRoot, "claude"), 0755); err != nil {
+		t.Fatalf("mkdir manifest profile: %v", err)
+	}
+	manifest := "name = \"manifested\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n"
+	if err := os.WriteFile(filepath.Join(profileRoot, "cvm.profile.toml"), []byte(manifest), 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(profileRoot, "claude", "CLAUDE.md"), []byte("# manifest profile"), 0644); err != nil {
+		t.Fatalf("write manifest CLAUDE.md: %v", err)
+	}
+
+	e.mustRun("use", "manifested")
+
+	liveClaude := filepath.Join(e.home, ".claude", "CLAUDE.md")
+	data, err := os.ReadFile(liveClaude)
+	if err != nil {
+		t.Fatalf("read live CLAUDE.md: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "# manifest profile" {
+		t.Fatalf("unexpected live CLAUDE.md: %q", strings.TrimSpace(string(data)))
+	}
+
+	if err := os.WriteFile(liveClaude, []byte("# saved update"), 0644); err != nil {
+		t.Fatalf("overwrite live CLAUDE.md: %v", err)
+	}
+	e.mustRun("global", "save")
+
+	if _, err := os.Stat(filepath.Join(profileRoot, "cvm.profile.toml")); err != nil {
+		t.Fatalf("manifest should be preserved after save: %v", err)
+	}
+	data, err = os.ReadFile(filepath.Join(profileRoot, "claude", "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("read saved profile CLAUDE.md: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "# saved update" {
+		t.Fatalf("unexpected saved CLAUDE.md: %q", strings.TrimSpace(string(data)))
+	}
+}
+
 func TestProfileInspect(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")

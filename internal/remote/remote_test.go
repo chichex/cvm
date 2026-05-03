@@ -102,6 +102,17 @@ func TestPullByProfileUpdatesGlobalAndLocalMatches(t *testing.T) {
 	assertFileContent(t, filepath.Join(project, ".claude", "CLAUDE.md"), "new remote local")
 }
 
+func TestLooksLikeProfileWithManifestBackedClaudeAssets(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, filepath.Join(root, "cvm.profile.toml"), "name = \"work\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n")
+	writeFile(t, filepath.Join(root, "claude", "CLAUDE.md"), "hello")
+
+	if !looksLikeProfile(root) {
+		t.Fatal("expected manifest-backed profile layout to be detected")
+	}
+}
+
 func withFakeGit(t *testing.T) string {
 	t.Helper()
 
