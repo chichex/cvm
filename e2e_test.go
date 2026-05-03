@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -224,92 +223,6 @@ func TestLocalWorkflow(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// KB workflow (global)
-// ---------------------------------------------------------------------------
-
-func TestKBGlobalWorkflow(t *testing.T) {
-	e := newTestEnv(t)
-
-	// put
-	out := e.mustRun("kb", "put", "go-patterns", "--body", "Use table-driven tests", "--tag", "go,testing")
-	assertContains(t, out, "Saved KB entry")
-
-	// ls
-	out = e.mustRun("kb", "ls")
-	assertContains(t, out, "go-patterns")
-
-	// ls with tag filter
-	out = e.mustRun("kb", "ls", "--tag", "go")
-	assertContains(t, out, "go-patterns")
-
-	out = e.mustRun("kb", "ls", "--tag", "nonexistent")
-	assertContains(t, out, "No KB entries")
-
-	// show
-	out = e.mustRun("kb", "show", "go-patterns")
-	assertContains(t, out, "table-driven tests")
-
-	// search
-	out = e.mustRun("kb", "search", "table-driven")
-	assertContains(t, out, "go-patterns")
-
-	// disable
-	out = e.mustRun("kb", "disable", "go-patterns")
-	assertContains(t, out, "Disabled KB entry")
-
-	// enable
-	out = e.mustRun("kb", "enable", "go-patterns")
-	assertContains(t, out, "Enabled KB entry")
-
-	// rm
-	out = e.mustRun("kb", "rm", "go-patterns")
-	assertContains(t, out, "Removed KB entry")
-
-	out = e.mustRun("kb", "ls")
-	assertContains(t, out, "No KB entries")
-}
-
-// ---------------------------------------------------------------------------
-// KB workflow (local)
-// ---------------------------------------------------------------------------
-
-func TestKBLocalWorkflow(t *testing.T) {
-	e := newTestEnv(t)
-
-	// put --local
-	out := e.mustRun("kb", "put", "proj-notes", "--body", "Project-specific note", "--tag", "local", "--local")
-	assertContains(t, out, "Saved KB entry")
-	assertContains(t, out, "local")
-
-	// ls --local
-	out = e.mustRun("kb", "ls", "--local")
-	assertContains(t, out, "proj-notes")
-
-	// show --local
-	out = e.mustRun("kb", "show", "proj-notes", "--local")
-	assertContains(t, out, "Project-specific note")
-
-	// search --local
-	out = e.mustRun("kb", "search", "Project-specific", "--local")
-	assertContains(t, out, "proj-notes")
-
-	// disable --local
-	out = e.mustRun("kb", "disable", "proj-notes", "--local")
-	assertContains(t, out, "Disabled KB entry")
-
-	// enable --local
-	out = e.mustRun("kb", "enable", "proj-notes", "--local")
-	assertContains(t, out, "Enabled KB entry")
-
-	// rm --local
-	out = e.mustRun("kb", "rm", "proj-notes", "--local")
-	assertContains(t, out, "Removed KB entry")
-
-	out = e.mustRun("kb", "ls", "--local")
-	assertContains(t, out, "No KB entries")
-}
-
-// ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
 
@@ -387,20 +300,6 @@ func TestProfileInspect(t *testing.T) {
 	out = e.mustRun("profile", "show", "inspect-local", "--local")
 	assertContains(t, out, "Local profile: inspect-local")
 	assertContains(t, out, "Rules (1): scope.md")
-}
-
-// ---------------------------------------------------------------------------
-// Health
-// ---------------------------------------------------------------------------
-
-func TestHealth(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# vanilla")
-
-	out := e.mustRun("health")
-	assertContains(t, out, "cvm health")
-	assertContains(t, out, "global profile:")
-	assertContains(t, out, "profiles:")
 }
 
 func TestLsShowsInUseProfiles(t *testing.T) {
@@ -596,57 +495,6 @@ func TestEdgeUseNoArgs(t *testing.T) {
 	assertContains(t, out, "provide a profile name")
 }
 
-func TestEdgeKBRmNonexistent(t *testing.T) {
-	e := newTestEnv(t)
-
-	out := e.mustFail("kb", "rm", "nope")
-	assertContains(t, out, "not found")
-}
-
-func TestEdgeKBShowNonexistent(t *testing.T) {
-	e := newTestEnv(t)
-
-	out := e.mustFail("kb", "show", "nope")
-	assertContains(t, out, "not found")
-}
-
-func TestEdgeKBDisableNonexistent(t *testing.T) {
-	e := newTestEnv(t)
-
-	out := e.mustFail("kb", "disable", "nope")
-	assertContains(t, out, "not found")
-}
-
-// ---------------------------------------------------------------------------
-// Session (replaces legacy Lifecycle)
-// ---------------------------------------------------------------------------
-
-func TestSession(t *testing.T) {
-	e := newTestEnv(t)
-
-	// status before any session — no sessions dir yet
-	out := e.mustRun("session", "status")
-	assertContains(t, out, "No active sessions")
-
-	// start — output contains UUID (mixed with stats on stderr via CombinedOutput)
-	out = e.mustRun("session", "start")
-	uuid := extractUUID(out)
-	if uuid == "" {
-		t.Fatalf("session start did not return a valid UUID, got: %q", out)
-	}
-
-	// ls lists all sessions (active and closed), so the new session should appear
-	out = e.mustRun("session", "ls")
-	assertContains(t, out, uuid[:8])
-
-	// end with CVM_SESSION_RETRO_ENABLED=false to skip LLM call
-	e.runWithEnv(map[string]string{"CVM_SESSION_RETRO_ENABLED": "false"}, "session", "end", uuid)
-
-	// ls still shows the session (now closed)
-	out = e.mustRun("session", "ls")
-	assertContains(t, out, uuid[:8])
-}
-
 // ---------------------------------------------------------------------------
 // Version
 // ---------------------------------------------------------------------------
@@ -782,84 +630,6 @@ func TestUseAppliesChicheMCPServersToClaudeUserConfig(t *testing.T) {
 	assertJSONKeyExists(t, claudeUserConfig, "oauthAccount")
 }
 
-func TestSessionEndSavesAddedMCPServersToActiveProfile(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# vanilla")
-
-	e.mustRun("global", "init", "chiche")
-	e.mustRun("use", "chiche")
-
-	activeSettings := filepath.Join(e.home, ".claude.json")
-	data, err := os.ReadFile(activeSettings)
-	if os.IsNotExist(err) {
-		data = []byte("{}")
-	} else if err != nil {
-		t.Fatalf("read active settings: %v", err)
-	}
-
-	var cfg map[string]any
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("unmarshal active settings: %v", err)
-	}
-
-	mcpServers, _ := cfg["mcpServers"].(map[string]any)
-	if mcpServers == nil {
-		mcpServers = map[string]any{}
-	}
-	mcpServers["sequential-thinking"] = map[string]any{
-		"command": "npx",
-		"args":    []any{"-y", "@modelcontextprotocol/server-sequential-thinking"},
-	}
-	cfg["mcpServers"] = mcpServers
-
-	updated, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		t.Fatalf("marshal updated settings: %v", err)
-	}
-	updated = append(updated, '\n')
-	if err := os.WriteFile(activeSettings, updated, 0644); err != nil {
-		t.Fatalf("write active settings: %v", err)
-	}
-
-	// Start a session then end it (with autosummary disabled to skip LLM call).
-	// session end triggers saveActiveProfiles which persists MCP servers to the active profile.
-	startOut := e.mustRun("session", "start")
-	uuid := extractUUID(startOut)
-	e.runWithEnv(map[string]string{"CVM_AUTOSUMMARY_ENABLED": "false"}, "session", "end", uuid)
-
-	profileSettings := filepath.Join(e.home, ".cvm", "global", "profiles", "chiche", ".claude.json")
-	assertMCPServerExists(t, activeSettings, "sequential-thinking")
-	assertMCPServerExists(t, profileSettings, "sequential-thinking")
-}
-
-// ---------------------------------------------------------------------------
-// KB update existing entry
-// ---------------------------------------------------------------------------
-
-func TestKBUpdateEntry(t *testing.T) {
-	e := newTestEnv(t)
-
-	e.mustRun("kb", "put", "mykey", "--body", "original body", "--tag", "v1")
-	out := e.mustRun("kb", "show", "mykey")
-	assertContains(t, out, "original body")
-
-	// Update the same key
-	e.mustRun("kb", "put", "mykey", "--body", "updated body", "--tag", "v2")
-	out = e.mustRun("kb", "show", "mykey")
-	assertContains(t, out, "updated body")
-}
-
-// ---------------------------------------------------------------------------
-// KB search no results
-// ---------------------------------------------------------------------------
-
-func TestKBSearchNoResults(t *testing.T) {
-	e := newTestEnv(t)
-
-	out := e.mustRun("kb", "search", "nonexistent")
-	assertContains(t, out, "No matches")
-}
-
 // ---------------------------------------------------------------------------
 // Nuke both scopes
 // ---------------------------------------------------------------------------
@@ -941,14 +711,6 @@ func TestGlobalInitDefaultName(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-// extractUUID finds a UUID v4 in a string (session start output mixes UUID on stdout with stats on stderr).
-var uuidRe = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
-
-func extractUUID(s string) string {
-	match := uuidRe.FindString(s)
-	return match
-}
 
 func assertContains(t *testing.T, haystack, needle string) {
 	t.Helper()

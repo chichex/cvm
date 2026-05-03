@@ -95,16 +95,6 @@ func LocalVanillaDir(projectPath string) string {
 	return filepath.Join(CvmHome(), "local", "vanilla", hashPath(projectPath))
 }
 
-// GlobalKBDir returns ~/.cvm/global/kb
-func GlobalKBDir() string {
-	return filepath.Join(CvmHome(), "global", "kb")
-}
-
-// LocalKBDir returns ~/.cvm/local/kb/<project-hash>
-func LocalKBDir(projectPath string) string {
-	return filepath.Join(CvmHome(), "local", "kb", hashPath(projectPath))
-}
-
 // GlobalOverridesDir returns ~/.cvm/global/overrides
 func GlobalOverridesDir() string {
 	return filepath.Join(CvmHome(), "global", "overrides")

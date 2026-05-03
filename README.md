@@ -31,8 +31,8 @@ cd cvm && make install
 
 ```bash
 # Install a profile
-cvm add sdd-mem git@github.com:chichex/cvm.git       # spec-driven development + persistent memory
-cvm use sdd-mem
+cvm add lite git@github.com:chichex/cvm.git       # minimalist subagent orchestration
+cvm use lite
 
 # That's it. Update anytime:
 cvm pull
@@ -86,41 +86,6 @@ cvm pull chiche         # pull a specific profile
 cvm upgrade             # upgrade cvm itself to the latest version
 ```
 
-### Knowledge Base
-
-```bash
-cvm kb put <key> --body "..." --tag "a,b"   # create/update entry
-cvm kb put <key> --body "..." --type learning # adds type tag: decision|learning|gotcha|discovery|session
-cvm kb ls [--tag <tag>]                      # list entries
-cvm kb show <key>                            # show entry content
-cvm kb search <query>                        # search entries (ranked: exact > key > body)
-cvm kb search <query> --sort recent          # sort by date instead of relevance
-cvm kb search <query> --tag gotcha           # filter by tag
-cvm kb search <query> --type learning        # filter by type
-cvm kb search <query> --since 7d             # filter by age
-cvm kb timeline [--days 7]                   # entries grouped by day
-cvm kb stats                                 # token estimates and entry counts
-cvm kb compact                               # compact index for context injection
-cvm kb enable <key>                          # include in Claude context
-cvm kb disable <key>                         # exclude without deleting
-cvm kb rm <key>                              # delete entry
-cvm kb clean [--force]                       # remove all entries
-
-# All kb commands accept --local (default: global)
-cvm kb ls --local
-cvm kb put my-key --body "..." --local
-```
-
-### Diagnostics
-
-```bash
-cvm status    # show active profiles (global + local)
-cvm health    # full system diagnostics
-cvm profile   # inspect active profile contents (skills, agents, hooks, rules)
-cvm bypass on # enable bypass permissions on active profile(s)
-cvm bypass off
-```
-
 ### Clean up
 
 ```bash
@@ -132,24 +97,6 @@ cvm nuke -f             # skip confirmation
 cvm restore             # restore pre-cvm state from vanilla backup
 cvm restore --global    # only global
 cvm restore --local     # only local
-```
-
-### Session (used by hooks)
-
-```bash
-cvm session start      # session start: create session file, detect tools
-cvm session end <uuid> # session end: generate summary + cleanup + auto-run automation
-cvm session status     # show active sessions
-cvm session append <uuid> --type <prompt|tool|agent> [--content ...] [--tool ...] [--agent-type ...]
-cvm session ls         # list all sessions (default: 20 most recent)
-cvm session show <uuid>  # show all events for a session
-cvm session gc         # delete closed sessions older than 30 days
-cvm automation status  # queued candidates summary
-cvm automation ls      # list candidate briefs
-cvm automation show <id>  # inspect a materialized brief
-cvm automation run     # process pending candidates now
-cvm automation history # recent automation runs
-cvm automation show-run <id> # inspect a recorded run
 ```
 
 ### Remote management
@@ -196,40 +143,6 @@ When you run `cvm use work`:
 3. Cleans all managed items from `~/.claude/`
 4. Copies the "work" profile into `~/.claude/`
 5. Updates `~/.cvm/state.json`
-
-## The "sdd-mem" profile
-
-A **Spec-Driven Development** profile with persistent memory. Enforces a spec-first workflow: every feature starts as a specification, implementation follows the spec, and verification checks compliance.
-
-> **Note**: The `sdd` profile (without memory) has been deprecated and removed. Use `sdd-mem` for all new installations.
-
-- **18+ skills**: learn, decide, gotcha, recall, retro, evolve, maintain, orchestrate, checkpoint, quality-gate, spec, derive-tests, execute, fix, verify, spec-status, skill-create, headless
-- **10 rules**: model selection, context hygiene, cost awareness, scope guard, KB awareness, agent routing, spec-first, no-spec-drift, traceability
-- **5 agents**: researcher (haiku), implementer (sonnet), reviewer (opus), specifier (sonnet), verifier (opus)
-- **MCP servers**: playwright, context7, cvm-kb
-- **SQLite + FTS5 backend**: KB entries stored in SQLite with full-text search, porter stemming, and BM25 ranking
-- **MCP KB tools**: Native `kb_search` and `kb_get` tools exposed via MCP — Claude queries the KB directly
-- **CVM-owned sessions**: JSONL storage in `~/.cvm/sessions/`, cross-project visibility, auto-summary via Haiku
-- **Tool observation**: `PostToolUse` hook captures Bash/Write/Edit/NotebookEdit events to enrich session summaries
-- **Context injection**: `SessionStart` hook injects a compact summary of recent KB entries (~2K tokens budget)
-- **Content-hash dedup**: `cvm kb put` detects duplicate content and warns/skips
-
-**Configuration** (env vars in settings.json):
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CVM_KB_BACKEND` | sqlite | KB storage backend (`sqlite` or `flat`) |
-| `CVM_OBSERVE_TOOLS` | Bash,Write,Edit | Tools captured by PostToolUse hook |
-| `CVM_CONTEXT_ENTRY_COUNT` | 10 | Max entries in context injection |
-| `CVM_CONTEXT_MAX_TOKENS` | 2000 | Token budget for context injection |
-| `CVM_AUTOSUMMARY_ENABLED` | true | Enable auto session summary |
-| `CVM_AUTOSUMMARY_MODEL` | haiku | Model for summary generation |
-
-**Cost**: ~$0.001/session for auto-summaries.
-
-```bash
-cvm add sdd-mem git@github.com:chichex/cvm.git
-cvm use sdd-mem
-```
 
 ## The "lite" profile
 
