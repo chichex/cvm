@@ -44,11 +44,13 @@ func ByName(name string) (Harness, bool) {
 		return Claude(), true
 	case "opencode":
 		return OpenCode(), true
+	case "codex":
+		return Codex(), true
 	default:
 		return nil, false
 	}
 }
 
 func All() []Harness {
-	return []Harness{Claude(), OpenCode()}
+	return []Harness{Claude(), OpenCode(), Codex()}
 }

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	cvmprofile "github.com/chichex/cvm/internal/profile"
 )
 
 var cvmBin string
@@ -376,6 +378,74 @@ func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	}
 	assertJSONKeyExists(t, filepath.Join(opencodeDir, "opencode.json"), "theme")
 	assertMCPServerNotExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
+}
+
+func TestPortableAssetsRenderForOpenCode(t *testing.T) {
+	e := newTestEnv(t)
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-open")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-open\"\nharnesses = [\"opencode\"]\n\n[assets]\nportable = \"portable\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "---\ndescription: Deploy app\n---\n")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "agents", "reviewer.md"), "# reviewer\n")
+
+	out := e.mustRun("use", "portable-open", "--harness", "opencode")
+	assertContains(t, out, "Switched opencode harness")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# portable instructions")
+	assertFileContent(t, filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md"), "---\ndescription: Deploy app\n---")
+	assertFileContent(t, filepath.Join(opencodeDir, "agents", "reviewer.md"), "# reviewer")
+}
+
+func TestHarnessAssetsOverrideRenderedPortableAssets(t *testing.T) {
+	e := newTestEnv(t)
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-open")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-open\"\nharnesses = [\"opencode\"]\n\n[assets]\nportable = \"portable\"\nopencode = \"opencode\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode override")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "skills", "deploy", "SKILL.md"), "opencode skill")
+
+	e.mustRun("use", "portable-open", "--harness", "opencode")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode override")
+	assertFileContent(t, filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md"), "opencode skill")
+}
+
+func TestPortableInstructionsRenderForCodex(t *testing.T) {
+	e := newTestEnv(t)
+	codexDir := filepath.Join(e.home, ".codex")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-codex")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-codex\"\nharnesses = [\"codex\"]\n\n[assets]\nportable = \"portable\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# codex instructions")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
+
+	out := e.mustRun("use", "portable-codex", "--harness", "codex")
+	assertContains(t, out, "Switched codex harness")
+	assertFileContent(t, filepath.Join(codexDir, "AGENTS.md"), "# codex instructions")
+	if _, err := os.Stat(filepath.Join(codexDir, "skills")); !os.IsNotExist(err) {
+		t.Fatalf("codex should not install portable skills without native support, got err %v", err)
+	}
+}
+
+func TestLiteProfileActivatesForAllHarnesses(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "lite")
+	if err := cvmprofile.CopyDir(filepath.Join("profiles", "lite"), profileRoot); err != nil {
+		t.Fatalf("copy lite profile: %v", err)
+	}
+
+	out := e.mustRun("use", "lite", "--harness", "claude")
+	assertContains(t, out, "Switched claude harness")
+	assertFileContains(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# Lite Profile")
+
+	out = e.mustRun("use", "lite", "--harness", "opencode")
+	assertContains(t, out, "Switched opencode harness")
+	assertFileContains(t, filepath.Join(e.home, ".config", "opencode", "AGENTS.md"), "# Lite Profile")
+
+	out = e.mustRun("use", "lite", "--harness", "codex")
+	assertContains(t, out, "Switched codex harness")
+	assertFileContains(t, filepath.Join(e.home, ".codex", "AGENTS.md"), "# Lite Profile")
 }
 
 func TestOpenCodeHarnessRestoreGlobalVanilla(t *testing.T) {

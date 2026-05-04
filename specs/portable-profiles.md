@@ -4,7 +4,7 @@
 
 Define the small profile surface that `cvm` owns across harnesses. Portable assets are authored as `cvm` concepts first, then rendered or copied into Claude, OpenCode, Codex, or another harness when that harness has a compatible equivalent.
 
-This is an experimental v0.1 contract. The current implementation covers manifest parsing and portable asset-dir fallback only; renderer and merge-engine behavior is planned. Treat the layout as subject to tightening until at least one non-Claude renderer consumes it.
+This is an experimental v0.1 contract. The current implementation covers manifest parsing plus activation-time rendering for portable instructions, skills, and agents. Treat the layout as subject to tightening while more non-Claude renderers consume it.
 
 ## Portable Rule
 
@@ -26,7 +26,7 @@ If an asset requires semantic translation, behavior rewrites, or runtime-specifi
 | `instructions` | `portable/instructions.md` | Base profile instructions in neutral Markdown. Harness renderers choose the target filename, such as `CLAUDE.md` or `AGENTS.md`. |
 | `skills` | `portable/skills/<name>.md` | Prompt assets with minimal frontmatter. Harness renderers may wrap them in native `SKILL.md` layout. |
 | `agents` | `portable/agents/<name>.md` | Instruction-only agent definitions. Native agent config remains harness-specific. |
-| `settings` | `portable/settings.toml` | Only conceptual settings with shared semantics, such as approval or sandbox policy. |
+| `settings` | `portable/settings.toml` | Reserved for conceptual settings with shared semantics, such as approval or sandbox policy. No settings keys are rendered yet. |
 
 ## Excluded Assets
 
@@ -80,16 +80,44 @@ If a declared harness omits its harness-specific asset dir, `cvm` uses `[assets]
 
 ## Merge Model
 
-Rendering order is:
+Activation order is:
 
-1. Load assets from `portable/`.
-2. Apply the target harness override dir, if present.
-3. Render or copy the final result into the target harness.
+1. Render assets from `portable/` into a temporary native asset tree for the target harness.
+2. Apply the target harness override dir on top, if present.
+3. Copy managed assets from that merged tree into the target harness.
 
 Harness-specific assets win over portable assets for the same logical asset. `cvm` must not silently translate excluded assets; those belong in the harness override dir.
 
+Implemented render mappings:
+
+| Portable asset | Claude | OpenCode | Codex |
+|----------------|--------|----------|-------|
+| `instructions.md` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
+| `skills/<name>.md` | `skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` | omitted |
+| `agents/<name>.md` | `agents/<name>.md` | `agents/<name>.md` | omitted |
+| `settings.toml` | omitted | omitted | omitted |
+
 ## Lite Profile Status
 
-`profiles/lite` now declares this contract and extracts neutral instructions into `portable/instructions.md`. It still declares only `claude` support because the current skills, statusline, MCP config, and memory rules depend on Claude Code behavior. OpenCode and Codex support for `lite` should be enabled only after renderers can map portable instructions and skills into native formats without promising unsupported hooks, MCP, or memory behavior.
+`profiles/lite` declares `claude`, `opencode`, and `codex` support. For OpenCode and Codex, only `portable/instructions.md` is rendered today; the current skills, statusline, MCP config, and memory rules depend on Claude Code behavior and remain Claude-only. OpenCode and Codex support for `lite` promises the neutral portable subset, not unsupported hooks, MCP, memory behavior, or Claude-only skills.
 
 `lite` intentionally keeps Claude assets at the profile root with `claude = "."` for compatibility with the existing profile layout. New profiles may use the canonical sibling layout shown above when they do not need legacy root assets.
+
+### Lite Skill Audit
+
+Audit date: 2026-05-04. No `profiles/lite/skills` assets currently qualify as portable v0.1 skills, so no files are authored under `profiles/lite/portable/skills/` yet.
+
+| Skill | Classification | Reason |
+|-------|----------------|--------|
+| `/go` | adaptable | The Codex/Gemini branches use external CLIs, but the default Opus branch invokes Claude Code `Agent` and then calls `/r`. |
+| `/r` | adaptable | The review/persist concept is reusable, but the implementation writes Claude auto-memory under `~/.claude/projects/<path>/memory/`. |
+| `/ux` | adaptable | The UX workflow and HTML output are reusable, but validation depends on an Opus `Agent` branch. |
+| `/che-idea` | adaptable | The GitHub issue workflow is reusable, but issue enrichment is delegated to an Opus `Agent`. |
+| `/che-explore` | adaptable | The GitHub planning workflow is reusable, but the default branch uses Opus `Agent` and Opus success invokes `/r` via Claude `Skill`. |
+| `/che-execute` | adaptable | The GitHub/worktree workflow is reusable, but the default branch uses Opus `Agent` and Opus success invokes `/r` via Claude `Skill`. |
+| `/che-validate` | adaptable | The GitHub review workflow is reusable, but Opus review uses Claude `Agent` and the skill exposes Claude-specific composition contracts. |
+| `/che-iterate` | adaptable | The feedback application workflow is reusable, but it launches an Opus `Agent` and invokes `/r` via Claude `Skill`. |
+| `/che-loop` | Claude-only | It is a pure orchestrator over `/che-validate` and `/che-iterate` through Claude `Skill`, so it has no standalone portable behavior today. |
+| `/che-close` | adaptable | The GitHub close flow is reusable, but the merge/CI execution is delegated to an Opus `Agent`. |
+
+These adaptable skills should stay in the Claude asset tree until a target harness has equivalent agent invocation, skill composition, and memory semantics, or until the portable portions are split into separate harness-neutral skills.
