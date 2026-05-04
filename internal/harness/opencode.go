@@ -26,6 +26,10 @@ func (opencodeHarness) Name() string {
 	return "opencode"
 }
 
+func (opencodeHarness) SupportsScope(scope config.Scope) bool {
+	return scope == config.ScopeGlobal || scope == config.ScopeLocal
+}
+
 func (opencodeHarness) TargetDir(scope config.Scope, projectPath string) string {
 	if scope == config.ScopeLocal {
 		// OPENCODE_CONFIG_DIR only redirects the global config; project config remains local.

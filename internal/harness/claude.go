@@ -32,6 +32,10 @@ func (claudeHarness) Name() string {
 	return "claude"
 }
 
+func (claudeHarness) SupportsScope(scope config.Scope) bool {
+	return scope == config.ScopeGlobal || scope == config.ScopeLocal
+}
+
 func (claudeHarness) TargetDir(scope config.Scope, projectPath string) string {
 	if scope == config.ScopeGlobal {
 		home, _ := os.UserHomeDir()

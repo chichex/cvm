@@ -18,6 +18,7 @@ Runtime files (sessions, cache, history) are never touched.`,
 		globalOnly, _ := cmd.Flags().GetBool("global")
 		localOnly, _ := cmd.Flags().GetBool("local")
 		force, _ := cmd.Flags().GetBool("force")
+		harnessName, _ := cmd.Flags().GetString("harness")
 		harnesses, err := selectedHarnesses(cmd)
 		if err != nil {
 			return err
@@ -59,6 +60,12 @@ Runtime files (sessions, cache, history) are never touched.`,
 				return err
 			}
 			for _, h := range harnesses {
+				if !h.SupportsScope(config.ScopeLocal) {
+					if harnessName != "" {
+						return fmt.Errorf("%s harness does not support local scope", h.Name())
+					}
+					continue
+				}
 				if err := profile.NukeWithHarness(config.ScopeLocal, projectPath, h); err != nil {
 					return fmt.Errorf("nuking local %s: %w", h.Name(), err)
 				}

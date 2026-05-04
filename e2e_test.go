@@ -415,6 +415,68 @@ func TestOpenCodeHarnessLocalWorkflow(t *testing.T) {
 	}
 }
 
+func TestCodexHarnessGlobalWorkflowUsesCodexHome(t *testing.T) {
+	e := newTestEnv(t)
+	codexHome := filepath.Join(e.home, "custom-codex")
+	writeTestFile(t, filepath.Join(codexHome, "AGENTS.md"), "# vanilla codex")
+	writeTestFile(t, filepath.Join(codexHome, "config.toml"), "model = \"gpt-5\"\n")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "codex-profile")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"codex-profile\"\nharnesses = [\"codex\"]\n\n[assets]\ncodex = \"codex\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "codex", "AGENTS.md"), "# codex profile")
+
+	out := e.runWithEnv(map[string]string{"CODEX_HOME": codexHome}, "use", "codex-profile", "--harness", "codex")
+	assertContains(t, out, "Switched codex harness")
+
+	assertFileContent(t, filepath.Join(codexHome, "AGENTS.md"), "# codex profile")
+	assertFileContent(t, filepath.Join(codexHome, "config.toml"), "model = \"gpt-5\"")
+	if _, err := os.Stat(filepath.Join(e.home, ".codex", "AGENTS.md")); err == nil {
+		t.Fatal("codex use should respect CODEX_HOME instead of writing ~/.codex")
+	}
+	if _, err := os.Stat(filepath.Join(e.home, ".claude", "AGENTS.md")); err == nil {
+		t.Fatal("codex use should not install into Claude paths")
+	}
+
+	out = e.runWithEnv(map[string]string{"CODEX_HOME": codexHome}, "status", "--harness", "codex")
+	assertContains(t, out, "codex harness:")
+	assertContains(t, out, "codex-profile")
+	assertContains(t, out, codexHome)
+
+	e.runWithEnv(map[string]string{"CODEX_HOME": codexHome}, "nuke", "--global", "--harness", "codex", "--force")
+	if _, err := os.Stat(filepath.Join(codexHome, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected codex AGENTS.md to be nuked, got err %v", err)
+	}
+	assertFileContent(t, filepath.Join(codexHome, "config.toml"), "model = \"gpt-5\"")
+}
+
+func TestCodexHarnessRestoreGlobalVanilla(t *testing.T) {
+	e := newTestEnv(t)
+	codexHome := filepath.Join(e.home, "custom-codex")
+	writeTestFile(t, filepath.Join(codexHome, "AGENTS.md"), "# vanilla codex")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "codex-profile")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"codex-profile\"\nharnesses = [\"codex\"]\n\n[assets]\ncodex = \"codex\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "codex", "AGENTS.md"), "# profile codex")
+
+	e.runWithEnv(map[string]string{"CODEX_HOME": codexHome}, "use", "codex-profile", "--harness", "codex")
+	assertFileContent(t, filepath.Join(codexHome, "AGENTS.md"), "# profile codex")
+
+	out := e.runWithEnv(map[string]string{"CODEX_HOME": codexHome}, "restore", "--global", "--harness", "codex")
+	assertContains(t, out, "Restored global config to vanilla (codex harness)")
+	assertFileContent(t, filepath.Join(codexHome, "AGENTS.md"), "# vanilla codex")
+}
+
+func TestCodexHarnessLocalScopeFailsExplicitly(t *testing.T) {
+	e := newTestEnv(t)
+
+	profileRoot := filepath.Join(e.home, ".cvm", "local", "profiles", "codex-profile")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"codex-profile\"\nharnesses = [\"codex\"]\n\n[assets]\ncodex = \"codex\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "codex", "AGENTS.md"), "# codex profile")
+
+	out := e.mustFail("use", "codex-profile", "--local", "--harness", "codex")
+	assertContains(t, out, "codex harness does not support local scope")
+}
+
 func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")

@@ -4,7 +4,7 @@
 
 Define the small profile surface that `cvm` owns across harnesses. Portable assets are authored as `cvm` concepts first, then rendered or copied into Claude, OpenCode, Codex, or another harness when that harness has a compatible equivalent.
 
-This is an experimental v0.1 contract. The current implementation covers manifest parsing and portable asset-dir fallback only; renderer and merge-engine behavior is planned. Treat the layout as subject to tightening until at least one non-Claude renderer consumes it.
+This is an experimental v0.1 contract. The current implementation covers manifest parsing, portable asset-dir fallback, and harness-specific copying for supported non-Claude harnesses; semantic renderers and merge-engine behavior are planned. Treat the layout as subject to tightening while non-Claude support remains intentionally narrow.
 
 ## Portable Rule
 
@@ -93,3 +93,7 @@ Harness-specific assets win over portable assets for the same logical asset. `cv
 `profiles/lite` now declares this contract and extracts neutral instructions into `portable/instructions.md`. It still declares only `claude` support because the current skills, statusline, MCP config, and memory rules depend on Claude Code behavior. OpenCode and Codex support for `lite` should be enabled only after renderers can map portable instructions and skills into native formats without promising unsupported hooks, MCP, or memory behavior.
 
 `lite` intentionally keeps Claude assets at the profile root with `claude = "."` for compatibility with the existing profile layout. New profiles may use the canonical sibling layout shown above when they do not need legacy root assets.
+
+## Codex Status
+
+Codex support is limited to explicit Codex asset dirs containing `AGENTS.md`. `cvm` targets `$CODEX_HOME` or `~/.codex` for global installs only. Local scope is unsupported until Codex has a native project-local config home or `cvm` adds an explicit activation model for one. `cvm` does not translate `portable/instructions.md`, `portable/settings.toml`, Claude settings, hooks, MCP, skills, or agents into Codex native formats yet.

@@ -28,13 +28,17 @@ var statusCmd = &cobra.Command{
 			if globalProfile == "" {
 				globalProfile = "(vanilla)"
 			}
+
+			fmt.Printf("%s harness:\n", h.Name())
+			fmt.Printf("  Global: %-20s  -> %s\n", globalProfile, h.TargetDir(config.ScopeGlobal, ""))
+			if !h.SupportsScope(config.ScopeLocal) {
+				fmt.Println("  Local:  (unsupported)")
+				continue
+			}
 			localProfile := st.GetLocalHarness(cwd, h.Name())
 			if localProfile == "" {
 				localProfile = "(vanilla)"
 			}
-
-			fmt.Printf("%s harness:\n", h.Name())
-			fmt.Printf("  Global: %-20s  -> %s\n", globalProfile, h.TargetDir(config.ScopeGlobal, ""))
 			fmt.Printf("  Local:  %-20s  -> %s\n", localProfile, h.TargetDir(config.ScopeLocal, cwd))
 		}
 

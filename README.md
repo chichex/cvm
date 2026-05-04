@@ -1,6 +1,6 @@
 # cvm - Claude Version Manager
 
-Profile manager for agent harnesses, starting with [Claude Code](https://claude.ai/code) and OpenCode. Switch configurations instantly, nuke everything, restore to vanilla. Like `nvm` but for your agent setup.
+Profile manager for agent harnesses, starting with [Claude Code](https://claude.ai/code), OpenCode, and Codex. Switch configurations instantly, nuke everything, restore to vanilla. Like `nvm` but for your agent setup.
 
 ## Why
 
@@ -69,6 +69,7 @@ cvm use work            # activate globally (~/.claude/)
 cvm use work --local    # activate for current project (.claude/)
 cvm use work --harness claude
 cvm use work --harness opencode
+cvm use work --harness codex
 cvm use --none          # back to vanilla
 ```
 
@@ -102,6 +103,7 @@ cvm restore --global    # only global
 cvm restore --local     # only local
 cvm restore --harness claude
 cvm restore --harness opencode
+cvm restore --harness codex
 ```
 
 ### Remote management
@@ -117,6 +119,7 @@ cvm remote rm chiche   # unlink from remote (keeps local copy)
 cvm status             # show active profiles by harness (global + local)
 cvm status --harness claude
 cvm status --harness opencode
+cvm status --harness codex
 cvm profile            # inspect active profile contents
 cvm profile show work  # inspect a specific stored profile
 ```
@@ -148,10 +151,10 @@ cvm override rm skill foo        # remove an override file
 
 ## Two scopes
 
-| Scope | Claude target | OpenCode target | Flag |
-|-------|---------------|-----------------|------|
-| **global** (default) | `~/.claude/` plus `~/.claude.json` | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` | (none) |
-| **local** | `.claude/` plus `.mcp.json` in current project | `.opencode/` in current project | `--local` |
+| Scope | Claude target | OpenCode target | Codex target | Flag |
+|-------|---------------|-----------------|--------------|------|
+| **global** (default) | `~/.claude/` plus `~/.claude.json` | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` | `~/.codex/` or `$CODEX_HOME` | (none) |
+| **local** | `.claude/` plus `.mcp.json` in current project | `.opencode/` in current project | Unsupported for Codex | `--local` |
 
 For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cvm` only manages its `mcpServers` section.
 
@@ -214,6 +217,18 @@ OpenCode support is intentionally limited to portable assets copied as-is into O
 `cvm` does not translate Claude-specific assets for OpenCode. `CLAUDE.md`, Claude `settings.json`, hooks, plugins, non-MCP top-level `opencode.json` settings, and other non-portable behavior require profile-author adaptation and are not promised compatible.
 
 OpenCode runtime storage is **never** touched, including `~/.local/share/opencode/`.
+
+### Codex
+
+Codex support is intentionally limited to portable instructions copied as-is into Codex's config home.
+
+| Item | Description |
+|------|-------------|
+| `AGENTS.md` | Harness instructions |
+
+`cvm` respects `$CODEX_HOME` for global Codex installs and otherwise targets `~/.codex/`. Codex local scope is not supported because Codex does not read a project-local `.codex/` config home by default. `cvm` does not translate Claude settings JSON, hooks, agents, skills, MCP config, or conceptual `portable/settings.toml` into Codex `config.toml`; those assets require explicit harness-specific support before they are managed.
+
+Codex runtime and user-owned files are **never** touched, including `config.toml`, `auth.json`, `history.jsonl`, `sessions/`, and `log/`.
 
 ## How switching works
 

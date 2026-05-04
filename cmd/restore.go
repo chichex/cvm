@@ -15,6 +15,7 @@ var restoreCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		globalOnly, _ := cmd.Flags().GetBool("global")
 		localOnly, _ := cmd.Flags().GetBool("local")
+		harnessName, _ := cmd.Flags().GetString("harness")
 		harnesses, err := selectedHarnesses(cmd)
 		if err != nil {
 			return err
@@ -53,6 +54,12 @@ var restoreCmd = &cobra.Command{
 				return err
 			}
 			for _, h := range harnesses {
+				if !h.SupportsScope(config.ScopeLocal) {
+					if harnessName != "" {
+						return fmt.Errorf("%s harness does not support local scope", h.Name())
+					}
+					continue
+				}
 				if !profile.HasVanillaWithHarness(config.ScopeLocal, projectPath, h) {
 					fmt.Printf("No vanilla backup found for local %s config\n", h.Name())
 				} else {

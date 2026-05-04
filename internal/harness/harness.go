@@ -9,6 +9,7 @@ type ManagedPath struct {
 
 type Harness interface {
 	Name() string
+	SupportsScope(scope config.Scope) bool
 	TargetDir(scope config.Scope, projectPath string) string
 	ManagedDirItems() []string
 	ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool)
@@ -32,11 +33,13 @@ func ByName(name string) (Harness, bool) {
 		return Claude(), true
 	case "opencode":
 		return OpenCode(), true
+	case "codex":
+		return Codex(), true
 	default:
 		return nil, false
 	}
 }
 
 func All() []Harness {
-	return []Harness{Claude(), OpenCode()}
+	return []Harness{Claude(), OpenCode(), Codex()}
 }
