@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -84,7 +85,11 @@ var profileAddCmd = &cobra.Command{
 
 Portable assets are cvm-owned concepts written under portable/: instructions,
 skills, and agents. Passing --harness writes a harness-specific override instead.
-Hooks are always harness-specific and require --harness.`,
+Hooks are always harness-specific and require --harness.
+
+Portable assets are authoring inputs for the portable contract. Harness rendering
+is planned separately, so use --harness when you need an asset applied by today's
+activation flow.`,
 	Example: `  cvm profile add instructions --profile work
   cvm profile add skill deploy --profile work
   cvm profile add agent reviewer --profile work
@@ -142,6 +147,12 @@ Hooks are always harness-specific and require --harness.`,
 			fmt.Printf("Created %s %s: %s\n", asset.Layer, asset.Kind, asset.Path)
 		} else {
 			fmt.Printf("Profile asset already exists: %s\n", asset.Path)
+		}
+		if asset.ManifestCreated {
+			fmt.Printf("Created manifest: %s\n", filepath.Join(profile.ProfileDir(scope, profileName), "cvm.profile.toml"))
+		}
+		if asset.Portable {
+			fmt.Println("Note: portable assets are authored now; harness rendering is planned separately.")
 		}
 		if open {
 			return openAssetEditor(asset.Path)

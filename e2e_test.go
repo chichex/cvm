@@ -514,6 +514,8 @@ func TestProfileAddScaffoldsPortableAssets(t *testing.T) {
 
 	out := e.mustRun("profile", "add", "skill", "deploy", "--profile", "portable")
 	assertContains(t, out, "Created portable skill")
+	assertContains(t, out, "Created manifest:")
+	assertContains(t, out, "portable assets are authored now")
 	out = e.mustRun("profile", "add", "agent", "reviewer", "--profile", "portable")
 	assertContains(t, out, "Created portable agent")
 	out = e.mustRun("profile", "add", "instructions", "--profile", "portable")
@@ -549,6 +551,40 @@ func TestProfileAddScaffoldsHarnessSpecificHookFromFile(t *testing.T) {
 	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "claude = \"claude\"")
 }
 
+func TestProfileAddRejectsInvalidHarnessAndSource(t *testing.T) {
+	e := newTestEnv(t)
+
+	e.mustRun("add", "invalid")
+
+	out := e.mustFail("profile", "add", "skill", "deploy", "--profile", "invalid", "--harness", "missing")
+	assertContains(t, out, "unknown harness")
+
+	sourceDir := filepath.Join(e.projectDir, "source-dir")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("mkdir source dir: %v", err)
+	}
+	out = e.mustFail("profile", "add", "skill", "deploy", "--profile", "invalid", "--from-file", sourceDir)
+	assertContains(t, out, "is a directory")
+
+	out = e.mustFail("profile", "add", "hook", "post", "--profile", "invalid", "--harness", "opencode")
+	assertContains(t, out, "opencode does not support hook scaffolding")
+}
+
+func TestProfileAddDoesNotOverwriteExistingAsset(t *testing.T) {
+	e := newTestEnv(t)
+
+	e.mustRun("add", "existing")
+	source := filepath.Join(e.projectDir, "deploy.md")
+	writeTestFile(t, source, "first")
+	e.mustRun("profile", "add", "skill", "deploy", "--profile", "existing", "--from-file", source)
+
+	writeTestFile(t, source, "second")
+	out := e.mustRun("profile", "add", "skill", "deploy", "--profile", "existing", "--from-file", source)
+	assertContains(t, out, "Profile asset already exists")
+
+	assertFileContent(t, filepath.Join(e.home, ".cvm", "global", "profiles", "existing", "portable", "skills", "deploy.md"), "first")
+}
+
 func TestProfileAddDefaultsToActiveProfile(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
@@ -568,6 +604,7 @@ func TestProfileAddHelpExplainsAuthoringLayers(t *testing.T) {
 	out := e.mustRun("profile", "add", "--help")
 	assertContains(t, out, "Portable assets")
 	assertContains(t, out, "Hooks are always harness-specific")
+	assertContains(t, out, "Harness rendering")
 }
 
 func TestLsShowsInUseProfiles(t *testing.T) {

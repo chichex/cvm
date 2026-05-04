@@ -21,10 +21,12 @@ type ScaffoldAssetOptions struct {
 }
 
 type ScaffoldedAsset struct {
-	Kind    string
-	Layer   string
-	Path    string
-	Created bool
+	Kind            string
+	Layer           string
+	Path            string
+	Created         bool
+	ManifestCreated bool
+	Portable        bool
 }
 
 func ScaffoldAsset(opts ScaffoldAssetOptions) (*ScaffoldedAsset, error) {
@@ -54,8 +56,11 @@ func ScaffoldAsset(opts ScaffoldAssetOptions) (*ScaffoldedAsset, error) {
 	}
 
 	portable := harnessName == "" && kind != "hook"
+	var selectedHarness harness.Harness
 	if !portable {
-		if _, ok := harness.ByName(harnessName); !ok {
+		var ok bool
+		selectedHarness, ok = harness.ByName(harnessName)
+		if !ok {
 			return nil, fmt.Errorf("unknown harness %q", harnessName)
 		}
 	}
@@ -72,19 +77,23 @@ func ScaffoldAsset(opts ScaffoldAssetOptions) (*ScaffoldedAsset, error) {
 		manifest.Name = opts.ProfileName
 	}
 
-	assetDir, layer, changed, err := scaffoldAssetDir(profileDir, manifest, hadManifest, portable, harnessName)
+	assetDir, layer, changed, err := scaffoldAssetDir(profileDir, manifest, hadManifest, portable, selectedHarness)
 	if err != nil {
 		return nil, err
 	}
 
-	relPath, defaultContent, defaultMode := scaffoldFile(kind, opts.Name, harnessName, portable)
+	relPath, defaultContent, defaultMode, err := scaffoldFile(kind, opts.Name, portable, selectedHarness)
+	if err != nil {
+		return nil, err
+	}
 	targetPath := filepath.Join(assetDir, relPath)
-	result := &ScaffoldedAsset{Kind: kind, Layer: layer, Path: targetPath}
+	result := &ScaffoldedAsset{Kind: kind, Layer: layer, Path: targetPath, Portable: portable}
 	if _, err := os.Stat(targetPath); err == nil {
 		if changed || !hadManifest {
 			if err := SaveManifest(profileDir, manifest); err != nil {
 				return nil, err
 			}
+			result.ManifestCreated = !hadManifest
 		}
 		return result, nil
 	} else if err != nil && !os.IsNotExist(err) {
@@ -110,6 +119,7 @@ func ScaffoldAsset(opts ScaffoldAssetOptions) (*ScaffoldedAsset, error) {
 		if err := SaveManifest(profileDir, manifest); err != nil {
 			return nil, err
 		}
+		result.ManifestCreated = !hadManifest
 	}
 	result.Created = true
 	return result, nil
@@ -139,7 +149,7 @@ func validateAssetName(name string) error {
 	return nil
 }
 
-func scaffoldAssetDir(profileDir string, manifest *Manifest, hadManifest bool, portable bool, harnessName string) (string, string, bool, error) {
+func scaffoldAssetDir(profileDir string, manifest *Manifest, hadManifest bool, portable bool, h harness.Harness) (string, string, bool, error) {
 	changed := false
 	if portable {
 		if _, ok := manifest.Assets["portable"]; !ok {
@@ -148,7 +158,8 @@ func scaffoldAssetDir(profileDir string, manifest *Manifest, hadManifest bool, p
 		}
 		if !hadManifest && manifest.SupportsHarness("claude") {
 			if _, ok := manifest.Assets["claude"]; !ok {
-				manifest.Assets["claude"] = defaultHarnessAssetDir(profileDir, "claude")
+				claude, _ := harness.ByName("claude")
+				manifest.Assets["claude"] = claude.DefaultAssetDir(profileDir)
 				changed = true
 			}
 		}
@@ -156,32 +167,16 @@ func scaffoldAssetDir(profileDir string, manifest *Manifest, hadManifest bool, p
 		return assetDir, "portable", changed, err
 	}
 
-	if !manifest.SupportsHarness(harnessName) {
-		manifest.Harnesses = append(manifest.Harnesses, harnessName)
+	if !manifest.SupportsHarness(h.Name()) {
+		manifest.Harnesses = append(manifest.Harnesses, h.Name())
 		changed = true
 	}
-	if _, ok := manifest.Assets[harnessName]; !ok {
-		manifest.Assets[harnessName] = defaultHarnessAssetDir(profileDir, harnessName)
+	if _, ok := manifest.Assets[h.Name()]; !ok {
+		manifest.Assets[h.Name()] = h.DefaultAssetDir(profileDir)
 		changed = true
 	}
-	assetDir, err := assetDirFromRaw(profileDir, manifest.Assets[harnessName])
-	return assetDir, harnessName, changed, err
-}
-
-func defaultHarnessAssetDir(profileDir string, harnessName string) string {
-	if harnessName == "claude" && legacyClaudeRootHasAssets(profileDir) {
-		return "."
-	}
-	return harnessName
-}
-
-func legacyClaudeRootHasAssets(profileDir string) bool {
-	for _, item := range harness.Claude().ProfileDiscoveryItems() {
-		if _, err := os.Stat(filepath.Join(profileDir, item)); err == nil {
-			return true
-		}
-	}
-	return false
+	assetDir, err := assetDirFromRaw(profileDir, manifest.Assets[h.Name()])
+	return assetDir, h.Name(), changed, err
 }
 
 func assetDirFromRaw(profileDir, raw string) (string, error) {
@@ -199,31 +194,23 @@ func assetDirFromRaw(profileDir, raw string) (string, error) {
 	return filepath.Join(profileDir, clean), nil
 }
 
-func scaffoldFile(kind, name, harnessName string, portable bool) (string, string, os.FileMode) {
+func scaffoldFile(kind, name string, portable bool, h harness.Harness) (string, string, os.FileMode, error) {
 	if portable {
 		switch kind {
 		case "instructions":
-			return "instructions.md", "# Profile Instructions\n\n", 0644
+			return "instructions.md", "# Profile Instructions\n\n", 0644, nil
 		case "skill":
-			return filepath.Join("skills", name+".md"), "---\ndescription: TODO\n---\n\n", 0644
+			return filepath.Join("skills", name+".md"), "---\ndescription: TODO\n---\n\n", 0644, nil
 		case "agent":
-			return filepath.Join("agents", name+".md"), "# " + name + "\n\n", 0644
+			return filepath.Join("agents", name+".md"), "# " + name + "\n\n", 0644, nil
 		}
 	}
 
-	switch kind {
-	case "instructions":
-		if h, ok := harness.ByName(harnessName); ok {
-			return h.MarkdownInstructionsFile(), "# Profile Instructions\n\n", 0644
-		}
-	case "skill":
-		return filepath.Join("skills", name, "SKILL.md"), "---\ndescription: TODO\n---\n\n", 0644
-	case "agent":
-		return filepath.Join("agents", name+".md"), "# " + name + "\n\n", 0644
-	case "hook":
-		return filepath.Join("hooks", name+".sh"), "#!/usr/bin/env bash\nset -euo pipefail\n\n", 0755
+	asset, err := h.ScaffoldAsset(kind, name)
+	if err != nil {
+		return "", "", 0, err
 	}
-	return name, "", 0644
+	return asset.ProfilePath, asset.Content, asset.Mode, nil
 }
 
 func readScaffoldSource(path string, defaultMode os.FileMode, kind string) ([]byte, os.FileMode, error) {

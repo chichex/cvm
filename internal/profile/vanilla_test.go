@@ -25,6 +25,14 @@ func (h testHarness) TargetDir(scope config.Scope, projectPath string) string {
 	return h.targetDir
 }
 
+func (h testHarness) DefaultAssetDir(profileDir string) string {
+	return h.name
+}
+
+func (h testHarness) ScaffoldAsset(kind, name string) (harness.ScaffoldAsset, error) {
+	return harness.ScaffoldAsset{ProfilePath: "CONFIG.md", Content: "", Mode: 0644}, nil
+}
+
 func (h testHarness) ManagedDirItems() []string {
 	return []string{"CONFIG.md"}
 }
