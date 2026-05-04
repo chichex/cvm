@@ -569,6 +569,69 @@ func TestProfileInspect(t *testing.T) {
 	assertContains(t, out, "Rules (1): scope.md")
 }
 
+func TestProfileAddScaffoldsPortableAssets(t *testing.T) {
+	e := newTestEnv(t)
+
+	e.mustRun("add", "portable")
+
+	out := e.mustRun("profile", "add", "skill", "deploy", "--profile", "portable")
+	assertContains(t, out, "Created portable skill")
+	out = e.mustRun("profile", "add", "agent", "reviewer", "--profile", "portable")
+	assertContains(t, out, "Created portable agent")
+	out = e.mustRun("profile", "add", "instructions", "--profile", "portable")
+	assertContains(t, out, "Created portable instructions")
+	out = e.mustRun("profile", "add", "instructions", "--profile", "portable", "--harness", "opencode")
+	assertContains(t, out, "Created opencode instructions")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable")
+	assertFileContains(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "description:")
+	assertFileContains(t, filepath.Join(profileRoot, "portable", "agents", "reviewer.md"), "# reviewer")
+	assertFileContains(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# Profile Instructions")
+	assertFileContains(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# Profile Instructions")
+	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "portable = \"portable\"")
+	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "claude = \"claude\"")
+	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "opencode = \"opencode\"")
+}
+
+func TestProfileAddScaffoldsHarnessSpecificHookFromFile(t *testing.T) {
+	e := newTestEnv(t)
+
+	e.mustRun("add", "hooks")
+
+	out := e.mustFail("profile", "add", "hook", "post", "--profile", "hooks")
+	assertContains(t, out, "--harness")
+
+	source := filepath.Join(e.projectDir, "post.sh")
+	writeTestFile(t, source, "#!/bin/sh\nexit 0\n")
+	out = e.mustRun("profile", "add", "hook", "post", "--profile", "hooks", "--harness", "claude", "--from-file", source)
+	assertContains(t, out, "Created claude hook")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "hooks")
+	assertFileContent(t, filepath.Join(profileRoot, "claude", "hooks", "post.sh"), "#!/bin/sh\nexit 0")
+	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "claude = \"claude\"")
+}
+
+func TestProfileAddDefaultsToActiveProfile(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+
+	e.mustRun("add", "active")
+	e.mustRun("use", "active")
+
+	out := e.mustRun("profile", "add", "instructions")
+	assertContains(t, out, "Created portable instructions")
+
+	assertFileContains(t, filepath.Join(e.home, ".cvm", "global", "profiles", "active", "portable", "instructions.md"), "# Profile Instructions")
+}
+
+func TestProfileAddHelpExplainsAuthoringLayers(t *testing.T) {
+	e := newTestEnv(t)
+
+	out := e.mustRun("profile", "add", "--help")
+	assertContains(t, out, "Portable assets")
+	assertContains(t, out, "Hooks are always harness-specific")
+}
+
 func TestLsShowsInUseProfiles(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
@@ -1124,6 +1187,18 @@ func assertFileContent(t *testing.T, path, want string) {
 	}
 	if strings.TrimSpace(string(data)) != want {
 		t.Fatalf("%s content = %q, want %q", path, strings.TrimSpace(string(data)), want)
+	}
+}
+
+func assertFileContains(t *testing.T, path, want string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if !strings.Contains(string(data), want) {
+		t.Fatalf("%s content should contain %q, got %q", path, want, string(data))
 	}
 }
 

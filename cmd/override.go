@@ -49,12 +49,20 @@ func overrideScope(cmd *cobra.Command) (config.Scope, string, string, error) {
 }
 
 func openEditor(path string) error {
+	return openEditorWithFallback(path, "Override path")
+}
+
+func openAssetEditor(path string) error {
+	return openEditorWithFallback(path, "Asset path")
+}
+
+func openEditorWithFallback(path, fallbackLabel string) error {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
 		editor = os.Getenv("VISUAL")
 	}
 	if editor == "" {
-		fmt.Printf("Override path: %s\n", path)
+		fmt.Printf("%s: %s\n", fallbackLabel, path)
 		return nil
 	}
 	cmd := exec.Command("sh", "-c", editor+" "+shellQuote(path))
