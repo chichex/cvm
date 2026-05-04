@@ -46,6 +46,14 @@ func (h testHarness) MarkdownInstructionsFile() string {
 	return "CONFIG.md"
 }
 
+func (h testHarness) SupportsPortableSkills() bool {
+	return false
+}
+
+func (h testHarness) SupportsPortableAgents() bool {
+	return false
+}
+
 func (h testHarness) IsUserMCPPath(profilePath string) bool {
 	return false
 }

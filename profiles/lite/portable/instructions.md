@@ -4,8 +4,8 @@
 
 | Skill | Que hace |
 |-------|----------|
-| `/go` | Subagent unificado; default Opus; `--codex` / `--gemini` para validacion externa |
-| `/r` | Review de sesion y persistencia de learnings en project memory. Soporta `/r --dry-run` |
+| `/go` | Agente unificado; default Opus; `--codex` / `--gemini` para validacion externa |
+| `/r` | Review de sesion y persistencia de learnings en memoria del proyecto. Soporta `/r --dry-run` |
 | `/ux` | Iteracion UX con validacion multi y HTML de alternativas |
 | `/che-idea` | Crear GitHub issue desde idea vaga; aplica `che:idea` + `ct:plan` |
 | `/che-explore` | Analizar issue, prepender plan consolidado y comentar paths/riesgos; aplica `che:planning` -> `che:plan` |
@@ -26,4 +26,4 @@
 
 ## Claude-Specific Behavior
 
-The current `lite` profile remains Claude-only. Its installed skills rely on Claude Code skills, project auto-memory under `~/.claude/projects/<path>/memory/`, and Claude-specific settings/MCP files. Other harnesses should use this file as the neutral starting point, not as a promise of full compatibility.
+The `lite` profile can be activated for Claude, OpenCode, and Codex, but only this neutral instruction file is portable today. Installed skills, project auto-memory under `~/.claude/projects/<path>/memory/`, and Claude-specific settings/MCP files remain Claude-specific. Other harnesses should use this file as the neutral starting point, not as a promise of full compatibility.

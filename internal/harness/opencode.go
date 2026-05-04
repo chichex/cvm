@@ -67,6 +67,14 @@ func (opencodeHarness) MarkdownInstructionsFile() string {
 	return "AGENTS.md"
 }
 
+func (opencodeHarness) SupportsPortableSkills() bool {
+	return true
+}
+
+func (opencodeHarness) SupportsPortableAgents() bool {
+	return true
+}
+
 func (opencodeHarness) IsUserMCPPath(profilePath string) bool {
 	return profilePath == "opencode.json"
 }

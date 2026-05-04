@@ -82,6 +82,14 @@ func (claudeHarness) MarkdownInstructionsFile() string {
 	return "CLAUDE.md"
 }
 
+func (claudeHarness) SupportsPortableSkills() bool {
+	return true
+}
+
+func (claudeHarness) SupportsPortableAgents() bool {
+	return true
+}
+
 func (claudeHarness) IsUserMCPPath(profilePath string) bool {
 	return profilePath == ".claude.json"
 }

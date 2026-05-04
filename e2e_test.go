@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	cvmprofile "github.com/chichex/cvm/internal/profile"
 )
 
 var cvmBin string
@@ -59,6 +61,8 @@ func (e *testEnv) run(args ...string) (string, error) {
 	cmd.Dir = e.projectDir
 	cmd.Env = append(os.Environ(),
 		"HOME="+e.home,
+		"CODEX_HOME=",
+		"OPENCODE_CONFIG_DIR=",
 	)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -89,7 +93,7 @@ func (e *testEnv) runWithEnv(extra map[string]string, args ...string) string {
 	e.t.Helper()
 	cmd := exec.Command(cvmBin, args...)
 	cmd.Dir = e.projectDir
-	env := append(os.Environ(), "HOME="+e.home)
+	env := append(os.Environ(), "HOME="+e.home, "CODEX_HOME=", "OPENCODE_CONFIG_DIR=")
 	for k, v := range extra {
 		env = append(env, k+"="+v)
 	}
@@ -376,6 +380,110 @@ func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	}
 	assertJSONKeyExists(t, filepath.Join(opencodeDir, "opencode.json"), "theme")
 	assertMCPServerNotExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
+}
+
+func TestPortableAssetsRenderForOpenCode(t *testing.T) {
+	e := newTestEnv(t)
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-open")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-open\"\nharnesses = [\"opencode\"]\n\n[assets]\nportable = \"portable\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "---\ndescription: Deploy app\n---\n")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "agents", "reviewer.md"), "# reviewer\n")
+
+	out := e.mustRun("use", "portable-open", "--harness", "opencode")
+	assertContains(t, out, "Switched opencode harness")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# portable instructions")
+	assertFileContent(t, filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md"), "---\ndescription: Deploy app\n---")
+	assertFileContent(t, filepath.Join(opencodeDir, "agents", "reviewer.md"), "# reviewer")
+
+	out = e.mustFail("use", "--none", "--harness", "opencode")
+	assertContains(t, out, "live changes cannot be saved safely")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "---\ndescription: Deploy app\n---")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "agents", "reviewer.md"), "# reviewer")
+	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("portable dir should not capture native AGENTS.md, got err %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "skills", "deploy", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("portable dir should not capture native skill layout, got err %v", err)
+	}
+}
+
+func TestHarnessAssetsOverrideRenderedPortableAssets(t *testing.T) {
+	e := newTestEnv(t)
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-open")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-open\"\nharnesses = [\"opencode\"]\n\n[assets]\nportable = \"portable\"\nopencode = \"opencode\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode override")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "skills", "deploy", "SKILL.md"), "opencode skill")
+
+	e.mustRun("use", "portable-open", "--harness", "opencode")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode override")
+	assertFileContent(t, filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md"), "opencode skill")
+
+	otherRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "other-open")
+	writeTestFile(t, filepath.Join(otherRoot, "cvm.profile.toml"), "name = \"other-open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
+	writeTestFile(t, filepath.Join(otherRoot, "opencode", "AGENTS.md"), "# other")
+	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# live edit")
+
+	e.mustRun("use", "other-open", "--harness", "opencode")
+	assertFileContent(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# live edit")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
+}
+
+func TestPortableInstructionsRenderForCodex(t *testing.T) {
+	e := newTestEnv(t)
+	codexDir := filepath.Join(e.home, ".codex")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-codex")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-codex\"\nharnesses = [\"codex\"]\n\n[assets]\nportable = \"portable\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# codex instructions")
+	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
+
+	out := e.mustRun("use", "portable-codex", "--harness", "codex")
+	assertContains(t, out, "Switched codex harness")
+	assertFileContent(t, filepath.Join(codexDir, "AGENTS.md"), "# codex instructions")
+	if _, err := os.Stat(filepath.Join(codexDir, "skills")); !os.IsNotExist(err) {
+		t.Fatalf("codex should not install portable skills without native support, got err %v", err)
+	}
+
+	out = e.mustFail("use", "--none", "--harness", "codex")
+	assertContains(t, out, "live changes cannot be saved safely")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# codex instructions")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
+	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("portable dir should not capture codex AGENTS.md, got err %v", err)
+	}
+}
+
+func TestLiteProfileActivatesForAllHarnesses(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# vanilla")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "lite")
+	if err := cvmprofile.CopyDir(filepath.Join("profiles", "lite"), profileRoot); err != nil {
+		t.Fatalf("copy lite profile: %v", err)
+	}
+
+	out := e.mustRun("use", "lite", "--harness", "claude")
+	assertContains(t, out, "Switched claude harness")
+	assertFileContains(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# Lite Profile")
+	writeTestFile(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# live lite edit")
+	out = e.mustFail("save")
+	assertContains(t, out, "live changes cannot be saved safely")
+	out = e.mustFail("use", "--none", "--harness", "claude")
+	assertContains(t, out, "live changes cannot be saved safely")
+	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "harnesses = [\"claude\", \"opencode\", \"codex\"]")
+	assertFileContains(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# Lite Profile")
+
+	out = e.mustRun("use", "lite", "--harness", "opencode")
+	assertContains(t, out, "Switched opencode harness")
+	assertFileContains(t, filepath.Join(e.home, ".config", "opencode", "AGENTS.md"), "# Lite Profile")
+
+	out = e.mustRun("use", "lite", "--harness", "codex")
+	assertContains(t, out, "Switched codex harness")
+	assertFileContains(t, filepath.Join(e.home, ".codex", "AGENTS.md"), "# Lite Profile")
 }
 
 func TestOpenCodeHarnessRestoreGlobalVanilla(t *testing.T) {

@@ -24,6 +24,8 @@ type Harness interface {
 	ExternalManagedPath() (ManagedPath, bool)
 	ProfileDiscoveryItems() []string
 	MarkdownInstructionsFile() string
+	SupportsPortableSkills() bool
+	SupportsPortableAgents() bool
 	IsUserMCPPath(profilePath string) bool
 	IsMCPPath(profilePath string) bool
 }
@@ -42,11 +44,13 @@ func ByName(name string) (Harness, bool) {
 		return Claude(), true
 	case "opencode":
 		return OpenCode(), true
+	case "codex":
+		return Codex(), true
 	default:
 		return nil, false
 	}
 }
 
 func All() []Harness {
-	return []Harness{Claude(), OpenCode()}
+	return []Harness{Claude(), OpenCode(), Codex()}
 }
