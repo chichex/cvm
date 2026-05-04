@@ -1,6 +1,5 @@
 name = "lite"
-harnesses = ["claude", "opencode", "codex"]
+harnesses = ["claude"]
 
 [assets]
-portable = "portable"
 claude = "."
