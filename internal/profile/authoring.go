@@ -156,12 +156,8 @@ func scaffoldAssetDir(profileDir string, manifest *Manifest, hadManifest bool, p
 			manifest.Assets["portable"] = "portable"
 			changed = true
 		}
-		if !hadManifest && manifest.SupportsHarness("claude") {
-			if _, ok := manifest.Assets["claude"]; !ok {
-				claude, _ := harness.ByName("claude")
-				manifest.Assets["claude"] = claude.DefaultAssetDir(profileDir)
-				changed = true
-			}
+		if !hadManifest {
+			changed = preserveLegacyRootAssetDirs(profileDir, manifest) || changed
 		}
 		assetDir, err := assetDirFromRaw(profileDir, manifest.Assets["portable"])
 		return assetDir, "portable", changed, err
@@ -177,6 +173,24 @@ func scaffoldAssetDir(profileDir string, manifest *Manifest, hadManifest bool, p
 	}
 	assetDir, err := assetDirFromRaw(profileDir, manifest.Assets[h.Name()])
 	return assetDir, h.Name(), changed, err
+}
+
+func preserveLegacyRootAssetDirs(profileDir string, manifest *Manifest) bool {
+	changed := false
+	for _, harnessName := range manifest.Harnesses {
+		if _, ok := manifest.Assets[harnessName]; ok {
+			continue
+		}
+		h, ok := harness.ByName(harnessName)
+		if !ok {
+			continue
+		}
+		if h.DefaultAssetDir(profileDir) == "." {
+			manifest.Assets[harnessName] = "."
+			changed = true
+		}
+	}
+	return changed
 }
 
 func assetDirFromRaw(profileDir, raw string) (string, error) {

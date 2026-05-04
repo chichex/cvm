@@ -529,7 +529,6 @@ func TestProfileAddScaffoldsPortableAssets(t *testing.T) {
 	assertFileContains(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# Profile Instructions")
 	assertFileContains(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# Profile Instructions")
 	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "portable = \"portable\"")
-	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "claude = \"claude\"")
 	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "opencode = \"opencode\"")
 }
 
@@ -595,7 +594,9 @@ func TestProfileAddDefaultsToActiveProfile(t *testing.T) {
 	out := e.mustRun("profile", "add", "instructions")
 	assertContains(t, out, "Created portable instructions")
 
-	assertFileContains(t, filepath.Join(e.home, ".cvm", "global", "profiles", "active", "portable", "instructions.md"), "# Profile Instructions")
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "active")
+	assertFileContains(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# Profile Instructions")
+	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "claude = \".\"")
 }
 
 func TestProfileAddHelpExplainsAuthoringLayers(t *testing.T) {
