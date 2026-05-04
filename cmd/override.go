@@ -37,9 +37,9 @@ func overrideScope(cmd *cobra.Command) (config.Scope, string, string, error) {
 
 	var active string
 	if scope == config.ScopeGlobal {
-		active = st.Global.Active
+		active = st.GetGlobalHarness(defaultHarnessName)
 	} else {
-		active = st.GetLocal(projectPath)
+		active = st.GetLocalHarness(projectPath, defaultHarnessName)
 	}
 	if active == "" {
 		return "", "", "", fmt.Errorf("no active %s profile", scope)

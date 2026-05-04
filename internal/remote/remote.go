@@ -264,11 +264,11 @@ func Pull(profileName string) ([]string, error) {
 		// the profile dir first, which would overwrite what we just pulled)
 		var active string
 		if scope == config.ScopeGlobal {
-			active = st.Global.Active
+			active = st.GetGlobalHarness("claude")
 		} else {
 			projectPath := resolveLocalProjectPath(st, r)
 			if projectPath != "" {
-				active = st.GetLocal(projectPath)
+				active = st.GetLocalHarness(projectPath, "claude")
 				r.ProjectPath = projectPath
 			}
 		}
@@ -314,8 +314,8 @@ func resolveLocalProjectPath(st *state.State, r state.Remote) string {
 	}
 
 	var match string
-	for projectPath, local := range st.Local {
-		if local.Active != r.Profile {
+	for projectPath := range st.Local {
+		if st.GetLocalHarness(projectPath, "claude") != r.Profile {
 			continue
 		}
 		if match != "" {

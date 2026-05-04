@@ -67,6 +67,7 @@ When adding from a repo without a path, cvm auto-discovers the profile:
 ```bash
 cvm use work            # activate globally (~/.claude/)
 cvm use work --local    # activate for current project (.claude/)
+cvm use work --harness claude
 cvm use --none          # back to vanilla
 ```
 
@@ -92,11 +93,13 @@ cvm upgrade             # upgrade cvm itself to the latest version
 cvm nuke                # remove ALL managed config (global + local)
 cvm nuke --global       # only global
 cvm nuke --local        # only local project
+cvm nuke --harness claude
 cvm nuke -f             # skip confirmation
 
 cvm restore             # restore pre-cvm state from vanilla backup
 cvm restore --global    # only global
 cvm restore --local     # only local
+cvm restore --harness claude
 ```
 
 ### Remote management
@@ -109,7 +112,8 @@ cvm remote rm chiche   # unlink from remote (keeps local copy)
 ### Inspect
 
 ```bash
-cvm status             # show active profiles (global + local)
+cvm status             # show active profiles by harness (global + local)
+cvm status --harness claude
 cvm profile            # inspect active profile contents
 cvm profile show work  # inspect a specific stored profile
 ```

@@ -15,6 +15,10 @@ var restoreCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		globalOnly, _ := cmd.Flags().GetBool("global")
 		localOnly, _ := cmd.Flags().GetBool("local")
+		harnesses, err := selectedHarnesses(cmd)
+		if err != nil {
+			return err
+		}
 
 		if !globalOnly && !localOnly {
 			globalOnly = true
@@ -27,15 +31,19 @@ var restoreCmd = &cobra.Command{
 		}
 
 		if globalOnly {
-			if !profile.HasVanilla(config.ScopeGlobal, "") {
-				fmt.Println("No vanilla backup found for global config")
-			} else {
-				profile.Nuke(config.ScopeGlobal, "")
-				if err := profile.RestoreVanilla(config.ScopeGlobal, ""); err != nil {
-					return fmt.Errorf("restoring global: %w", err)
+			for _, h := range harnesses {
+				if !profile.HasVanillaWithHarness(config.ScopeGlobal, "", h) {
+					fmt.Printf("No vanilla backup found for global %s config\n", h.Name())
+				} else {
+					if err := profile.NukeWithHarness(config.ScopeGlobal, "", h); err != nil {
+						return fmt.Errorf("nuking global %s: %w", h.Name(), err)
+					}
+					if err := profile.RestoreVanillaWithHarness(config.ScopeGlobal, "", h); err != nil {
+						return fmt.Errorf("restoring global %s: %w", h.Name(), err)
+					}
+					st.ClearGlobalHarness(h.Name())
+					fmt.Printf("Restored global config to vanilla (%s harness)\n", h.Name())
 				}
-				st.SetGlobal("")
-				fmt.Println("Restored global config to vanilla")
 			}
 		}
 
@@ -44,15 +52,19 @@ var restoreCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			if !profile.HasVanilla(config.ScopeLocal, projectPath) {
-				fmt.Println("No vanilla backup found for local config")
-			} else {
-				profile.Nuke(config.ScopeLocal, projectPath)
-				if err := profile.RestoreVanilla(config.ScopeLocal, projectPath); err != nil {
-					return fmt.Errorf("restoring local: %w", err)
+			for _, h := range harnesses {
+				if !profile.HasVanillaWithHarness(config.ScopeLocal, projectPath, h) {
+					fmt.Printf("No vanilla backup found for local %s config\n", h.Name())
+				} else {
+					if err := profile.NukeWithHarness(config.ScopeLocal, projectPath, h); err != nil {
+						return fmt.Errorf("nuking local %s: %w", h.Name(), err)
+					}
+					if err := profile.RestoreVanillaWithHarness(config.ScopeLocal, projectPath, h); err != nil {
+						return fmt.Errorf("restoring local %s: %w", h.Name(), err)
+					}
+					st.ClearLocalHarness(projectPath, h.Name())
+					fmt.Printf("Restored local config to vanilla (%s harness)\n", h.Name())
 				}
-				st.ClearLocal(projectPath)
-				fmt.Println("Restored local config to vanilla")
 			}
 		}
 
@@ -63,4 +75,5 @@ var restoreCmd = &cobra.Command{
 func init() {
 	restoreCmd.Flags().Bool("global", false, "Only restore global")
 	restoreCmd.Flags().Bool("local", false, "Only restore local")
+	restoreCmd.Flags().String("harness", "", "Only restore one harness")
 }
