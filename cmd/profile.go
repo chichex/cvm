@@ -2,12 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/spf13/cobra"
 )
@@ -16,44 +14,15 @@ var profileCmd = &cobra.Command{
 	Use:   "profile",
 	Short: "Inspect and author profile contents",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cwd, err := os.Getwd()
+		active, err := profile.Current()
 		if err != nil {
 			return err
 		}
-
-		globalName, err := profile.Current(config.ScopeGlobal, "")
-		if err != nil {
-			return err
-		}
-		localName, err := profile.Current(config.ScopeLocal, cwd)
-		if err != nil {
-			return err
-		}
-
-		if globalName == "" && localName == "" {
+		if active == "" {
 			fmt.Println("No active profiles")
 			return nil
 		}
-
-		if globalName != "" {
-			if err := printInventory(config.ScopeGlobal, globalName, ""); err != nil {
-				return err
-			}
-		} else {
-			fmt.Println("Global profile: (vanilla)")
-		}
-
-		fmt.Println()
-
-		if localName != "" {
-			if err := printInventory(config.ScopeLocal, localName, cwd); err != nil {
-				return err
-			}
-		} else {
-			fmt.Println("Local profile: (vanilla)")
-		}
-
-		return nil
+		return printInventory(active)
 	},
 }
 
@@ -62,19 +31,7 @@ var profileShowCmd = &cobra.Command{
 	Short: "Inspect a specific stored profile",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		isLocal, _ := cmd.Flags().GetBool("local")
-		scope := config.ScopeGlobal
-		projectPath := ""
-		if isLocal {
-			scope = config.ScopeLocal
-			var err error
-			projectPath, err = getProjectPath()
-			if err != nil {
-				return err
-			}
-		}
-
-		return printInventory(scope, args[0], projectPath)
+		return printInventory(args[0])
 	},
 }
 
@@ -97,26 +54,14 @@ activation flow.`,
   cvm profile add skill deploy --profile work --harness opencode --from-file ./deploy.md`,
 	Args: validateProfileAddArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		isLocal, _ := cmd.Flags().GetBool("local")
-		scope := config.ScopeGlobal
-		projectPath := ""
-		if isLocal {
-			scope = config.ScopeLocal
-			var err error
-			projectPath, err = getProjectPath()
-			if err != nil {
-				return err
-			}
-		}
-
 		profileName, _ := cmd.Flags().GetString("profile")
 		if profileName == "" {
-			current, err := profile.Current(scope, projectPath)
+			current, err := profile.Current()
 			if err != nil {
 				return err
 			}
 			if current == "" {
-				return fmt.Errorf("no active %s profile; pass --profile <name>", scope)
+				return fmt.Errorf("no active profile; pass --profile <name>")
 			}
 			profileName = current
 		}
@@ -131,9 +76,7 @@ activation flow.`,
 		}
 
 		asset, err := profile.ScaffoldAsset(profile.ScaffoldAssetOptions{
-			Scope:       scope,
 			ProfileName: profileName,
-			ProjectPath: projectPath,
 			Kind:        args[0],
 			Name:        name,
 			HarnessName: harnessName,
@@ -149,7 +92,7 @@ activation flow.`,
 			fmt.Printf("Profile asset already exists: %s\n", asset.Path)
 		}
 		if asset.ManifestCreated {
-			fmt.Printf("Created manifest: %s\n", filepath.Join(profile.ProfileDir(scope, profileName), "cvm.profile.toml"))
+			fmt.Printf("Created manifest: %s\n", filepath.Join(profile.ProfileDir(profileName), "cvm.profile.toml"))
 		}
 		if asset.Portable {
 			fmt.Println("Note: portable assets are authored now; harness rendering is planned separately.")
@@ -163,11 +106,9 @@ activation flow.`,
 
 func init() {
 	profileAddCmd.Flags().String("profile", "", "Profile to edit (default: active profile in selected scope)")
-	profileAddCmd.Flags().Bool("local", false, "Edit a local profile (default: global)")
 	profileAddCmd.Flags().String("harness", "", "Write a harness-specific asset instead of a portable asset")
 	profileAddCmd.Flags().String("from-file", "", "Seed the asset from an existing file")
 	profileAddCmd.Flags().Bool("open", false, "Open the scaffolded asset in $EDITOR")
-	profileShowCmd.Flags().Bool("local", false, "Inspect a local profile (default: global)")
 	profileCmd.AddCommand(profileAddCmd)
 	profileCmd.AddCommand(profileShowCmd)
 	rootCmd.AddCommand(profileCmd)
@@ -192,18 +133,17 @@ func validateProfileAddArgs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func printInventory(scope config.Scope, name, projectPath string) error {
-	inv, err := profile.Inspect(scope, name, projectPath)
+func printInventory(name string) error {
+	inv, err := profile.Inspect(name)
 	if err != nil {
 		return err
 	}
-	label := titleWord(string(scope))
 	if !inv.Exists {
-		fmt.Printf("%s profile %q not found\n", label, name)
+		fmt.Printf("Profile %q not found\n", name)
 		return nil
 	}
 
-	fmt.Printf("%s profile: %s\n", label, inv.Name)
+	fmt.Printf("Profile: %s\n", inv.Name)
 	fmt.Printf("Path: %s\n", inv.Path)
 
 	if len(inv.Files) == 0 && len(inv.Dirs) == 0 {

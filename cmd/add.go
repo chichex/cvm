@@ -5,7 +5,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/remote"
 	"github.com/spf13/cobra"
@@ -24,46 +23,33 @@ Examples:
   cvm add chiche                                         # empty profile
   cvm add chiche --from work                             # copy from "work"
   cvm add chiche github.com/chichex/cvm/profiles/chiche  # from repo
-  cvm add chiche chichex/cvm/profiles/chiche              # shorthand
-  cvm add chiche --local                                  # local to project`,
+  cvm add chiche chichex/cvm/profiles/chiche              # shorthand`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
-		local, _ := cmd.Flags().GetBool("local")
 		from, _ := cmd.Flags().GetString("from")
-
-		scope := config.ScopeGlobal
-		projectPath := ""
-		if local {
-			scope = config.ScopeLocal
-			var err error
-			projectPath, err = getProjectPath()
-			if err != nil {
-				return err
-			}
-		}
 
 		// URL provided: clone from remote
 		if len(args) == 2 {
 			url := args[1]
 			repo, repoPath := parseURL(url)
 
-			if err := remote.Add(name, repo, repoPath, "", scope, projectPath); err != nil {
+			if err := remote.Add(name, repo, repoPath, ""); err != nil {
 				return err
 			}
 
-			fmt.Printf("Added profile %q from %s (%s)\n", name, repo, scope)
-			fmt.Printf("  activate: %s\n", useCommand(name, scope))
+			fmt.Printf("Added profile %q from %s\n", name, repo)
+			fmt.Printf("  activate: %s\n", useCommand(name))
 			fmt.Printf("  update:   cvm pull %s\n", name)
 			return nil
 		}
 
 		// No URL: create empty or copy from another
-		if err := profile.Init(scope, name, from, projectPath); err != nil {
+		if err := profile.Init(name, from); err != nil {
 			return err
 		}
-		fmt.Printf("Created profile %q (%s)\n", name, scope)
-		fmt.Printf("  activate: %s\n", useCommand(name, scope))
+		fmt.Printf("Created profile %q\n", name)
+		fmt.Printf("  activate: %s\n", useCommand(name))
 		return nil
 	},
 }
@@ -111,13 +97,9 @@ func parseURL(url string) (repo, repoPath string) {
 }
 
 func init() {
-	addCmd.Flags().Bool("local", false, "Create as local profile (default: global)")
 	addCmd.Flags().String("from", "", "Copy from existing profile")
 }
 
-func useCommand(name string, scope config.Scope) string {
-	if scope == config.ScopeLocal {
-		return fmt.Sprintf("cvm use %s --local", name)
-	}
+func useCommand(name string) string {
 	return fmt.Sprintf("cvm use %s", name)
 }

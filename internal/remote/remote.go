@@ -98,7 +98,7 @@ func discoverProfilePath(cacheDir, profileName string) (string, error) {
 }
 
 // Add registers a remote profile source and clones it.
-func Add(profileName, repo, path, branch string, scope config.Scope, projectPath string) error {
+func Add(profileName, repo, path, branch string) error {
 	if branch == "" {
 		branch = "main"
 	}
@@ -145,7 +145,7 @@ func Add(profileName, repo, path, branch string, scope config.Scope, projectPath
 	}
 
 	// Copy to profile
-	profileDir := profile.ProfileDir(scope, profileName)
+	profileDir := profile.ProfileDir(profileName)
 	if _, err := os.Stat(profileDir); err == nil {
 		fmt.Printf("  profile %q already exists, updating...\n", profileName)
 		entries, err := os.ReadDir(profileDir)
@@ -176,12 +176,10 @@ func Add(profileName, repo, path, branch string, scope config.Scope, projectPath
 		st.Remotes = make(map[string]state.Remote)
 	}
 	st.PutRemote(state.Remote{
-		Repo:        repo,
-		Path:        path,
-		Branch:      branch,
-		Scope:       string(scope),
-		Profile:     profileName,
-		ProjectPath: projectPath,
+		Repo:    repo,
+		Path:    path,
+		Branch:  branch,
+		Profile: profileName,
 	})
 	return st.Save()
 }
@@ -237,8 +235,7 @@ func Pull(profileName string) ([]string, error) {
 			continue
 		}
 
-		scope := config.Scope(r.Scope)
-		profileDir := profile.ProfileDir(scope, name)
+		profileDir := profile.ProfileDir(name)
 
 		// Clear and re-copy
 		entries, err := os.ReadDir(profileDir)
@@ -262,23 +259,10 @@ func Pull(profileName string) ([]string, error) {
 		// If this profile is currently active, re-apply directly
 		// (don't use profile.Use() because it saves ~/.claude/ back to
 		// the profile dir first, which would overwrite what we just pulled)
-		var active string
-		if scope == config.ScopeGlobal {
-			active = st.GetGlobalHarness("claude")
-		} else {
-			projectPath := resolveLocalProjectPath(st, r)
-			if projectPath != "" {
-				active = st.GetLocalHarness(projectPath, "claude")
-				r.ProjectPath = projectPath
-			}
-		}
+		active := st.GetGlobalHarness("claude")
 		if active == name {
 			fmt.Printf("  re-applying active profile %q...\n", name)
-			if scope == config.ScopeLocal && r.ProjectPath == "" {
-				fmt.Printf("  warning: cannot re-apply local profile %q without a project path\n", name)
-				continue
-			}
-			if err := profile.Reapply(scope, name, r.ProjectPath); err != nil {
+			if err := profile.Reapply(name); err != nil {
 				fmt.Printf("  warning: re-apply failed for active profile %s: %v\n", name, err)
 			}
 		}
@@ -308,27 +292,6 @@ func Remove(profileName string) error {
 	return st.Save()
 }
 
-func resolveLocalProjectPath(st *state.State, r state.Remote) string {
-	if r.ProjectPath != "" {
-		return r.ProjectPath
-	}
-
-	var match string
-	for projectPath := range st.Local {
-		if st.GetLocalHarness(projectPath, "claude") != r.Profile {
-			continue
-		}
-		if match != "" {
-			return ""
-		}
-		match = projectPath
-	}
-	return match
-}
-
 func updatedLabel(r state.Remote) string {
-	if r.Scope == string(config.ScopeLocal) {
-		return fmt.Sprintf("%s (local)", r.Profile)
-	}
-	return fmt.Sprintf("%s (global)", r.Profile)
+	return r.Profile
 }

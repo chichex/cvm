@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/settings"
 	"github.com/spf13/cobra"
@@ -36,15 +35,11 @@ var bypassCmd = &cobra.Command{
 }
 
 func init() {
-	bypassCmd.Flags().Bool("global", false, "Affect the active global profile")
-	bypassCmd.Flags().Bool("local", false, "Affect the active local profile")
 }
 
 type bypassTarget struct {
-	scope       config.Scope
 	profileName string
 	overrideDir string
-	projectPath string
 }
 
 func showBypassStatus(cmd *cobra.Command) error {
@@ -66,7 +61,7 @@ func showBypassStatus(cmd *cobra.Command) error {
 		if mode == "" {
 			mode = "(default)"
 		}
-		fmt.Printf("%s profile %q: %s\n", target.scope, target.profileName, mode)
+		fmt.Printf("profile %q: %s\n", target.profileName, mode)
 	}
 	return nil
 }
@@ -100,10 +95,10 @@ func enableBypass(cmd *cobra.Command) error {
 			return err
 		}
 
-		if err := profile.Reapply(target.scope, target.profileName, target.projectPath); err != nil {
+		if err := profile.Reapply(target.profileName); err != nil {
 			return err
 		}
-		fmt.Printf("%s profile %q: bypassPermissions\n", target.scope, target.profileName)
+		fmt.Printf("profile %q: bypassPermissions\n", target.profileName)
 	}
 
 	return nil
@@ -134,74 +129,23 @@ func disableBypass(cmd *cobra.Command) error {
 			}
 		}
 
-		if err := profile.Reapply(target.scope, target.profileName, target.projectPath); err != nil {
+		if err := profile.Reapply(target.profileName); err != nil {
 			return err
 		}
-		fmt.Printf("%s profile %q: default\n", target.scope, target.profileName)
+		fmt.Printf("profile %q: default\n", target.profileName)
 	}
 
 	return nil
 }
 
 func activeBypassTargets(cmd *cobra.Command) ([]bypassTarget, error) {
-	useGlobal, _ := cmd.Flags().GetBool("global")
-	useLocal, _ := cmd.Flags().GetBool("local")
-
-	projectPath, err := getProjectPath()
+	name, err := profile.Current()
 	if err != nil {
 		return nil, err
 	}
-
-	type scopeSelection struct {
-		scope       config.Scope
-		projectPath string
+	if name == "" {
+		return nil, nil
 	}
 
-	var selections []scopeSelection
-	switch {
-	case useGlobal && useLocal:
-		selections = []scopeSelection{
-			{scope: config.ScopeGlobal, projectPath: ""},
-			{scope: config.ScopeLocal, projectPath: projectPath},
-		}
-	case useGlobal:
-		selections = []scopeSelection{{scope: config.ScopeGlobal, projectPath: ""}}
-	case useLocal:
-		selections = []scopeSelection{{scope: config.ScopeLocal, projectPath: projectPath}}
-	default:
-		globalName, err := profile.Current(config.ScopeGlobal, "")
-		if err != nil {
-			return nil, err
-		}
-		localName, err := profile.Current(config.ScopeLocal, projectPath)
-		if err != nil {
-			return nil, err
-		}
-
-		if globalName != "" {
-			selections = append(selections, scopeSelection{scope: config.ScopeGlobal, projectPath: ""})
-		}
-		if localName != "" {
-			selections = append(selections, scopeSelection{scope: config.ScopeLocal, projectPath: projectPath})
-		}
-	}
-
-	var targets []bypassTarget
-	for _, selection := range selections {
-		name, err := profile.Current(selection.scope, selection.projectPath)
-		if err != nil {
-			return nil, err
-		}
-		if name == "" {
-			continue
-		}
-		targets = append(targets, bypassTarget{
-			scope:       selection.scope,
-			profileName: name,
-			overrideDir: profile.OverrideDir(selection.scope, name, selection.projectPath),
-			projectPath: selection.projectPath,
-		})
-	}
-
-	return targets, nil
+	return []bypassTarget{{profileName: name, overrideDir: profile.OverrideDir(name)}}, nil
 }

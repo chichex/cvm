@@ -18,10 +18,7 @@ func (h testHarness) Name() string {
 	return h.name
 }
 
-func (h testHarness) TargetDir(scope config.Scope, projectPath string) string {
-	if scope == config.ScopeLocal {
-		return filepath.Join(projectPath, "."+h.name)
-	}
+func (h testHarness) TargetDir() string {
 	return h.targetDir
 }
 
@@ -37,7 +34,7 @@ func (h testHarness) ManagedDirItems() []string {
 	return []string{"CONFIG.md"}
 }
 
-func (h testHarness) ExternalManagedPath(scope config.Scope, projectPath string) (harness.ManagedPath, bool) {
+func (h testHarness) ExternalManagedPath() (harness.ManagedPath, bool) {
 	return harness.ManagedPath{}, false
 }
 
@@ -68,7 +65,7 @@ func TestVanillaBackupIsScopedByHarness(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(claudeDir, "CLAUDE.md"), []byte("claude vanilla"), 0644); err != nil {
 		t.Fatalf("write claude vanilla: %v", err)
 	}
-	if err := EnsureVanillaWithHarness(config.ScopeGlobal, "", harness.Claude()); err != nil {
+	if err := EnsureVanillaWithHarness(harness.Claude()); err != nil {
 		t.Fatalf("ensure claude vanilla: %v", err)
 	}
 
@@ -82,7 +79,7 @@ func TestVanillaBackupIsScopedByHarness(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(other.targetDir, "CONFIG.md"), []byte("opencode vanilla"), 0644); err != nil {
 		t.Fatalf("write other harness vanilla: %v", err)
 	}
-	if err := EnsureVanillaWithHarness(config.ScopeGlobal, "", other); err != nil {
+	if err := EnsureVanillaWithHarness(other); err != nil {
 		t.Fatalf("ensure other harness vanilla: %v", err)
 	}
 

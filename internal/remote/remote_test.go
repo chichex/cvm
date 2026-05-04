@@ -6,86 +6,30 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/harness"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/state"
 )
 
-func TestPullReappliesActiveLocalProfile(t *testing.T) {
+func TestPullByProfileUpdatesAndReappliesActiveProfile(t *testing.T) {
 	home := t.TempDir()
-	project := filepath.Join(home, "project")
 
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", withFakeGit(t))
 
-	writeFile(t, filepath.Join(project, ".claude", "CLAUDE.md"), "old local active")
-	writeFile(t, filepath.Join(profile.ProfileDir(config.ScopeLocal, "work"), "CLAUDE.md"), "old saved profile")
-	writeFile(t, filepath.Join(CacheDirFor("example/local"), "profiles", "work", "CLAUDE.md"), "new remote local")
+	writeFile(t, filepath.Join(harness.Claude().TargetDir(), "CLAUDE.md"), "old active")
+	writeFile(t, filepath.Join(profile.ProfileDir("work"), "CLAUDE.md"), "old profile")
+	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "work", "CLAUDE.md"), "new remote")
 
 	st := &state.State{
-		Local:   make(map[string]state.LocalState),
-		Remotes: make(map[string]state.Remote),
-	}
-	st.SetLocal(project, "work")
-	st.PutRemote(state.Remote{
-		Repo:        "example/local",
-		Path:        filepath.Join("profiles", "work"),
-		Branch:      "main",
-		Scope:       string(config.ScopeLocal),
-		Profile:     "work",
-		ProjectPath: project,
-	})
-	if err := st.Save(); err != nil {
-		t.Fatalf("save state: %v", err)
-	}
-
-	updated, err := Pull("work")
-	if err != nil {
-		t.Fatalf("pull: %v", err)
-	}
-	if len(updated) != 1 || updated[0] != "work (local)" {
-		t.Fatalf("unexpected updated profiles: %v", updated)
-	}
-
-	assertFileContent(t, filepath.Join(profile.ProfileDir(config.ScopeLocal, "work"), "CLAUDE.md"), "new remote local")
-	assertFileContent(t, filepath.Join(project, ".claude", "CLAUDE.md"), "new remote local")
-}
-
-func TestPullByProfileUpdatesGlobalAndLocalMatches(t *testing.T) {
-	home := t.TempDir()
-	project := filepath.Join(home, "project")
-
-	t.Setenv("HOME", home)
-	t.Setenv("PATH", withFakeGit(t))
-
-	writeFile(t, filepath.Join(harness.Claude().TargetDir(config.ScopeGlobal, ""), "CLAUDE.md"), "old global active")
-	writeFile(t, filepath.Join(project, ".claude", "CLAUDE.md"), "old local active")
-	writeFile(t, filepath.Join(profile.ProfileDir(config.ScopeGlobal, "work"), "CLAUDE.md"), "old global profile")
-	writeFile(t, filepath.Join(profile.ProfileDir(config.ScopeLocal, "work"), "CLAUDE.md"), "old local profile")
-	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "work", "CLAUDE.md"), "new remote global")
-	writeFile(t, filepath.Join(CacheDirFor("example/local"), "profiles", "work", "CLAUDE.md"), "new remote local")
-
-	st := &state.State{
-		Local:   make(map[string]state.LocalState),
 		Remotes: make(map[string]state.Remote),
 	}
 	st.SetGlobal("work")
-	st.SetLocal(project, "work")
 	st.PutRemote(state.Remote{
 		Repo:    "example/global",
 		Path:    filepath.Join("profiles", "work"),
 		Branch:  "main",
-		Scope:   string(config.ScopeGlobal),
 		Profile: "work",
-	})
-	st.PutRemote(state.Remote{
-		Repo:        "example/local",
-		Path:        filepath.Join("profiles", "work"),
-		Branch:      "main",
-		Scope:       string(config.ScopeLocal),
-		Profile:     "work",
-		ProjectPath: project,
 	})
 	if err := st.Save(); err != nil {
 		t.Fatalf("save state: %v", err)
@@ -95,12 +39,11 @@ func TestPullByProfileUpdatesGlobalAndLocalMatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pull: %v", err)
 	}
-	if len(updated) != 2 {
-		t.Fatalf("expected both remotes to update, got %v", updated)
+	if len(updated) != 1 || updated[0] != "work" {
+		t.Fatalf("unexpected updated profiles: %v", updated)
 	}
 
-	assertFileContent(t, filepath.Join(harness.Claude().TargetDir(config.ScopeGlobal, ""), "CLAUDE.md"), "new remote global")
-	assertFileContent(t, filepath.Join(project, ".claude", "CLAUDE.md"), "new remote local")
+	assertFileContent(t, filepath.Join(harness.Claude().TargetDir(), "CLAUDE.md"), "new remote")
 }
 
 func TestLooksLikeProfileWithManifestBackedClaudeAssets(t *testing.T) {
@@ -114,12 +57,12 @@ func TestLooksLikeProfileWithManifestBackedClaudeAssets(t *testing.T) {
 	}
 }
 
-func TestLooksLikeProfileDetectsLocalMCPOnlyClaudeProfile(t *testing.T) {
+func TestLooksLikeProfileIgnoresProjectMCPOnlyClaudeProfile(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, ".mcp.json"), `{"mcpServers":{"local":{}}}`)
 
-	if !looksLikeProfile(root) {
-		t.Fatal("expected .mcp.json-only Claude profile to be detected")
+	if looksLikeProfile(root) {
+		t.Fatal("expected .mcp.json-only profile to be ignored")
 	}
 }
 

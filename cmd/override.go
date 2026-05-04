@@ -8,44 +8,26 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/harness"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/state"
 	"github.com/spf13/cobra"
 )
 
-// overrideScope returns the scope, active profile name, and project path.
-// It errors if no profile is active for the given scope.
-func overrideScope(cmd *cobra.Command) (config.Scope, string, string, error) {
-	isLocal, _ := cmd.Flags().GetBool("local")
-	scope := config.ScopeGlobal
-	projectPath := ""
-	if isLocal {
-		scope = config.ScopeLocal
-		var err error
-		projectPath, err = getProjectPath()
-		if err != nil {
-			return "", "", "", err
-		}
-	}
-
+// overrideProfile returns the active profile name.
+// It errors if no profile is active.
+func overrideProfile(cmd *cobra.Command) (string, error) {
 	st, err := state.Load()
 	if err != nil {
-		return "", "", "", err
+		return "", err
 	}
 
-	var active string
-	if scope == config.ScopeGlobal {
-		active = st.GetGlobalHarness(defaultHarnessName)
-	} else {
-		active = st.GetLocalHarness(projectPath, defaultHarnessName)
-	}
+	active := st.GetGlobalHarness(defaultHarnessName)
 	if active == "" {
-		return "", "", "", fmt.Errorf("no active %s profile", scope)
+		return "", fmt.Errorf("no active profile")
 	}
 
-	return scope, active, projectPath, nil
+	return active, nil
 }
 
 func openEditor(path string) error {
@@ -86,11 +68,11 @@ var overrideLsCmd = &cobra.Command{
 	Use:   "ls",
 	Short: "List overrides for the active profile",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		scope, active, projectPath, err := overrideScope(cmd)
+		active, err := overrideProfile(cmd)
 		if err != nil {
 			return err
 		}
-		dir := profile.OverrideDir(scope, active, projectPath)
+		dir := profile.OverrideDir(active)
 
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -133,11 +115,11 @@ var overrideAddCmd = &cobra.Command{
 	Short: "Add a scaffold override file (skill, hook, agent, rule, command)",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		scope, active, projectPath, err := overrideScope(cmd)
+		active, err := overrideProfile(cmd)
 		if err != nil {
 			return err
 		}
-		dir := profile.OverrideDir(scope, active, projectPath)
+		dir := profile.OverrideDir(active)
 		kind := args[0]
 		name := args[1]
 
@@ -191,11 +173,11 @@ var overrideEditCmd = &cobra.Command{
 	Use:   "edit",
 	Short: "Open the override directory in $EDITOR",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		scope, active, projectPath, err := overrideScope(cmd)
+		active, err := overrideProfile(cmd)
 		if err != nil {
 			return err
 		}
-		dir := profile.OverrideDir(scope, active, projectPath)
+		dir := profile.OverrideDir(active)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
@@ -208,11 +190,11 @@ var overrideRmCmd = &cobra.Command{
 	Short: "Remove an override file (skill, hook, agent, rule, command)",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		scope, active, projectPath, err := overrideScope(cmd)
+		active, err := overrideProfile(cmd)
 		if err != nil {
 			return err
 		}
-		dir := profile.OverrideDir(scope, active, projectPath)
+		dir := profile.OverrideDir(active)
 		kind := args[0]
 		name := args[1]
 
@@ -252,33 +234,21 @@ var overrideSetCmd = &cobra.Command{
 	Short: "Capture a live file into the override dir",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		scope, active, projectPath, err := overrideScope(cmd)
+		active, err := overrideProfile(cmd)
 		if err != nil {
 			return err
 		}
 		filename := args[0]
-
-		// Validate scope-file compatibility early
-		if filename == ".claude.json" && scope == config.ScopeLocal {
-			return fmt.Errorf(".claude.json is only valid for global profiles — use .mcp.json for local profiles")
-		}
-		if filename == ".mcp.json" && scope == config.ScopeGlobal {
-			return fmt.Errorf(".mcp.json is only valid for local profiles — use .claude.json for global profiles")
+		if filename == ".mcp.json" {
+			return fmt.Errorf(".mcp.json is project-local and is no longer managed by cvm")
 		}
 
 		claude := harness.Claude()
-
-		// Determine live directory
-		var liveDir string
-		if scope == config.ScopeGlobal {
-			liveDir = claude.TargetDir(config.ScopeGlobal, "")
-		} else {
-			liveDir = claude.TargetDir(config.ScopeLocal, projectPath)
-		}
+		liveDir := claude.TargetDir()
 
 		// Find the correct source file path
 		var src string
-		if extra, ok := claude.ExternalManagedPath(scope, projectPath); ok && filename == extra.ProfilePath {
+		if extra, ok := claude.ExternalManagedPath(); ok && filename == extra.ProfilePath {
 			src = extra.LivePath
 		} else {
 			src = filepath.Join(liveDir, filename)
@@ -292,7 +262,7 @@ var overrideSetCmd = &cobra.Command{
 				break
 			}
 		}
-		if extra, ok := claude.ExternalManagedPath(scope, projectPath); ok && filename == extra.ProfilePath {
+		if extra, ok := claude.ExternalManagedPath(); ok && filename == extra.ProfilePath {
 			known = true
 		}
 		if !known {
@@ -308,7 +278,7 @@ var overrideSetCmd = &cobra.Command{
 			return fmt.Errorf("%q is a directory — use 'cvm override add' for directory-type items", filename)
 		}
 
-		overDir := profile.OverrideDir(scope, active, projectPath)
+		overDir := profile.OverrideDir(active)
 		dst := filepath.Join(overDir, filename)
 		if err := profile.CopyFile(src, dst); err != nil {
 			return err
@@ -322,13 +292,13 @@ var overrideShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show a structured inventory of the active profile's overrides",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		scope, active, projectPath, err := overrideScope(cmd)
+		active, err := overrideProfile(cmd)
 		if err != nil {
 			return err
 		}
-		dir := profile.OverrideDir(scope, active, projectPath)
+		dir := profile.OverrideDir(active)
 
-		fmt.Printf("Profile:  %s (%s)\n", active, scope)
+		fmt.Printf("Profile:  %s\n", active)
 		fmt.Printf("Override: %s\n", dir)
 
 		entries, err := os.ReadDir(dir)
@@ -392,23 +362,19 @@ var overrideApplyCmd = &cobra.Command{
 	Use:   "apply",
 	Short: "Re-apply the active profile (including overrides)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		scope, active, projectPath, err := overrideScope(cmd)
+		active, err := overrideProfile(cmd)
 		if err != nil {
 			return err
 		}
-		if err := profile.Reapply(scope, active, projectPath); err != nil {
+		if err := profile.Reapply(active); err != nil {
 			return err
 		}
-		fmt.Printf("Applied profile %q (%s) with overrides\n", active, scope)
+		fmt.Printf("Applied profile %q with overrides\n", active)
 		return nil
 	},
 }
 
 func init() {
-	for _, c := range []*cobra.Command{overrideLsCmd, overrideAddCmd, overrideEditCmd, overrideRmCmd, overrideSetCmd, overrideShowCmd, overrideApplyCmd} {
-		c.Flags().Bool("local", false, "Use local profile overrides (default: global)")
-	}
-
 	overrideCmd.AddCommand(overrideLsCmd)
 	overrideCmd.AddCommand(overrideAddCmd)
 	overrideCmd.AddCommand(overrideEditCmd)
