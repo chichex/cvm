@@ -30,7 +30,7 @@ func TestLoadManifestDefaultsToClaudeRoot(t *testing.T) {
 
 func TestLoadManifestSupportsHarnessSpecificAssetDir(t *testing.T) {
 	dir := t.TempDir()
-	body := []byte("name = \"lite\"\nharnesses = [\"claude\", \"codex\"]\n\n[assets]\nclaude = \"claude\"\ncodex = \"codex\"\n")
+	body := []byte("name = \"lite\"\nharnesses = [\"claude\", \"opencode\"]\n\n[assets]\nclaude = \"claude\"\nopencode = \"opencode\"\n")
 	if err := os.WriteFile(filepath.Join(dir, manifestFileName), body, 0644); err != nil {
 		t.Fatalf("write manifest: %v", err)
 	}
@@ -39,8 +39,8 @@ func TestLoadManifestSupportsHarnessSpecificAssetDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadManifest: %v", err)
 	}
-	if !manifest.SupportsHarness("codex") {
-		t.Fatal("manifest should support codex")
+	if !manifest.SupportsHarness("opencode") {
+		t.Fatal("manifest should support opencode")
 	}
 
 	assetDir, err := manifest.AssetDir(dir, harness.Claude())

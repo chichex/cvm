@@ -1,6 +1,6 @@
 # cvm - Claude Version Manager
 
-Profile manager for [Claude Code](https://claude.ai/code). Switch entire configurations instantly, nuke everything, restore to vanilla. Like `nvm` but for your Claude Code setup.
+Profile manager for agent harnesses, starting with [Claude Code](https://claude.ai/code) and OpenCode. Switch configurations instantly, nuke everything, restore to vanilla. Like `nvm` but for your agent setup.
 
 ## Why
 
@@ -68,6 +68,7 @@ When adding from a repo without a path, cvm auto-discovers the profile:
 cvm use work            # activate globally (~/.claude/)
 cvm use work --local    # activate for current project (.claude/)
 cvm use work --harness claude
+cvm use work --harness opencode
 cvm use --none          # back to vanilla
 ```
 
@@ -100,6 +101,7 @@ cvm restore             # restore pre-cvm state from vanilla backup
 cvm restore --global    # only global
 cvm restore --local     # only local
 cvm restore --harness claude
+cvm restore --harness opencode
 ```
 
 ### Remote management
@@ -114,6 +116,7 @@ cvm remote rm chiche   # unlink from remote (keeps local copy)
 ```bash
 cvm status             # show active profiles by harness (global + local)
 cvm status --harness claude
+cvm status --harness opencode
 cvm profile            # inspect active profile contents
 cvm profile show work  # inspect a specific stored profile
 ```
@@ -145,12 +148,16 @@ cvm override rm skill foo        # remove an override file
 
 ## Two scopes
 
-| Scope | What it manages | Flag |
-|-------|----------------|------|
-| **global** (default) | `~/.claude/` — applies to all projects | (none) |
-| **local** | `.claude/` in current project | `--local` |
+| Scope | Claude target | OpenCode target | Flag |
+|-------|---------------|-----------------|------|
+| **global** (default) | `~/.claude/` plus `~/.claude.json` | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` | (none) |
+| **local** | `.claude/` plus `.mcp.json` in current project | `.opencode/` in current project | `--local` |
+
+For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cvm` only manages its `mcpServers` section.
 
 ## What cvm manages
+
+### Claude
 
 | Item | Description |
 |------|-------------|
@@ -170,6 +177,22 @@ cvm override rm skill foo        # remove an override file
 | `statusline-command.sh` | Status bar script |
 
 Runtime data is **never** touched: `sessions/`, `cache/`, `history.jsonl`, `transcripts/`, `projects/` (auto-memory), `plugins/`.
+
+### OpenCode
+
+OpenCode support is intentionally limited to portable assets copied as-is into OpenCode's native config directories.
+
+| Item | Description |
+|------|-------------|
+| `AGENTS.md` | Harness instructions |
+| `opencode.json` | OpenCode configuration, managed only as the `mcpServers` section |
+| `skills/` | OpenCode skills in native format |
+| `agents/` | OpenCode agent definitions in native format |
+| `commands/` | OpenCode commands in native format |
+
+`cvm` does not translate Claude-specific assets for OpenCode. `CLAUDE.md`, Claude `settings.json`, hooks, plugins, non-MCP top-level `opencode.json` settings, and other non-portable behavior require profile-author adaptation and are not promised compatible.
+
+OpenCode runtime storage is **never** touched, including `~/.local/share/opencode/`.
 
 ## How switching works
 
