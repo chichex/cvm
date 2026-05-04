@@ -125,8 +125,17 @@ cvm remote rm chiche   # unlink from remote (keeps local copy)
 cvm status             # show active profiles by harness
 cvm status --harness claude
 cvm status --harness opencode
+cvm current            # show the active profile (shortcut)
 cvm profile            # inspect active profile contents
 cvm profile show work  # inspect a specific stored profile
+```
+
+### Edit and save
+
+```bash
+cvm edit               # open the active profile dir in $EDITOR
+cvm edit work          # open a specific profile dir
+cvm save               # save current harness state into the active profile
 ```
 
 ### Bypass permissions
@@ -175,11 +184,12 @@ Profiles can opt into `cvm.profile.toml` to declare supported harnesses and per-
 
 ```toml
 name = "example"
-harnesses = ["claude", "opencode"]
+harnesses = ["claude", "opencode", "codex"]
 
 [assets]
 claude = "claude"
 opencode = "opencode"
+codex = "codex"
 ```
 
 Legacy profiles without a manifest behave as Claude profiles rooted at the profile directory.
