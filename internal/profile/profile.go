@@ -303,7 +303,7 @@ func SaveWithHarness(scope config.Scope, name string, projectPath string, h harn
 		return err
 	}
 	if !ok {
-		return nil
+		return fmt.Errorf("profile %q uses rendered portable assets for harness %q; live changes cannot be saved safely", name, h.Name())
 	}
 	tgt := targetDirForHarness(h, scope, projectPath)
 	if _, err := os.Stat(profileDir); os.IsNotExist(err) {

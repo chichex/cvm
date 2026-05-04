@@ -88,6 +88,8 @@ Activation order is:
 
 Harness-specific assets win over portable assets for the same logical asset. `cvm` must not silently translate excluded assets; those belong in the harness override dir.
 
+`cvm save` only captures into an explicit, harness-specific asset dir. If a profile is activated from rendered portable assets without a safe harness-specific capture target, save and autosave during profile switches fail explicitly instead of reverse-rendering native files back into `portable/`.
+
 Implemented render mappings:
 
 | Portable asset | Claude | OpenCode | Codex |
