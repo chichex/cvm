@@ -458,7 +458,7 @@ func TestPortableInstructionsRenderForCodex(t *testing.T) {
 	}
 }
 
-func TestLiteProfileActivatesForAllHarnesses(t *testing.T) {
+func TestLiteProfileActivatesForClaude(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "lite")
@@ -469,21 +469,7 @@ func TestLiteProfileActivatesForAllHarnesses(t *testing.T) {
 	out := e.mustRun("use", "lite", "--harness", "claude")
 	assertContains(t, out, "Switched claude harness")
 	assertFileContains(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# Lite Profile")
-	writeTestFile(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# live lite edit")
-	out = e.mustFail("save")
-	assertContains(t, out, "live changes cannot be saved safely")
-	out = e.mustFail("use", "--none", "--harness", "claude")
-	assertContains(t, out, "live changes cannot be saved safely")
-	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "harnesses = [\"claude\", \"opencode\", \"codex\"]")
-	assertFileContains(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# Lite Profile")
-
-	out = e.mustRun("use", "lite", "--harness", "opencode")
-	assertContains(t, out, "Switched opencode harness")
-	assertFileContains(t, filepath.Join(e.home, ".config", "opencode", "AGENTS.md"), "# Lite Profile")
-
-	out = e.mustRun("use", "lite", "--harness", "codex")
-	assertContains(t, out, "Switched codex harness")
-	assertFileContains(t, filepath.Join(e.home, ".codex", "AGENTS.md"), "# Lite Profile")
+	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "harnesses = [\"claude\"]")
 }
 
 func TestOpenCodeHarnessRestoreGlobalVanilla(t *testing.T) {

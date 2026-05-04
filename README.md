@@ -169,26 +169,20 @@ Project-local profiles were hard-deleted. `cvm local`, `cvm global`, `--local`, 
 
 ## What cvm manages
 
-### Portable profiles
+### Profile manifest
 
-Profiles can opt into `cvm.profile.toml` to describe supported harnesses and asset directories:
+Profiles can opt into `cvm.profile.toml` to declare supported harnesses and per-harness asset directories:
 
 ```toml
-name = "lite"
-harnesses = ["claude", "opencode", "codex"]
+name = "example"
+harnesses = ["claude", "opencode"]
 
 [assets]
-portable = "portable"
-claude = "."
+claude = "claude"
+opencode = "opencode"
 ```
 
-Portable v0.1 is experimental and intentionally small: `instructions`, portable `skills`, instruction-only `agents`, and conceptual `settings`. The current renderer installs instructions for Claude/OpenCode/Codex, skills and agents for Claude/OpenCode, and omits skills/agents for Codex because there is no native equivalent managed by `cvm` yet. Everything else is harness-specific by default, including hooks, plugins, MCP with incompatible formats, raw vendor settings, statusline commands, keybindings, output styles, teams, path rules, runtime memory, transcripts, sessions, and caches.
-
-Portable skills must not assume harness-specific subagents, harness filesystem paths, or cross-skill contracts tied to harness output conventions.
-
-During `cvm use`, portable assets are rendered first and the harness-specific asset dir wins for matching files. Legacy profiles without a manifest still behave as Claude profiles rooted at the profile directory.
-
-See `specs/portable-profiles.md` for the full experimental contract and merge model.
+Legacy profiles without a manifest behave as Claude profiles rooted at the profile directory.
 
 ### Claude
 
@@ -240,7 +234,7 @@ When you run `cvm use work`:
 
 A **minimalist profile** for subagent orchestration. No specs, no complex hooks — just skills and Claude Code's built-in auto-memory (`~/.claude/projects/<path>/memory/`).
 
-`lite` declares the portable profile contract and includes neutral instructions in `profiles/lite/portable/instructions.md`. It can be activated for Claude, OpenCode, and Codex, but its skills, MCP config, statusline, and memory behavior are Claude-specific; only the neutral portable subset is renderable for other harnesses today.
+`lite` is a Claude-only profile. Its skills depend on Claude Code's `Agent`/`Skill` tools and on the per-project auto-memory under `~/.claude/projects/<path>/memory/`, so they don't translate cleanly to OpenCode or Codex.
 
 Skills:
 
@@ -262,8 +256,6 @@ The `che-*` skills mirror [che-cli](https://github.com/chichex/che-cli)'s state 
 ```bash
 cvm add lite git@github.com:chichex/cvm.git
 cvm use lite --harness claude
-cvm use lite --harness opencode   # portable instructions only
-cvm use lite --harness codex      # portable instructions only
 ```
 
 ## License
