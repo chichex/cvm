@@ -11,6 +11,7 @@ type opencodeHarness struct{}
 
 var managedOpenCodeDirItems = []string{
 	"AGENTS.md",
+	// Only mcpServers inside opencode.json are managed; other user config is preserved.
 	"opencode.json",
 	"skills",
 	"agents",
@@ -27,6 +28,7 @@ func (opencodeHarness) Name() string {
 
 func (opencodeHarness) TargetDir(scope config.Scope, projectPath string) string {
 	if scope == config.ScopeLocal {
+		// OPENCODE_CONFIG_DIR only redirects the global config; project config remains local.
 		return filepath.Join(projectPath, ".opencode")
 	}
 	if dir := os.Getenv("OPENCODE_CONFIG_DIR"); dir != "" {
@@ -41,6 +43,7 @@ func (opencodeHarness) ManagedDirItems() []string {
 }
 
 func (opencodeHarness) ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool) {
+	// OpenCode keeps config inside TargetDir, unlike Claude's external MCP files.
 	return ManagedPath{}, false
 }
 
@@ -53,7 +56,7 @@ func (opencodeHarness) MarkdownInstructionsFile() string {
 }
 
 func (opencodeHarness) IsUserMCPPath(profilePath string) bool {
-	return false
+	return profilePath == "opencode.json"
 }
 
 func (opencodeHarness) IsMCPPath(profilePath string) bool {

@@ -153,6 +153,8 @@ cvm override rm skill foo        # remove an override file
 | **global** (default) | `~/.claude/` plus `~/.claude.json` | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` | (none) |
 | **local** | `.claude/` plus `.mcp.json` in current project | `.opencode/` in current project | `--local` |
 
+For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cvm` only manages its `mcpServers` section.
+
 ## What cvm manages
 
 ### Claude
@@ -183,12 +185,12 @@ OpenCode support is intentionally limited to portable assets copied as-is into O
 | Item | Description |
 |------|-------------|
 | `AGENTS.md` | Harness instructions |
-| `opencode.json` | OpenCode configuration, including `mcpServers` when present |
+| `opencode.json` | OpenCode configuration, managed only as the `mcpServers` section |
 | `skills/` | OpenCode skills in native format |
 | `agents/` | OpenCode agent definitions in native format |
 | `commands/` | OpenCode commands in native format |
 
-`cvm` does not translate Claude-specific assets for OpenCode. `CLAUDE.md`, Claude `settings.json`, hooks, plugins, and other non-portable behavior require profile-author adaptation and are not promised compatible.
+`cvm` does not translate Claude-specific assets for OpenCode. `CLAUDE.md`, Claude `settings.json`, hooks, plugins, non-MCP top-level `opencode.json` settings, and other non-portable behavior require profile-author adaptation and are not promised compatible.
 
 OpenCode runtime storage is **never** touched, including `~/.local/share/opencode/`.
 

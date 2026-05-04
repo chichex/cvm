@@ -343,6 +343,8 @@ func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
 
 func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	e := newTestEnv(t)
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	writeTestFile(t, filepath.Join(opencodeDir, "opencode.json"), `{"theme":"system","mcpServers":{"user-server":{"type":"local"}}}`)
 
 	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "open")
 	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
@@ -353,11 +355,11 @@ func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	out := e.mustRun("use", "open", "--harness", "opencode")
 	assertContains(t, out, "Switched opencode harness")
 
-	opencodeDir := filepath.Join(e.home, ".config", "opencode")
 	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode profile")
 	if _, err := os.Stat(filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md")); err != nil {
 		t.Fatalf("expected opencode skill to be installed: %v", err)
 	}
+	assertJSONKeyExists(t, filepath.Join(opencodeDir, "opencode.json"), "theme")
 	assertMCPServerExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
 	if _, err := os.Stat(filepath.Join(e.home, ".claude", "AGENTS.md")); err == nil {
 		t.Fatal("opencode use should not install into Claude paths")
@@ -372,6 +374,8 @@ func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(opencodeDir, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("expected opencode AGENTS.md to be nuked, got err %v", err)
 	}
+	assertJSONKeyExists(t, filepath.Join(opencodeDir, "opencode.json"), "theme")
+	assertMCPServerNotExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
 }
 
 func TestOpenCodeHarnessRestoreGlobalVanilla(t *testing.T) {
@@ -1010,6 +1014,25 @@ func assertMCPServerExists(t *testing.T, path, want string) {
 	}
 	if _, ok := cfg.MCPServers[want]; !ok {
 		t.Fatalf("settings %s missing mcp server %q", path, want)
+	}
+}
+
+func assertMCPServerNotExists(t *testing.T, path, notWant string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read settings %s: %v", path, err)
+	}
+
+	var cfg struct {
+		MCPServers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal settings %s: %v", path, err)
+	}
+	if _, ok := cfg.MCPServers[notWant]; ok {
+		t.Fatalf("settings %s should not contain mcp server %q", path, notWant)
 	}
 }
 
