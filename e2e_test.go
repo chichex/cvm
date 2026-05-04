@@ -341,6 +341,76 @@ func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
 	}
 }
 
+func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
+	e := newTestEnv(t)
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "open")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode profile")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "skills", "deploy", "SKILL.md"), "---\nname: deploy\ndescription: Deploy app\n---\n")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "opencode.json"), `{"mcpServers":{"context7":{"type":"local"}}}`)
+
+	out := e.mustRun("use", "open", "--harness", "opencode")
+	assertContains(t, out, "Switched opencode harness")
+
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode profile")
+	if _, err := os.Stat(filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md")); err != nil {
+		t.Fatalf("expected opencode skill to be installed: %v", err)
+	}
+	assertMCPServerExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
+	if _, err := os.Stat(filepath.Join(e.home, ".claude", "AGENTS.md")); err == nil {
+		t.Fatal("opencode use should not install into Claude paths")
+	}
+
+	out = e.mustRun("status", "--harness", "opencode")
+	assertContains(t, out, "opencode harness:")
+	assertContains(t, out, "open")
+	assertContains(t, out, filepath.Join(e.home, ".config", "opencode"))
+
+	e.mustRun("nuke", "--global", "--harness", "opencode", "--force")
+	if _, err := os.Stat(filepath.Join(opencodeDir, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected opencode AGENTS.md to be nuked, got err %v", err)
+	}
+}
+
+func TestOpenCodeHarnessRestoreGlobalVanilla(t *testing.T) {
+	e := newTestEnv(t)
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# vanilla opencode")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "open")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# profile opencode")
+
+	e.mustRun("use", "open", "--harness", "opencode")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# profile opencode")
+
+	out := e.mustRun("restore", "--global", "--harness", "opencode")
+	assertContains(t, out, "Restored global config to vanilla (opencode harness)")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# vanilla opencode")
+}
+
+func TestOpenCodeHarnessLocalWorkflow(t *testing.T) {
+	e := newTestEnv(t)
+
+	profileRoot := filepath.Join(e.home, ".cvm", "local", "profiles", "open-local")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open-local\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# local opencode profile")
+
+	out := e.mustRun("use", "open-local", "--local", "--harness", "opencode")
+	assertContains(t, out, "Switched opencode harness")
+	assertFileContent(t, filepath.Join(e.projectDir, ".opencode", "AGENTS.md"), "# local opencode profile")
+	if _, err := os.Stat(filepath.Join(e.home, ".config", "opencode", "AGENTS.md")); err == nil {
+		t.Fatal("local opencode use should not install into global OpenCode paths")
+	}
+
+	e.mustRun("nuke", "--local", "--harness", "opencode", "--force")
+	if _, err := os.Stat(filepath.Join(e.projectDir, ".opencode", "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected local opencode AGENTS.md to be nuked, got err %v", err)
+	}
+}
+
 func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
@@ -957,6 +1027,18 @@ func assertJSONKeyExists(t *testing.T, path, want string) {
 	}
 	if _, ok := cfg[want]; !ok {
 		t.Fatalf("json %s missing key %q", path, want)
+	}
+}
+
+func assertFileContent(t *testing.T, path, want string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.TrimSpace(string(data)) != want {
+		t.Fatalf("%s content = %q, want %q", path, strings.TrimSpace(string(data)), want)
 	}
 }
 

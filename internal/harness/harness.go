@@ -30,11 +30,13 @@ func ByName(name string) (Harness, bool) {
 	switch name {
 	case "claude":
 		return Claude(), true
+	case "opencode":
+		return OpenCode(), true
 	default:
 		return nil, false
 	}
 }
 
 func All() []Harness {
-	return []Harness{Claude()}
+	return []Harness{Claude(), OpenCode()}
 }

@@ -1,0 +1,61 @@
+package harness
+
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/chichex/cvm/internal/config"
+)
+
+type opencodeHarness struct{}
+
+var managedOpenCodeDirItems = []string{
+	"AGENTS.md",
+	"opencode.json",
+	"skills",
+	"agents",
+	"commands",
+}
+
+func OpenCode() Harness {
+	return opencodeHarness{}
+}
+
+func (opencodeHarness) Name() string {
+	return "opencode"
+}
+
+func (opencodeHarness) TargetDir(scope config.Scope, projectPath string) string {
+	if scope == config.ScopeLocal {
+		return filepath.Join(projectPath, ".opencode")
+	}
+	if dir := os.Getenv("OPENCODE_CONFIG_DIR"); dir != "" {
+		return dir
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "opencode")
+}
+
+func (opencodeHarness) ManagedDirItems() []string {
+	return append([]string{}, managedOpenCodeDirItems...)
+}
+
+func (opencodeHarness) ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool) {
+	return ManagedPath{}, false
+}
+
+func (h opencodeHarness) ProfileDiscoveryItems() []string {
+	return h.ManagedDirItems()
+}
+
+func (opencodeHarness) MarkdownInstructionsFile() string {
+	return "AGENTS.md"
+}
+
+func (opencodeHarness) IsUserMCPPath(profilePath string) bool {
+	return false
+}
+
+func (opencodeHarness) IsMCPPath(profilePath string) bool {
+	return profilePath == "opencode.json"
+}
