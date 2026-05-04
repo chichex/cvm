@@ -157,6 +157,26 @@ For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cv
 
 ## What cvm manages
 
+### Portable profiles
+
+Profiles can opt into `cvm.profile.toml` to describe supported harnesses and asset directories:
+
+```toml
+name = "lite"
+harnesses = ["claude"]
+
+[assets]
+portable = "portable"
+claude = "claude"
+opencode = "opencode"
+```
+
+Portable v1 is intentionally small: `instructions`, `skills`, instruction-only `agents`, and conceptual `settings`. Hooks, plugins, MCP with incompatible formats, raw vendor settings, runtime memory, transcripts, sessions, and caches are not portable and must live in harness-specific override directories.
+
+If a harness-specific asset dir is not declared, `cvm` can use `[assets].portable` as the fallback. Legacy profiles without a manifest still behave as Claude profiles rooted at the profile directory.
+
+See `specs/portable-profiles.md` for the full contract and merge model.
+
 ### Claude
 
 | Item | Description |
@@ -207,6 +227,8 @@ When you run `cvm use work`:
 ## The "lite" profile
 
 A **minimalist profile** for subagent orchestration. No specs, no complex hooks — just skills and Claude Code's built-in auto-memory (`~/.claude/projects/<path>/memory/`).
+
+`lite` declares the portable profile contract and includes neutral instructions in `profiles/lite/portable/instructions.md`, but it currently supports only Claude. Its skills, MCP config, statusline, and memory behavior are Claude-specific until OpenCode/Codex renderers can map the portable subset safely.
 
 Skills:
 
