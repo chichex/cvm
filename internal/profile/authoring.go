@@ -55,12 +55,8 @@ func ScaffoldAsset(opts ScaffoldAssetOptions) (*ScaffoldedAsset, error) {
 
 	portable := harnessName == "" && kind != "hook"
 	if !portable {
-		h, ok := harness.ByName(harnessName)
-		if !ok {
+		if _, ok := harness.ByName(harnessName); !ok {
 			return nil, fmt.Errorf("unknown harness %q", harnessName)
-		}
-		if err := validateHarnessScope(h, opts.Scope); err != nil {
-			return nil, err
 		}
 	}
 
