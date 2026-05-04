@@ -135,47 +135,47 @@ func TestGlobalWorkflow(t *testing.T) {
 	e.seedGlobalClaude("# global vanilla")
 
 	// init
-	out := e.mustRun("global", "init", "work")
-	assertContains(t, out, "Created global profile")
+	out := e.mustRun("add", "work")
+	assertContains(t, out, "Created profile")
 
 	// ls
-	out = e.mustRun("global", "ls")
+	out = e.mustRun("ls")
 	assertContains(t, out, "work")
 
 	// current before use → vanilla
-	out = e.mustRun("global", "current")
+	out = e.mustRun("current")
 	assertContains(t, out, "(vanilla)")
 
 	// use
-	out = e.mustRun("global", "use", "work")
-	assertContains(t, out, "Switched to global profile")
+	out = e.mustRun("use", "work")
+	assertContains(t, out, "Switched claude harness")
 
 	// current after use
-	out = e.mustRun("global", "current")
+	out = e.mustRun("current")
 	assertContains(t, out, "work")
 
 	// ls shows active marker
-	out = e.mustRun("global", "ls")
-	assertContains(t, out, "* ")
+	out = e.mustRun("ls")
+	assertContains(t, out, "IN USE")
 
 	// save
-	out = e.mustRun("global", "save")
+	out = e.mustRun("save")
 	assertContains(t, out, "Saved current state")
 
 	// use --none
-	out = e.mustRun("global", "use", "--none")
+	out = e.mustRun("use", "--none")
 	assertContains(t, out, "vanilla")
 
-	out = e.mustRun("global", "current")
+	out = e.mustRun("current")
 	assertContains(t, out, "(vanilla)")
 
 	// rm (now that it's not active)
-	out = e.mustRun("global", "rm", "work")
-	assertContains(t, out, "Removed global profile")
+	out = e.mustRun("rm", "work")
+	assertContains(t, out, "Removed profile")
 
 	// ls should be empty
-	out = e.mustRun("global", "ls")
-	assertContains(t, out, "No global profiles")
+	out = e.mustRun("ls")
+	assertContains(t, out, "No profiles")
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +183,7 @@ func TestGlobalWorkflow(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLocalWorkflow(t *testing.T) {
+	t.Skip("local profiles were hard-deleted")
 	e := newTestEnv(t)
 	e.seedLocalClaude("# local vanilla")
 
@@ -232,13 +233,12 @@ func TestStatus(t *testing.T) {
 
 	// Status with no profiles set
 	out := e.mustRun("status")
-	assertContains(t, out, "Global:")
+	assertContains(t, out, "claude harness:")
 	assertContains(t, out, "(vanilla)")
-	assertContains(t, out, "Local:")
 
 	// Set a global profile and check again
-	e.mustRun("global", "init", "statustest")
-	e.mustRun("global", "use", "statustest")
+	e.mustRun("add", "statustest")
+	e.mustRun("use", "statustest")
 
 	out = e.mustRun("status")
 	assertContains(t, out, "statustest")
@@ -248,7 +248,7 @@ func TestUseHarnessPersistsActiveByHarness(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
-	e.mustRun("global", "init", "work")
+	e.mustRun("add", "work")
 	out := e.mustRun("use", "work", "--harness", "claude")
 	assertContains(t, out, "Switched claude harness")
 
@@ -278,7 +278,7 @@ func TestUseHarnessPersistsActiveByHarness(t *testing.T) {
 	assertContains(t, out, "claude harness:")
 	assertContains(t, out, "work")
 
-	e.mustRun("nuke", "--global", "--harness", "claude", "--force")
+	e.mustRun("nuke", "--harness", "claude", "--force")
 	data, err = os.ReadFile(statePath)
 	if err != nil {
 		t.Fatalf("read nuked state: %v", err)
@@ -327,7 +327,7 @@ func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
 	if err := os.WriteFile(liveClaude, []byte("# saved update"), 0644); err != nil {
 		t.Fatalf("overwrite live CLAUDE.md: %v", err)
 	}
-	e.mustRun("global", "save")
+	e.mustRun("save")
 
 	if _, err := os.Stat(filepath.Join(profileRoot, "cvm.profile.toml")); err != nil {
 		t.Fatalf("manifest should be preserved after save: %v", err)
@@ -370,7 +370,7 @@ func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	assertContains(t, out, "open")
 	assertContains(t, out, filepath.Join(e.home, ".config", "opencode"))
 
-	e.mustRun("nuke", "--global", "--harness", "opencode", "--force")
+	e.mustRun("nuke", "--harness", "opencode", "--force")
 	if _, err := os.Stat(filepath.Join(opencodeDir, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("expected opencode AGENTS.md to be nuked, got err %v", err)
 	}
@@ -390,26 +390,27 @@ func TestOpenCodeHarnessRestoreGlobalVanilla(t *testing.T) {
 	e.mustRun("use", "open", "--harness", "opencode")
 	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# profile opencode")
 
-	out := e.mustRun("restore", "--global", "--harness", "opencode")
-	assertContains(t, out, "Restored global config to vanilla (opencode harness)")
+	out := e.mustRun("restore", "--harness", "opencode")
+	assertContains(t, out, "Restored config to vanilla (opencode harness)")
 	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# vanilla opencode")
 }
 
 func TestOpenCodeHarnessLocalWorkflow(t *testing.T) {
+	t.Skip("local profiles were hard-deleted")
 	e := newTestEnv(t)
 
 	profileRoot := filepath.Join(e.home, ".cvm", "local", "profiles", "open-local")
 	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open-local\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
 	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# local opencode profile")
 
-	out := e.mustRun("use", "open-local", "--local", "--harness", "opencode")
+	out := e.mustRun("use", "open-local", "--harness", "opencode")
 	assertContains(t, out, "Switched opencode harness")
 	assertFileContent(t, filepath.Join(e.projectDir, ".opencode", "AGENTS.md"), "# local opencode profile")
 	if _, err := os.Stat(filepath.Join(e.home, ".config", "opencode", "AGENTS.md")); err == nil {
 		t.Fatal("local opencode use should not install into global OpenCode paths")
 	}
 
-	e.mustRun("nuke", "--local", "--harness", "opencode", "--force")
+	e.mustRun("nuke", "--harness", "opencode", "--force")
 	if _, err := os.Stat(filepath.Join(e.projectDir, ".opencode", "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("expected local opencode AGENTS.md to be nuked, got err %v", err)
 	}
@@ -438,7 +439,7 @@ func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
 		t.Fatalf("unexpected live override content: %q", strings.TrimSpace(string(data)))
 	}
 
-	e.mustRun("global", "save")
+	e.mustRun("save")
 
 	data, err = os.ReadFile(filepath.Join(profileRoot, "claude", "skills", "deploy", "SKILL.md"))
 	if err != nil {
@@ -452,14 +453,12 @@ func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
 func TestProfileInspect(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
-	e.seedLocalClaude("# local vanilla")
 
-	e.mustRun("global", "init", "inspect-global")
-	e.mustRun("local", "init", "inspect-local")
+	e.mustRun("add", "inspect")
 
-	globalSkillDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect-global", "skills")
-	globalAgentDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect-global", "agents")
-	globalHookDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect-global", "hooks")
+	globalSkillDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect", "skills")
+	globalAgentDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect", "agents")
+	globalHookDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect", "hooks")
 	if err := os.MkdirAll(globalSkillDir, 0755); err != nil {
 		t.Fatalf("mkdir global skill dir: %v", err)
 	}
@@ -479,32 +478,17 @@ func TestProfileInspect(t *testing.T) {
 		t.Fatalf("write global hook: %v", err)
 	}
 
-	localRuleDir := filepath.Join(e.home, ".cvm", "local", "profiles", "inspect-local", "rules")
-	if err := os.MkdirAll(localRuleDir, 0755); err != nil {
-		t.Fatalf("mkdir local rule dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(localRuleDir, "scope.md"), []byte(""), 0644); err != nil {
-		t.Fatalf("write local rule: %v", err)
-	}
-
-	e.mustRun("global", "use", "inspect-global")
-	e.mustRun("local", "use", "inspect-local")
+	e.mustRun("use", "inspect")
 
 	out := e.mustRun("profile")
-	assertContains(t, out, "Global profile: inspect-global")
+	assertContains(t, out, "Profile: inspect")
 	assertContains(t, out, "Skills (1): deploy.md")
 	assertContains(t, out, "Agents (1): reviewer.md")
 	assertContains(t, out, "Hooks (1): post.sh")
-	assertContains(t, out, "Local profile: inspect-local")
-	assertContains(t, out, "Rules (1): scope.md")
 
-	out = e.mustRun("profile", "show", "inspect-global")
-	assertContains(t, out, "Global profile: inspect-global")
+	out = e.mustRun("profile", "show", "inspect")
+	assertContains(t, out, "Profile: inspect")
 	assertContains(t, out, "Skills (1): deploy.md")
-
-	out = e.mustRun("profile", "show", "inspect-local", "--local")
-	assertContains(t, out, "Local profile: inspect-local")
-	assertContains(t, out, "Rules (1): scope.md")
 }
 
 func TestProfileAddScaffoldsPortableAssets(t *testing.T) {
@@ -611,16 +595,12 @@ func TestProfileAddHelpExplainsAuthoringLayers(t *testing.T) {
 func TestLsShowsInUseProfiles(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
-	e.seedLocalClaude("# local vanilla")
 
-	e.mustRun("global", "init", "work")
-	e.mustRun("local", "init", "dev")
-	e.mustRun("global", "use", "work")
-	e.mustRun("local", "use", "dev")
+	e.mustRun("add", "work")
+	e.mustRun("use", "work")
 
 	out := e.mustRun("ls")
 	assertContains(t, out, "work")
-	assertContains(t, out, "dev")
 	assertContains(t, out, "IN USE")
 }
 
@@ -628,11 +608,11 @@ func TestBypassCommand(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
-	e.mustRun("global", "init", "bypass-global")
-	e.mustRun("global", "use", "bypass-global")
+	e.mustRun("add", "bypass-global")
+	e.mustRun("use", "bypass-global")
 
 	out := e.mustRun("bypass", "status")
-	assertContains(t, out, "global profile \"bypass-global\"")
+	assertContains(t, out, "profile \"bypass-global\"")
 
 	out = e.mustRun("bypass", "on")
 	assertContains(t, out, "bypassPermissions")
@@ -667,8 +647,8 @@ func TestNukeGlobal(t *testing.T) {
 		t.Fatal("seed CLAUDE.md should exist before nuke")
 	}
 
-	out := e.mustRun("nuke", "--global", "--force")
-	assertContains(t, out, "Nuked global config")
+	out := e.mustRun("nuke", "--force")
+	assertContains(t, out, "Nuked config")
 
 	// CLAUDE.md should be gone
 	if _, err := os.Stat(claudeMD); err == nil {
@@ -681,6 +661,7 @@ func TestNukeGlobal(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNukeLocal(t *testing.T) {
+	t.Skip("local profiles were hard-deleted")
 	e := newTestEnv(t)
 	e.seedLocalClaude("# will be nuked locally")
 
@@ -689,7 +670,7 @@ func TestNukeLocal(t *testing.T) {
 		t.Fatal("local CLAUDE.md should exist before nuke")
 	}
 
-	out := e.mustRun("nuke", "--local", "--force")
+	out := e.mustRun("nuke", "--force")
 	assertContains(t, out, "Nuked local config")
 
 	if _, err := os.Stat(localClaudeMD); err == nil {
@@ -706,19 +687,19 @@ func TestRestore(t *testing.T) {
 	e.seedGlobalClaude("# original vanilla content")
 
 	// Create and use a profile to trigger vanilla backup
-	e.mustRun("global", "init", "temp")
-	e.mustRun("global", "use", "temp")
+	e.mustRun("add", "temp")
+	e.mustRun("use", "temp")
 
 	// Write something different to ~/.claude/CLAUDE.md
 	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
 	os.WriteFile(claudeMD, []byte("# modified by profile"), 0644)
 
 	// Nuke global
-	e.mustRun("nuke", "--global", "--force")
+	e.mustRun("nuke", "--force")
 
 	// Restore
-	out := e.mustRun("restore", "--global")
-	assertContains(t, out, "Restored global config to vanilla")
+	out := e.mustRun("restore")
+	assertContains(t, out, "Restored config to vanilla")
 
 	// Verify the original content is back
 	data, err := os.ReadFile(claudeMD)
@@ -734,7 +715,7 @@ func TestRestoreWithHarness(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# original vanilla content")
 
-	e.mustRun("global", "init", "temp")
+	e.mustRun("add", "temp")
 	e.mustRun("use", "temp", "--harness", "claude")
 
 	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
@@ -742,9 +723,9 @@ func TestRestoreWithHarness(t *testing.T) {
 		t.Fatalf("modify CLAUDE.md: %v", err)
 	}
 
-	e.mustRun("nuke", "--global", "--harness", "claude", "--force")
-	out := e.mustRun("restore", "--global", "--harness", "claude")
-	assertContains(t, out, "Restored global config to vanilla")
+	e.mustRun("nuke", "--harness", "claude", "--force")
+	out := e.mustRun("restore", "--harness", "claude")
+	assertContains(t, out, "Restored config to vanilla")
 
 	data, err := os.ReadFile(claudeMD)
 	if err != nil {
@@ -762,8 +743,8 @@ func TestRestoreWithHarness(t *testing.T) {
 func TestEdgeDuplicateInit(t *testing.T) {
 	e := newTestEnv(t)
 
-	e.mustRun("global", "init", "dup")
-	out := e.mustFail("global", "init", "dup")
+	e.mustRun("add", "dup")
+	out := e.mustFail("add", "dup")
 	assertContains(t, out, "already exists")
 }
 
@@ -771,17 +752,17 @@ func TestEdgeRmActiveProfile(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
-	e.mustRun("global", "init", "active")
-	e.mustRun("global", "use", "active")
+	e.mustRun("add", "active")
+	e.mustRun("use", "active")
 
-	out := e.mustFail("global", "rm", "active")
+	out := e.mustFail("rm", "active")
 	assertContains(t, out, "cannot remove active profile")
 }
 
 func TestEdgeUseNonexistent(t *testing.T) {
 	e := newTestEnv(t)
 
-	out := e.mustFail("global", "use", "ghost")
+	out := e.mustFail("use", "ghost")
 	assertContains(t, out, "not found")
 }
 
@@ -789,11 +770,11 @@ func TestEdgeFromFlag(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# base content")
 
-	e.mustRun("global", "init", "base")
-	e.mustRun("global", "init", "derived", "--from", "base")
+	e.mustRun("add", "base")
+	e.mustRun("add", "derived", "--from", "base")
 
 	// derived should exist and be listable
-	out := e.mustRun("global", "ls")
+	out := e.mustRun("ls")
 	assertContains(t, out, "base")
 	assertContains(t, out, "derived")
 }
@@ -801,18 +782,19 @@ func TestEdgeFromFlag(t *testing.T) {
 func TestEdgeFromNonexistent(t *testing.T) {
 	e := newTestEnv(t)
 
-	out := e.mustFail("global", "init", "bad", "--from", "nope")
+	out := e.mustFail("add", "bad", "--from", "nope")
 	assertContains(t, out, "not found")
 }
 
 func TestEdgeSaveWithNoActiveProfile(t *testing.T) {
 	e := newTestEnv(t)
 
-	out := e.mustFail("global", "save")
-	assertContains(t, out, "no active global profile")
+	out := e.mustFail("save")
+	assertContains(t, out, "no active profile")
 }
 
 func TestEdgeLocalSaveNoActive(t *testing.T) {
+	t.Skip("local profiles were hard-deleted")
 	e := newTestEnv(t)
 
 	out := e.mustFail("local", "save")
@@ -822,7 +804,7 @@ func TestEdgeLocalSaveNoActive(t *testing.T) {
 func TestEdgeUseNoArgs(t *testing.T) {
 	e := newTestEnv(t)
 
-	out := e.mustFail("global", "use")
+	out := e.mustFail("use")
 	assertContains(t, out, "provide a profile name")
 }
 
@@ -845,27 +827,27 @@ func TestMultipleProfilesCoexist(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
-	e.mustRun("global", "init", "alpha")
-	e.mustRun("global", "init", "beta")
-	e.mustRun("global", "init", "gamma")
+	e.mustRun("add", "alpha")
+	e.mustRun("add", "beta")
+	e.mustRun("add", "gamma")
 
-	out := e.mustRun("global", "ls")
+	out := e.mustRun("ls")
 	assertContains(t, out, "alpha")
 	assertContains(t, out, "beta")
 	assertContains(t, out, "gamma")
 
 	// Switch between them
-	e.mustRun("global", "use", "alpha")
-	out = e.mustRun("global", "current")
+	e.mustRun("use", "alpha")
+	out = e.mustRun("current")
 	assertContains(t, out, "alpha")
 
-	e.mustRun("global", "use", "beta")
-	out = e.mustRun("global", "current")
+	e.mustRun("use", "beta")
+	out = e.mustRun("current")
 	assertContains(t, out, "beta")
 
 	// Remove non-active profile
-	e.mustRun("global", "rm", "gamma")
-	out = e.mustRun("global", "ls")
+	e.mustRun("rm", "gamma")
+	out = e.mustRun("ls")
 	assertNotContains(t, out, "gamma")
 	assertContains(t, out, "alpha")
 	assertContains(t, out, "beta")
@@ -878,7 +860,7 @@ func TestMultipleProfilesCoexist(t *testing.T) {
 func TestRestoreNoVanilla(t *testing.T) {
 	e := newTestEnv(t)
 
-	out := e.mustRun("restore", "--global")
+	out := e.mustRun("restore")
 	assertContains(t, out, "No vanilla backup found")
 }
 
@@ -890,31 +872,31 @@ func TestProfileContentIsolation(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla state")
 
-	e.mustRun("global", "init", "p1")
-	e.mustRun("global", "use", "p1")
+	e.mustRun("add", "p1")
+	e.mustRun("use", "p1")
 
 	// Write unique content while p1 is active
 	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
 	os.WriteFile(claudeMD, []byte("# p1 content"), 0644)
-	e.mustRun("global", "save")
+	e.mustRun("save")
 
 	// Create p2 from scratch and switch
-	e.mustRun("global", "init", "p2")
-	e.mustRun("global", "use", "p2")
+	e.mustRun("add", "p2")
+	e.mustRun("use", "p2")
 
 	// Write different content for p2
 	os.WriteFile(claudeMD, []byte("# p2 content"), 0644)
-	e.mustRun("global", "save")
+	e.mustRun("save")
 
 	// Switch back to p1 and verify its content
-	e.mustRun("global", "use", "p1")
+	e.mustRun("use", "p1")
 	data, _ := os.ReadFile(claudeMD)
 	if !strings.Contains(string(data), "p1 content") {
 		t.Fatalf("expected p1 content after switching back, got: %s", string(data))
 	}
 
 	// Switch to p2 and verify its content
-	e.mustRun("global", "use", "p2")
+	e.mustRun("use", "p2")
 	data, _ = os.ReadFile(claudeMD)
 	if !strings.Contains(string(data), "p2 content") {
 		t.Fatalf("expected p2 content after switching, got: %s", string(data))
@@ -934,7 +916,7 @@ func TestUseAppliesChicheMCPServersToClaudeUserConfig(t *testing.T) {
 		t.Fatalf("write live user config: %v", err)
 	}
 
-	e.mustRun("global", "init", "chiche")
+	e.mustRun("add", "chiche")
 
 	profileUserConfig := filepath.Join(e.home, ".cvm", "global", "profiles", "chiche", ".claude.json")
 	if err := os.WriteFile(profileUserConfig, []byte(`{
@@ -966,6 +948,7 @@ func TestUseAppliesChicheMCPServersToClaudeUserConfig(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNukeBothScopes(t *testing.T) {
+	t.Skip("local profiles were hard-deleted")
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# global content")
 	e.seedLocalClaude("# local content")
@@ -990,6 +973,7 @@ func TestNukeBothScopes(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLocalRestore(t *testing.T) {
+	t.Skip("local profiles were hard-deleted")
 	e := newTestEnv(t)
 	e.seedLocalClaude("# original local vanilla")
 
@@ -998,10 +982,10 @@ func TestLocalRestore(t *testing.T) {
 	e.mustRun("local", "use", "localtemp")
 
 	// Nuke local
-	e.mustRun("nuke", "--local", "--force")
+	e.mustRun("nuke", "--force")
 
 	// Restore local
-	out := e.mustRun("restore", "--local")
+	out := e.mustRun("restore")
 	assertContains(t, out, "Restored local config to vanilla")
 
 	localMD := filepath.Join(e.projectDir, ".claude", "CLAUDE.md")
@@ -1019,6 +1003,7 @@ func TestLocalRestore(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLocalInitDefaultName(t *testing.T) {
+	t.Skip("local profiles were hard-deleted")
 	e := newTestEnv(t)
 
 	out := e.mustRun("local", "init")
@@ -1032,11 +1017,7 @@ func TestLocalInitDefaultName(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGlobalInitDefaultName(t *testing.T) {
-	e := newTestEnv(t)
-
-	out := e.mustRun("global", "init")
-	assertContains(t, out, "Created global profile")
-	assertContains(t, out, "default")
+	t.Skip("top-level add requires an explicit profile name")
 }
 
 // ---------------------------------------------------------------------------

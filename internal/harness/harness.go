@@ -2,8 +2,6 @@ package harness
 
 import (
 	"os"
-
-	"github.com/chichex/cvm/internal/config"
 )
 
 type ManagedPath struct {
@@ -19,20 +17,20 @@ type ScaffoldAsset struct {
 
 type Harness interface {
 	Name() string
-	TargetDir(scope config.Scope, projectPath string) string
+	TargetDir() string
 	DefaultAssetDir(profileDir string) string
 	ScaffoldAsset(kind, name string) (ScaffoldAsset, error)
 	ManagedDirItems() []string
-	ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool)
+	ExternalManagedPath() (ManagedPath, bool)
 	ProfileDiscoveryItems() []string
 	MarkdownInstructionsFile() string
 	IsUserMCPPath(profilePath string) bool
 	IsMCPPath(profilePath string) bool
 }
 
-func ManagedProfileItems(h Harness, scope config.Scope, projectPath string) []string {
+func ManagedProfileItems(h Harness) []string {
 	items := append([]string{}, h.ManagedDirItems()...)
-	if extra, ok := h.ExternalManagedPath(scope, projectPath); ok {
+	if extra, ok := h.ExternalManagedPath(); ok {
 		items = append(items, extra.ProfilePath)
 	}
 	return items

@@ -5,13 +5,6 @@ import (
 	"path/filepath"
 )
 
-type Scope string
-
-const (
-	ScopeGlobal Scope = "global"
-	ScopeLocal  Scope = "local"
-)
-
 const (
 	CvmDirName    = ".cvm"
 	ClaudeDirName = ".claude"
@@ -28,19 +21,9 @@ func GlobalProfilesDir() string {
 	return filepath.Join(CvmHome(), "global", "profiles")
 }
 
-// LocalProfilesDir returns ~/.cvm/local/profiles
-func LocalProfilesDir() string {
-	return filepath.Join(CvmHome(), "local", "profiles")
-}
-
 // GlobalVanillaDir returns ~/.cvm/global/vanilla
 func GlobalVanillaDir() string {
 	return filepath.Join(CvmHome(), "global", "vanilla")
-}
-
-// LocalVanillaDir returns ~/.cvm/local/vanilla/<project-hash>
-func LocalVanillaDir(projectPath string) string {
-	return filepath.Join(CvmHome(), "local", "vanilla", hashPath(projectPath))
 }
 
 // GlobalOverridesDir returns ~/.cvm/global/overrides
@@ -48,45 +31,12 @@ func GlobalOverridesDir() string {
 	return filepath.Join(CvmHome(), "global", "overrides")
 }
 
-// LocalOverridesDir returns ~/.cvm/local/overrides/<project-hash>
-func LocalOverridesDir(projectPath string) string {
-	return filepath.Join(CvmHome(), "local", "overrides", hashPath(projectPath))
-}
-
-// OverrideDir returns the override directory for a given scope and profile name
-func OverrideDir(scope Scope, name string, projectPath string) string {
-	if scope == ScopeGlobal {
-		return filepath.Join(GlobalOverridesDir(), name)
-	}
-	return filepath.Join(LocalOverridesDir(projectPath), name)
+// OverrideDir returns the override directory for a profile name.
+func OverrideDir(name string) string {
+	return filepath.Join(GlobalOverridesDir(), name)
 }
 
 // StatePath returns ~/.cvm/state.json
 func StatePath() string {
 	return filepath.Join(CvmHome(), "state.json")
-}
-
-// hashPath creates a filesystem-safe hash of a path for per-project storage
-func hashPath(p string) string {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		abs = p
-	}
-	// Simple hash: replace / with - and trim leading -
-	safe := ""
-	for _, c := range abs {
-		if c == '/' || c == '\\' {
-			safe += "-"
-		} else {
-			safe += string(c)
-		}
-	}
-	if len(safe) > 0 && safe[0] == '-' {
-		safe = safe[1:]
-	}
-	// Truncate to avoid overly long paths
-	if len(safe) > 100 {
-		safe = safe[len(safe)-100:]
-	}
-	return safe
 }
