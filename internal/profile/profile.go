@@ -22,7 +22,6 @@ type ProfileInfo struct {
 
 type Inventory struct {
 	Name       string
-	Scope      config.Scope
 	Path       string
 	Exists     bool
 	Files      []string
@@ -30,27 +29,24 @@ type Inventory struct {
 	MCPServers []string
 }
 
-func profilesDir(scope config.Scope) string {
-	if scope == config.ScopeGlobal {
-		return config.GlobalProfilesDir()
-	}
-	return config.LocalProfilesDir()
+func profilesDir() string {
+	return config.GlobalProfilesDir()
 }
 
-func targetDir(scope config.Scope, projectPath string) string {
-	return defaultHarness().TargetDir(scope, projectPath)
+func targetDir() string {
+	return defaultHarness().TargetDir()
 }
 
-func targetDirForHarness(h harness.Harness, scope config.Scope, projectPath string) string {
-	return h.TargetDir(scope, projectPath)
+func targetDirForHarness(h harness.Harness) string {
+	return h.TargetDir()
 }
 
-func ProfileDir(scope config.Scope, name string) string {
-	return filepath.Join(profilesDir(scope), name)
+func ProfileDir(name string) string {
+	return filepath.Join(profilesDir(), name)
 }
 
-func Init(scope config.Scope, name string, from string, projectPath string) error {
-	dir := ProfileDir(scope, name)
+func Init(name string, from string) error {
+	dir := ProfileDir(name)
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("profile %q already exists", name)
 	}
@@ -58,7 +54,7 @@ func Init(scope config.Scope, name string, from string, projectPath string) erro
 		return err
 	}
 	if from != "" {
-		srcDir := ProfileDir(scope, from)
+		srcDir := ProfileDir(from)
 		if _, err := os.Stat(srcDir); os.IsNotExist(err) {
 			return fmt.Errorf("source profile %q not found", from)
 		}
@@ -66,20 +62,20 @@ func Init(scope config.Scope, name string, from string, projectPath string) erro
 			return fmt.Errorf("copying from %q: %w", from, err)
 		}
 	} else {
-		tgt := targetDir(scope, projectPath)
-		if err := captureManagedItems(defaultHarness(), scope, tgt, dir, projectPath); err != nil {
+		tgt := targetDir()
+		if err := captureManagedItems(defaultHarness(), tgt, dir); err != nil {
 			return fmt.Errorf("copying managed items: %w", err)
 		}
 	}
 	return nil
 }
 
-func Use(scope config.Scope, name string, projectPath string) error {
-	return UseWithHarness(scope, name, projectPath, defaultHarness())
+func Use(name string) error {
+	return UseWithHarness(name, defaultHarness())
 }
 
-func UseWithHarness(scope config.Scope, name string, projectPath string, h harness.Harness) error {
-	profileDir := ProfileDir(scope, name)
+func UseWithHarness(name string, h harness.Harness) error {
+	profileDir := ProfileDir(name)
 	dir, cleanup, err := profileActivationDir(profileDir, h)
 	if err != nil {
 		return err
@@ -95,91 +91,72 @@ func UseWithHarness(scope config.Scope, name string, projectPath string, h harne
 	}
 
 	// Ensure vanilla backup exists
-	if err := EnsureVanillaWithHarness(scope, projectPath, h); err != nil {
+	if err := EnsureVanillaWithHarness(h); err != nil {
 		return fmt.Errorf("ensuring vanilla backup: %w", err)
 	}
 
-	// Save current state to active profile
-	var currentActive string
-	if scope == config.ScopeGlobal {
-		currentActive = st.GetGlobalHarness(h.Name())
-	} else {
-		currentActive = st.GetLocalHarness(projectPath, h.Name())
-	}
+	currentActive := st.GetGlobalHarness(h.Name())
 	if currentActive != "" {
-		if err := SaveWithHarness(scope, currentActive, projectPath, h); err != nil {
+		if err := SaveWithHarness(currentActive, h); err != nil {
 			return fmt.Errorf("saving current active profile %q: %w", currentActive, err)
 		}
 	}
 
 	// Clean and apply
-	tgt := targetDirForHarness(h, scope, projectPath)
-	if err := CleanManagedItems(h, scope, tgt, projectPath); err != nil {
+	tgt := targetDirForHarness(h)
+	if err := CleanManagedItems(h, tgt); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
 	if err := os.MkdirAll(tgt, 0755); err != nil {
 		return err
 	}
-	if err := CopyManagedItems(h, scope, dir, tgt, projectPath); err != nil {
+	if err := CopyManagedItems(h, dir, tgt); err != nil {
 		return fmt.Errorf("applying profile: %w", err)
 	}
-	if err := ApplyOverrides(h, scope, name, tgt, projectPath); err != nil {
+	if err := ApplyOverrides(h, name, tgt); err != nil {
 		return fmt.Errorf("applying overrides: %w", err)
 	}
 
 	// Update state
-	if scope == config.ScopeGlobal {
-		st.SetGlobalHarness(h.Name(), name)
-	} else {
-		st.SetLocalHarness(projectPath, h.Name(), name)
-	}
+	st.SetGlobalHarness(h.Name(), name)
 	return st.Save()
 }
 
-func UseNone(scope config.Scope, projectPath string) error {
-	return UseNoneWithHarness(scope, projectPath, defaultHarness())
+func UseNone() error {
+	return UseNoneWithHarness(defaultHarness())
 }
 
-func UseNoneWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
+func UseNoneWithHarness(h harness.Harness) error {
 	st, err := state.Load()
 	if err != nil {
 		return err
 	}
 
-	var currentActive string
-	if scope == config.ScopeGlobal {
-		currentActive = st.GetGlobalHarness(h.Name())
-	} else {
-		currentActive = st.GetLocalHarness(projectPath, h.Name())
-	}
+	currentActive := st.GetGlobalHarness(h.Name())
 	if currentActive != "" {
-		if err := SaveWithHarness(scope, currentActive, projectPath, h); err != nil {
+		if err := SaveWithHarness(currentActive, h); err != nil {
 			return fmt.Errorf("saving current active profile %q: %w", currentActive, err)
 		}
 	}
 
-	tgt := targetDirForHarness(h, scope, projectPath)
-	if err := CleanManagedItems(h, scope, tgt, projectPath); err != nil {
+	tgt := targetDirForHarness(h)
+	if err := CleanManagedItems(h, tgt); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
-	if err := RestoreVanillaWithHarness(scope, projectPath, h); err != nil {
+	if err := RestoreVanillaWithHarness(h); err != nil {
 		return fmt.Errorf("restoring vanilla backup: %w", err)
 	}
 
-	if scope == config.ScopeGlobal {
-		st.ClearGlobalHarness(h.Name())
-	} else {
-		st.ClearLocalHarness(projectPath, h.Name())
-	}
+	st.ClearGlobalHarness(h.Name())
 	return st.Save()
 }
 
-func List(scope config.Scope, projectPath string) ([]ProfileInfo, error) {
-	return ListWithHarness(scope, projectPath, defaultHarness())
+func List() ([]ProfileInfo, error) {
+	return ListWithHarness(defaultHarness())
 }
 
-func ListWithHarness(scope config.Scope, projectPath string, h harness.Harness) ([]ProfileInfo, error) {
-	dir := profilesDir(scope)
+func ListWithHarness(h harness.Harness) ([]ProfileInfo, error) {
+	dir := profilesDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -193,12 +170,7 @@ func ListWithHarness(scope config.Scope, projectPath string, h harness.Harness) 
 		return nil, err
 	}
 
-	var active string
-	if scope == config.ScopeGlobal {
-		active = st.GetGlobalHarness(h.Name())
-	} else {
-		active = st.GetLocalHarness(projectPath, h.Name())
-	}
+	active := st.GetGlobalHarness(h.Name())
 
 	var profiles []ProfileInfo
 	for _, e := range entries {
@@ -209,7 +181,7 @@ func ListWithHarness(scope config.Scope, projectPath string, h harness.Harness) 
 		if err != nil {
 			return nil, err
 		}
-		items := countItems(h, scope, assetDir, projectPath)
+		items := countItems(h, assetDir)
 		cleanup()
 		profiles = append(profiles, ProfileInfo{
 			Name:   e.Name(),
@@ -220,33 +192,29 @@ func ListWithHarness(scope config.Scope, projectPath string, h harness.Harness) 
 	return profiles, nil
 }
 
-func Current(scope config.Scope, projectPath string) (string, error) {
-	return CurrentWithHarness(scope, projectPath, defaultHarness())
+func Current() (string, error) {
+	return CurrentWithHarness(defaultHarness())
 }
 
-func CurrentWithHarness(scope config.Scope, projectPath string, h harness.Harness) (string, error) {
+func CurrentWithHarness(h harness.Harness) (string, error) {
 	st, err := state.Load()
 	if err != nil {
 		return "", err
 	}
-	if scope == config.ScopeGlobal {
-		return st.GetGlobalHarness(h.Name()), nil
-	}
-	return st.GetLocalHarness(projectPath, h.Name()), nil
+	return st.GetGlobalHarness(h.Name()), nil
 }
 
-func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
+func Inspect(name string) (*Inventory, error) {
 	h := defaultHarness()
-	profileDir := ProfileDir(scope, name)
+	profileDir := ProfileDir(name)
 	dir, err := profileAssetDir(profileDir, h)
 	if err != nil {
 		return nil, err
 	}
 	info := &Inventory{
-		Name:  name,
-		Scope: scope,
-		Path:  dir,
-		Dirs:  make(map[string][]string),
+		Name: name,
+		Path: dir,
+		Dirs: make(map[string][]string),
 	}
 
 	entries, err := os.ReadDir(dir)
@@ -277,7 +245,7 @@ func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
 	sort.Strings(info.Files)
 
 	// Extract MCP server names from the config file
-	if extra, ok := h.ExternalManagedPath(scope, projectPath); ok {
+	if extra, ok := h.ExternalManagedPath(); ok {
 		mcpPath := filepath.Join(dir, extra.ProfilePath)
 		if cfg, err := readJSONFile(mcpPath); err == nil {
 			if servers, ok := cfg["mcpServers"].(map[string]any); ok {
@@ -292,12 +260,12 @@ func Inspect(scope config.Scope, name, projectPath string) (*Inventory, error) {
 	return info, nil
 }
 
-func Save(scope config.Scope, name string, projectPath string) error {
-	return SaveWithHarness(scope, name, projectPath, defaultHarness())
+func Save(name string) error {
+	return SaveWithHarness(name, defaultHarness())
 }
 
-func SaveWithHarness(scope config.Scope, name string, projectPath string, h harness.Harness) error {
-	profileDir := ProfileDir(scope, name)
+func SaveWithHarness(name string, h harness.Harness) error {
+	profileDir := ProfileDir(name)
 	dir, ok, err := profileCaptureDir(profileDir, h)
 	if err != nil {
 		return err
@@ -305,17 +273,17 @@ func SaveWithHarness(scope config.Scope, name string, projectPath string, h harn
 	if !ok {
 		return fmt.Errorf("profile %q uses rendered portable assets for harness %q; live changes cannot be saved safely", name, h.Name())
 	}
-	tgt := targetDirForHarness(h, scope, projectPath)
+	tgt := targetDirForHarness(h)
 	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
 	// Strip overrides from live dir before capturing to prevent
 	// baking them into the base profile
-	if err := StripOverrides(h, scope, name, tgt, projectPath); err != nil {
+	if err := StripOverrides(h, name, tgt); err != nil {
 		return fmt.Errorf("stripping overrides before save: %w", err)
 	}
 	// Always re-apply overrides to live dir, even if capture fails
-	defer ApplyOverrides(h, scope, name, tgt, projectPath) //nolint:errcheck
+	defer ApplyOverrides(h, name, tgt) //nolint:errcheck
 
 	if err := clearDirContents(dir); err != nil {
 		return err
@@ -326,24 +294,19 @@ func SaveWithHarness(scope config.Scope, name string, projectPath string, h harn
 		}
 		return err
 	}
-	return captureManagedItems(h, scope, tgt, dir, projectPath)
+	return captureManagedItems(h, tgt, dir)
 }
 
-func Remove(scope config.Scope, name string, projectPath string) error {
+func Remove(name string) error {
 	st, err := state.Load()
 	if err != nil {
 		return err
 	}
-	var active string
-	if scope == config.ScopeGlobal {
-		active = st.GetGlobalHarness(defaultHarness().Name())
-	} else {
-		active = st.GetLocalHarness(projectPath, defaultHarness().Name())
-	}
+	active := st.GetGlobalHarness(defaultHarness().Name())
 	if active == name {
-		return fmt.Errorf("cannot remove active profile %q, switch first with 'cvm %s use --none'", name, scope)
+		return fmt.Errorf("cannot remove active profile %q, switch first with 'cvm use --none'", name)
 	}
-	dir := ProfileDir(scope, name)
+	dir := ProfileDir(name)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
@@ -352,71 +315,66 @@ func Remove(scope config.Scope, name string, projectPath string) error {
 
 // --- Backup/Vanilla operations (inlined to avoid import cycle) ---
 
-func vanillaDir(scope config.Scope, projectPath string) string {
-	return vanillaDirForHarness(scope, projectPath, defaultHarness())
+func vanillaDir() string {
+	return vanillaDirForHarness(defaultHarness())
 }
 
-func vanillaDirForHarness(scope config.Scope, projectPath string, h harness.Harness) string {
+func vanillaDirForHarness(h harness.Harness) string {
 	baseDir := config.GlobalVanillaDir()
-	if scope == config.ScopeGlobal {
-		baseDir = config.GlobalVanillaDir()
-	} else {
-		baseDir = config.LocalVanillaDir(projectPath)
-	}
 	if h.Name() == defaultHarness().Name() {
 		return baseDir
 	}
 	return filepath.Join(baseDir, h.Name())
 }
 
-func EnsureVanilla(scope config.Scope, projectPath string) error {
-	return EnsureVanillaWithHarness(scope, projectPath, defaultHarness())
+func EnsureVanilla() error {
+	return EnsureVanillaWithHarness(defaultHarness())
 }
 
-func EnsureVanillaWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
-	vdir := vanillaDirForHarness(scope, projectPath, h)
+func EnsureVanillaWithHarness(h harness.Harness) error {
+	vdir := vanillaDirForHarness(h)
 	if _, err := os.Stat(vdir); err == nil {
 		return nil
 	}
 	if err := os.MkdirAll(vdir, 0755); err != nil {
 		return err
 	}
-	src := targetDirForHarness(h, scope, projectPath)
-	return captureManagedItems(h, scope, src, vdir, projectPath)
+	src := targetDirForHarness(h)
+	return captureManagedItems(h, src, vdir)
 }
 
-func RestoreVanilla(scope config.Scope, projectPath string) error {
-	return RestoreVanillaWithHarness(scope, projectPath, defaultHarness())
+func RestoreVanilla() error {
+	return RestoreVanillaWithHarness(defaultHarness())
 }
 
-func RestoreVanillaWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
-	vdir := vanillaDirForHarness(scope, projectPath, h)
+func RestoreVanillaWithHarness(h harness.Harness) error {
+	vdir := vanillaDirForHarness(h)
 	if _, err := os.Stat(vdir); os.IsNotExist(err) {
 		return nil
 	}
-	dst := targetDirForHarness(h, scope, projectPath)
+	dst := targetDirForHarness(h)
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
-	return CopyManagedItems(h, scope, vdir, dst, projectPath)
+	return CopyManagedItems(h, vdir, dst)
 }
 
-func HasVanilla(scope config.Scope, projectPath string) bool {
-	return HasVanillaWithHarness(scope, projectPath, defaultHarness())
+func HasVanilla() bool {
+	return HasVanillaWithHarness(defaultHarness())
 }
 
-func HasVanillaWithHarness(scope config.Scope, projectPath string, h harness.Harness) bool {
-	_, err := os.Stat(vanillaDirForHarness(scope, projectPath, h))
+func HasVanillaWithHarness(h harness.Harness) bool {
+	_, err := os.Stat(vanillaDirForHarness(h))
 	return err == nil
 }
 
-func Nuke(scope config.Scope, projectPath string) error {
-	return NukeWithHarness(scope, projectPath, defaultHarness())
+func Nuke() error {
+	return NukeWithHarness(defaultHarness())
 }
 
-func NukeWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
-	dst := targetDirForHarness(h, scope, projectPath)
-	return CleanManagedItems(h, scope, dst, projectPath)
+func NukeWithHarness(h harness.Harness) error {
+	dst := targetDirForHarness(h)
+	return CleanManagedItems(h, dst)
 }
 
 // --- File operations ---
@@ -426,8 +384,8 @@ type managedPath struct {
 	LivePath    string
 }
 
-func CleanManagedItems(h harness.Harness, scope config.Scope, liveDir, projectPath string) error {
-	for _, item := range managedPaths(h, scope, liveDir, projectPath) {
+func CleanManagedItems(h harness.Harness, liveDir string) error {
+	for _, item := range managedPaths(h, liveDir) {
 		if h.IsUserMCPPath(item.ProfilePath) {
 			if err := removeUserMCPServers(item.LivePath); err != nil {
 				return err
@@ -441,8 +399,8 @@ func CleanManagedItems(h harness.Harness, scope config.Scope, liveDir, projectPa
 	return nil
 }
 
-func CopyManagedItems(h harness.Harness, scope config.Scope, srcProfileDir, dstLiveDir, projectPath string) error {
-	for _, item := range managedPaths(h, scope, dstLiveDir, projectPath) {
+func CopyManagedItems(h harness.Harness, srcProfileDir, dstLiveDir string) error {
+	for _, item := range managedPaths(h, dstLiveDir) {
 		srcPath := filepath.Join(srcProfileDir, item.ProfilePath)
 		if h.IsUserMCPPath(item.ProfilePath) {
 			if err := applyUserMCPServers(srcPath, item.LivePath); err != nil {
@@ -472,8 +430,8 @@ func CopyManagedItems(h harness.Harness, scope config.Scope, srcProfileDir, dstL
 	return nil
 }
 
-func captureManagedItems(h harness.Harness, scope config.Scope, srcLiveDir, dstProfileDir, projectPath string) error {
-	for _, item := range managedPaths(h, scope, srcLiveDir, projectPath) {
+func captureManagedItems(h harness.Harness, srcLiveDir, dstProfileDir string) error {
+	for _, item := range managedPaths(h, srcLiveDir) {
 		srcPath := item.LivePath
 		if h.IsUserMCPPath(item.ProfilePath) {
 			if err := captureUserMCPServers(srcPath, filepath.Join(dstProfileDir, item.ProfilePath)); err != nil {
@@ -503,9 +461,9 @@ func captureManagedItems(h harness.Harness, scope config.Scope, srcLiveDir, dstP
 	return nil
 }
 
-func countItems(h harness.Harness, scope config.Scope, dir, projectPath string) int {
+func countItems(h harness.Harness, dir string) int {
 	count := 0
-	for _, item := range harness.ManagedProfileItems(h, scope, projectPath) {
+	for _, item := range harness.ManagedProfileItems(h) {
 		if _, err := os.Stat(filepath.Join(dir, item)); err == nil {
 			count++
 		}
@@ -513,8 +471,8 @@ func countItems(h harness.Harness, scope config.Scope, dir, projectPath string) 
 	return count
 }
 
-func managedPaths(h harness.Harness, scope config.Scope, liveDir, projectPath string) []managedPath {
-	paths := make([]managedPath, 0, len(harness.ManagedProfileItems(h, scope, projectPath)))
+func managedPaths(h harness.Harness, liveDir string) []managedPath {
+	paths := make([]managedPath, 0, len(harness.ManagedProfileItems(h)))
 	for _, item := range h.ManagedDirItems() {
 		paths = append(paths, managedPath{
 			ProfilePath: item,
@@ -522,7 +480,7 @@ func managedPaths(h harness.Harness, scope config.Scope, liveDir, projectPath st
 		})
 	}
 
-	if extra, ok := h.ExternalManagedPath(scope, projectPath); ok {
+	if extra, ok := h.ExternalManagedPath(); ok {
 		paths = append(paths, managedPath{
 			ProfilePath: extra.ProfilePath,
 			LivePath:    extra.LivePath,
@@ -658,20 +616,20 @@ func CopyFile(src, dst string) error {
 	return os.WriteFile(dst, data, info.Mode())
 }
 
-// OverrideDir returns the override directory for the given scope and profile name.
-func OverrideDir(scope config.Scope, name string, projectPath string) string {
-	return config.OverrideDir(scope, name, projectPath)
+// OverrideDir returns the override directory for the given profile name.
+func OverrideDir(name string) string {
+	return config.OverrideDir(name)
 }
 
 // ApplyOverrides merges the user's override layer on top of the already-applied
 // profile in the live directory. This is called after CopyManagedItems.
-func ApplyOverrides(h harness.Harness, scope config.Scope, name string, liveDir string, projectPath string) error {
-	overDir := OverrideDir(scope, name, projectPath)
+func ApplyOverrides(h harness.Harness, name string, liveDir string) error {
+	overDir := OverrideDir(name)
 	if _, err := os.Stat(overDir); os.IsNotExist(err) {
 		return nil // no overrides — nothing to do
 	}
 
-	for _, item := range managedPaths(h, scope, liveDir, projectPath) {
+	for _, item := range managedPaths(h, liveDir) {
 		overSrc := filepath.Join(overDir, item.ProfilePath)
 		if _, err := os.Stat(overSrc); os.IsNotExist(err) {
 			continue
@@ -835,19 +793,19 @@ func isJSONFile(name string) bool {
 // StripOverrides removes override contributions from the live directory so that
 // Save() captures only the base profile state. This prevents overrides from being
 // permanently baked into the base profile on profile switch.
-func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir string, projectPath string) error {
-	overDir := OverrideDir(scope, name, projectPath)
+func StripOverrides(h harness.Harness, name string, liveDir string) error {
+	overDir := OverrideDir(name)
 	if _, err := os.Stat(overDir); os.IsNotExist(err) {
 		return nil
 	}
 
-	profileDir := ProfileDir(scope, name)
+	profileDir := ProfileDir(name)
 	baseProfileDir, err := profileAssetDir(profileDir, h)
 	if err != nil {
 		return err
 	}
 
-	for _, item := range managedPaths(h, scope, liveDir, projectPath) {
+	for _, item := range managedPaths(h, liveDir) {
 		overSrc := filepath.Join(overDir, item.ProfilePath)
 		if _, err := os.Stat(overSrc); os.IsNotExist(err) {
 			continue
@@ -983,9 +941,9 @@ func StripOverrides(h harness.Harness, scope config.Scope, name string, liveDir 
 
 // Reapply re-applies the active profile and its overrides to the live directory
 // without saving the current state first. Used by "cvm override apply".
-func Reapply(scope config.Scope, name string, projectPath string) error {
+func Reapply(name string) error {
 	h := defaultHarness()
-	profileDir := ProfileDir(scope, name)
+	profileDir := ProfileDir(name)
 	dir, cleanup, err := profileActivationDir(profileDir, h)
 	if err != nil {
 		return err
@@ -994,21 +952,21 @@ func Reapply(scope config.Scope, name string, projectPath string) error {
 	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
-	tgt := targetDir(scope, projectPath)
+	tgt := targetDir()
 	// Strip current overrides to clean stale keys before fresh re-apply
-	if err := StripOverrides(h, scope, name, tgt, projectPath); err != nil {
+	if err := StripOverrides(h, name, tgt); err != nil {
 		return fmt.Errorf("stripping overrides: %w", err)
 	}
-	if err := CleanManagedItems(h, scope, tgt, projectPath); err != nil {
+	if err := CleanManagedItems(h, tgt); err != nil {
 		return fmt.Errorf("cleaning target: %w", err)
 	}
 	if err := os.MkdirAll(tgt, 0755); err != nil {
 		return err
 	}
-	if err := CopyManagedItems(h, scope, dir, tgt, projectPath); err != nil {
+	if err := CopyManagedItems(h, dir, tgt); err != nil {
 		return fmt.Errorf("applying profile: %w", err)
 	}
-	if err := ApplyOverrides(h, scope, name, tgt, projectPath); err != nil {
+	if err := ApplyOverrides(h, name, tgt); err != nil {
 		return fmt.Errorf("applying overrides: %w", err)
 	}
 	return nil

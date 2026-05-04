@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/chichex/cvm/internal/config"
 )
 
 type claudeHarness struct{}
@@ -33,12 +31,9 @@ func (claudeHarness) Name() string {
 	return "claude"
 }
 
-func (claudeHarness) TargetDir(scope config.Scope, projectPath string) string {
-	if scope == config.ScopeGlobal {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".claude")
-	}
-	return filepath.Join(projectPath, ".claude")
+func (claudeHarness) TargetDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".claude")
 }
 
 func (h claudeHarness) DefaultAssetDir(profileDir string) string {
@@ -69,27 +64,17 @@ func (claudeHarness) ManagedDirItems() []string {
 	return append([]string{}, managedClaudeDirItems...)
 }
 
-func (claudeHarness) ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool) {
+func (claudeHarness) ExternalManagedPath() (ManagedPath, bool) {
 	home, _ := os.UserHomeDir()
-	switch scope {
-	case config.ScopeGlobal:
-		return ManagedPath{
-			ProfilePath: ".claude.json",
-			LivePath:    filepath.Join(home, ".claude.json"),
-		}, true
-	case config.ScopeLocal:
-		return ManagedPath{
-			ProfilePath: ".mcp.json",
-			LivePath:    filepath.Join(projectPath, ".mcp.json"),
-		}, true
-	default:
-		return ManagedPath{}, false
-	}
+	return ManagedPath{
+		ProfilePath: ".claude.json",
+		LivePath:    filepath.Join(home, ".claude.json"),
+	}, true
 }
 
 func (h claudeHarness) ProfileDiscoveryItems() []string {
 	items := append([]string{}, h.ManagedDirItems()...)
-	items = append(items, ".claude.json", ".mcp.json")
+	items = append(items, ".claude.json")
 	return items
 }
 
@@ -110,5 +95,5 @@ func (claudeHarness) IsUserMCPPath(profilePath string) bool {
 }
 
 func (claudeHarness) IsMCPPath(profilePath string) bool {
-	return profilePath == ".claude.json" || profilePath == ".mcp.json"
+	return profilePath == ".claude.json"
 }

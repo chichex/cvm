@@ -6,14 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/harness"
 )
 
 type ScaffoldAssetOptions struct {
-	Scope       config.Scope
 	ProfileName string
-	ProjectPath string
 	Kind        string
 	Name        string
 	HarnessName string
@@ -38,7 +35,7 @@ func ScaffoldAsset(opts ScaffoldAssetOptions) (*ScaffoldedAsset, error) {
 		return nil, fmt.Errorf("profile name is required")
 	}
 
-	profileDir := ProfileDir(opts.Scope, opts.ProfileName)
+	profileDir := ProfileDir(opts.ProfileName)
 	info, err := os.Stat(profileDir)
 	if err != nil {
 		if os.IsNotExist(err) {

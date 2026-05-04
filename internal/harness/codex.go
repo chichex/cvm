@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/chichex/cvm/internal/config"
 )
 
 type codexHarness struct{}
@@ -22,10 +20,7 @@ func (codexHarness) Name() string {
 	return "codex"
 }
 
-func (codexHarness) TargetDir(scope config.Scope, projectPath string) string {
-	if scope == config.ScopeLocal {
-		return filepath.Join(projectPath, ".codex")
-	}
+func (codexHarness) TargetDir() string {
 	if dir := os.Getenv("CODEX_HOME"); dir != "" {
 		return dir
 	}
@@ -50,7 +45,7 @@ func (codexHarness) ManagedDirItems() []string {
 	return append([]string{}, managedCodexDirItems...)
 }
 
-func (codexHarness) ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool) {
+func (codexHarness) ExternalManagedPath() (ManagedPath, bool) {
 	return ManagedPath{}, false
 }
 

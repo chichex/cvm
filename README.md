@@ -51,7 +51,6 @@ cvm nuke -f
 ```bash
 cvm add work                                   # create empty profile
 cvm add work --from chiche                     # copy from existing profile
-cvm add work --local                           # create for current project only
 cvm add chiche git@github.com:chichex/cvm.git  # add from GitHub repo
 cvm add chiche chichex/cvm/profiles/chiche     # shorthand (any URL format works)
 ```
@@ -79,8 +78,7 @@ Use `cvm profile add` to author the base profile. Use `cvm override add` for per
 ### Switch profiles
 
 ```bash
-cvm use work            # activate globally (~/.claude/)
-cvm use work --local    # activate for current project (.claude/)
+cvm use work            # activate user-level config
 cvm use work --harness claude
 cvm use work --harness opencode
 cvm use work --harness codex
@@ -90,9 +88,8 @@ cvm use --none          # back to vanilla
 ### List and remove
 
 ```bash
-cvm ls                  # list all profiles (global + local, shows remote source)
+cvm ls                  # list profiles, including remote source
 cvm rm work             # remove a profile
-cvm rm work --local     # remove a local profile
 ```
 
 ### Update and upgrade
@@ -106,15 +103,11 @@ cvm upgrade             # upgrade cvm itself to the latest version
 ### Clean up
 
 ```bash
-cvm nuke                # remove ALL managed config (global + local)
-cvm nuke --global       # only global
-cvm nuke --local        # only local project
+cvm nuke                # remove all managed config
 cvm nuke --harness claude
 cvm nuke -f             # skip confirmation
 
 cvm restore             # restore pre-cvm state from vanilla backup
-cvm restore --global    # only global
-cvm restore --local     # only local
 cvm restore --harness claude
 cvm restore --harness opencode
 ```
@@ -129,7 +122,7 @@ cvm remote rm chiche   # unlink from remote (keeps local copy)
 ### Inspect
 
 ```bash
-cvm status             # show active profiles by harness (global + local)
+cvm status             # show active profiles by harness
 cvm status --harness claude
 cvm status --harness opencode
 cvm profile            # inspect active profile contents
@@ -141,10 +134,9 @@ cvm profile show work  # inspect a specific stored profile
 Toggle bypass mode on the active profile. Stored as an override, so it survives `cvm pull`.
 
 ```bash
-cvm bypass on           # enable bypass on active global profile
+cvm bypass on           # enable bypass on active profile
 cvm bypass off          # disable
 cvm bypass status       # show current state
-cvm bypass on --local   # affect the active local profile instead
 ```
 
 ### Overrides
@@ -161,14 +153,19 @@ cvm override apply               # re-apply active profile + overrides
 cvm override rm skill foo        # remove an override file
 ```
 
-## Two scopes
+## Targets
 
-| Scope | Claude target | OpenCode target | Codex target | Flag |
-|-------|---------------|-----------------|--------------|------|
-| **global** (default) | `~/.claude/` plus `~/.claude.json` | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` | `~/.codex/` or `$CODEX_HOME` | (none) |
-| **local** | `.claude/` plus `.mcp.json` in current project | `.opencode/` in current project | `.codex/` in current project | `--local` |
+`cvm` manages only user-level harness configuration:
+
+| Harness | Target |
+|---------|--------|
+| Claude | `~/.claude/` plus `~/.claude.json` |
+| OpenCode | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` |
+| Codex | `~/.codex/` or `$CODEX_HOME` |
 
 For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cvm` only manages its `mcpServers` section.
+
+Project-local profiles were hard-deleted. `cvm local`, `cvm global`, `--local`, `--global`, project `.claude/`, project `.opencode/`, and project `.mcp.json` are no longer part of the model. Existing project-local files are left untouched on disk; remove them manually if you no longer want them, for example `rm -rf .claude .opencode .mcp.json` from the affected project.
 
 ## What cvm manages
 
@@ -199,9 +196,8 @@ See `specs/portable-profiles.md` for the full experimental contract and merge mo
 |------|-------------|
 | `CLAUDE.md` | Global instructions |
 | `settings.json` | Permissions, hooks config, plugins |
-| `settings.local.json` | Local overrides |
+| `settings.local.json` | Claude user overrides |
 | `.claude.json` | User-scoped MCP servers (managed as the `mcpServers` section only) |
-| `.mcp.json` | Project-scoped MCP servers |
 | `keybindings.json` | Keyboard shortcuts |
 | `skills/` | Custom slash commands |
 | `agents/` | Subagent definitions |
@@ -235,7 +231,7 @@ OpenCode runtime storage is **never** touched, including `~/.local/share/opencod
 When you run `cvm use work`:
 
 1. Backs up your original `~/.claude/` state (first time only, as "vanilla")
-2. Saves current `~/.claude/`, `~/.claude.json`, and project MCP config to the previously active profile
+2. Saves current `~/.claude/` and `~/.claude.json` to the previously active profile
 3. Cleans all managed items from `~/.claude/`
 4. Copies the "work" profile into `~/.claude/`
 5. Updates `~/.cvm/state.json`

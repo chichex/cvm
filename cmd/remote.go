@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/chichex/cvm/internal/config"
 	"github.com/chichex/cvm/internal/remote"
 	"github.com/spf13/cobra"
 )
@@ -31,25 +30,13 @@ Examples:
 			path = args[2]
 		}
 		branch, _ := cmd.Flags().GetString("branch")
-		local, _ := cmd.Flags().GetBool("local")
 
-		scope := config.ScopeGlobal
-		projectPath := ""
-		if local {
-			scope = config.ScopeLocal
-			var err error
-			projectPath, err = getProjectPath()
-			if err != nil {
-				return err
-			}
-		}
-
-		if err := remote.Add(name, repo, path, branch, scope, projectPath); err != nil {
+		if err := remote.Add(name, repo, path, branch); err != nil {
 			return err
 		}
 
 		fmt.Printf("Linked profile %q to %s (path: %s)\n", name, repo, path)
-		fmt.Printf("Use: %s\n", useCommand(name, scope))
+		fmt.Printf("Use: %s\n", useCommand(name))
 		fmt.Printf("Update: cvm pull %s\n", name)
 		return nil
 	},
@@ -68,7 +55,7 @@ var remoteLsCmd = &cobra.Command{
 			return nil
 		}
 		for name, r := range remotes {
-			fmt.Printf("  %-20s %s → %s (%s)\n", name, r.Repo, r.Path, r.Scope)
+			fmt.Printf("  %-20s %s -> %s\n", name, r.Repo, r.Path)
 		}
 		return nil
 	},
@@ -89,7 +76,6 @@ var remoteRmCmd = &cobra.Command{
 
 func init() {
 	remoteAddCmd.Flags().String("branch", "main", "Git branch")
-	remoteAddCmd.Flags().Bool("local", false, "Add as local profile (default: global)")
 
 	remoteCmd.AddCommand(remoteAddCmd)
 	remoteCmd.AddCommand(remoteLsCmd)

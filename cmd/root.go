@@ -12,9 +12,9 @@ var Version = "dev"
 var rootCmd = &cobra.Command{
 	Use:   "cvm",
 	Short: "Claude Version Manager - profile manager for Claude Code",
-	Long: `cvm manages Claude Code configuration profiles at global (~/.claude/)
-and local (.claude/) levels. Switch configs instantly, nuke everything,
-restore to vanilla. Like nvm but for your Claude Code setup.`,
+	Long: `cvm manages user-level agent harness configuration profiles.
+Switch configs instantly, nuke everything, restore to vanilla.
+Like nvm but for your agent harness setup.`,
 	Version: Version,
 }
 
@@ -31,6 +31,9 @@ func init() {
 	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(rmCmd)
+	rootCmd.AddCommand(currentCmd)
+	rootCmd.AddCommand(saveCmd)
+	rootCmd.AddCommand(editCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(nukeCmd)
@@ -41,7 +44,4 @@ func init() {
 	rootCmd.AddCommand(remoteCmd)
 	rootCmd.AddCommand(overrideCmd)
 
-	// Legacy (still work, but simplified API is preferred)
-	rootCmd.AddCommand(globalCmd)
-	rootCmd.AddCommand(localCmd)
 }

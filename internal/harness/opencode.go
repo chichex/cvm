@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/chichex/cvm/internal/config"
 )
 
 type opencodeHarness struct{}
@@ -27,11 +25,7 @@ func (opencodeHarness) Name() string {
 	return "opencode"
 }
 
-func (opencodeHarness) TargetDir(scope config.Scope, projectPath string) string {
-	if scope == config.ScopeLocal {
-		// OPENCODE_CONFIG_DIR only redirects the global config; project config remains local.
-		return filepath.Join(projectPath, ".opencode")
-	}
+func (opencodeHarness) TargetDir() string {
 	if dir := os.Getenv("OPENCODE_CONFIG_DIR"); dir != "" {
 		return dir
 	}
@@ -60,7 +54,7 @@ func (opencodeHarness) ManagedDirItems() []string {
 	return append([]string{}, managedOpenCodeDirItems...)
 }
 
-func (opencodeHarness) ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool) {
+func (opencodeHarness) ExternalManagedPath() (ManagedPath, bool) {
 	// OpenCode keeps config inside TargetDir, unlike Claude's external MCP files.
 	return ManagedPath{}, false
 }
