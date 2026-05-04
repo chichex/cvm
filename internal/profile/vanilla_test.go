@@ -18,6 +18,10 @@ func (h testHarness) Name() string {
 	return h.name
 }
 
+func (h testHarness) SupportsScope(scope config.Scope) bool {
+	return scope == config.ScopeGlobal || scope == config.ScopeLocal
+}
+
 func (h testHarness) TargetDir(scope config.Scope, projectPath string) string {
 	if scope == config.ScopeLocal {
 		return filepath.Join(projectPath, "."+h.name)

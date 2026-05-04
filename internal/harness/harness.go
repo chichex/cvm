@@ -9,6 +9,7 @@ type ManagedPath struct {
 
 type Harness interface {
 	Name() string
+	SupportsScope(scope config.Scope) bool
 	TargetDir(scope config.Scope, projectPath string) string
 	ManagedDirItems() []string
 	ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool)

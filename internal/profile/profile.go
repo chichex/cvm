@@ -45,6 +45,13 @@ func targetDirForHarness(h harness.Harness, scope config.Scope, projectPath stri
 	return h.TargetDir(scope, projectPath)
 }
 
+func validateHarnessScope(h harness.Harness, scope config.Scope) error {
+	if h.SupportsScope(scope) {
+		return nil
+	}
+	return fmt.Errorf("%s harness does not support %s scope", h.Name(), scope)
+}
+
 func ProfileDir(scope config.Scope, name string) string {
 	return filepath.Join(profilesDir(scope), name)
 }
@@ -79,6 +86,9 @@ func Use(scope config.Scope, name string, projectPath string) error {
 }
 
 func UseWithHarness(scope config.Scope, name string, projectPath string, h harness.Harness) error {
+	if err := validateHarnessScope(h, scope); err != nil {
+		return err
+	}
 	profileDir := ProfileDir(scope, name)
 	dir, err := profileAssetDir(profileDir, h)
 	if err != nil {
@@ -140,6 +150,9 @@ func UseNone(scope config.Scope, projectPath string) error {
 }
 
 func UseNoneWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
+	if err := validateHarnessScope(h, scope); err != nil {
+		return err
+	}
 	st, err := state.Load()
 	if err != nil {
 		return err
@@ -178,6 +191,9 @@ func List(scope config.Scope, projectPath string) ([]ProfileInfo, error) {
 }
 
 func ListWithHarness(scope config.Scope, projectPath string, h harness.Harness) ([]ProfileInfo, error) {
+	if err := validateHarnessScope(h, scope); err != nil {
+		return nil, err
+	}
 	dir := profilesDir(scope)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -295,6 +311,9 @@ func Save(scope config.Scope, name string, projectPath string) error {
 }
 
 func SaveWithHarness(scope config.Scope, name string, projectPath string, h harness.Harness) error {
+	if err := validateHarnessScope(h, scope); err != nil {
+		return err
+	}
 	profileDir := ProfileDir(scope, name)
 	dir, err := profileAssetDir(profileDir, h)
 	if err != nil {
@@ -369,6 +388,9 @@ func EnsureVanilla(scope config.Scope, projectPath string) error {
 }
 
 func EnsureVanillaWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
+	if err := validateHarnessScope(h, scope); err != nil {
+		return err
+	}
 	vdir := vanillaDirForHarness(scope, projectPath, h)
 	if _, err := os.Stat(vdir); err == nil {
 		return nil
@@ -385,6 +407,9 @@ func RestoreVanilla(scope config.Scope, projectPath string) error {
 }
 
 func RestoreVanillaWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
+	if err := validateHarnessScope(h, scope); err != nil {
+		return err
+	}
 	vdir := vanillaDirForHarness(scope, projectPath, h)
 	if _, err := os.Stat(vdir); os.IsNotExist(err) {
 		return nil
@@ -410,6 +435,9 @@ func Nuke(scope config.Scope, projectPath string) error {
 }
 
 func NukeWithHarness(scope config.Scope, projectPath string, h harness.Harness) error {
+	if err := validateHarnessScope(h, scope); err != nil {
+		return err
+	}
 	dst := targetDirForHarness(h, scope, projectPath)
 	return CleanManagedItems(h, scope, dst, projectPath)
 }

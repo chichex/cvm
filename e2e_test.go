@@ -466,6 +466,17 @@ func TestCodexHarnessRestoreGlobalVanilla(t *testing.T) {
 	assertFileContent(t, filepath.Join(codexHome, "AGENTS.md"), "# vanilla codex")
 }
 
+func TestCodexHarnessLocalScopeFailsExplicitly(t *testing.T) {
+	e := newTestEnv(t)
+
+	profileRoot := filepath.Join(e.home, ".cvm", "local", "profiles", "codex-profile")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"codex-profile\"\nharnesses = [\"codex\"]\n\n[assets]\ncodex = \"codex\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "codex", "AGENTS.md"), "# codex profile")
+
+	out := e.mustFail("use", "codex-profile", "--local", "--harness", "codex")
+	assertContains(t, out, "codex harness does not support local scope")
+}
+
 func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")

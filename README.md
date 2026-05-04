@@ -154,7 +154,7 @@ cvm override rm skill foo        # remove an override file
 | Scope | Claude target | OpenCode target | Codex target | Flag |
 |-------|---------------|-----------------|--------------|------|
 | **global** (default) | `~/.claude/` plus `~/.claude.json` | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` | `~/.codex/` or `$CODEX_HOME` | (none) |
-| **local** | `.claude/` plus `.mcp.json` in current project | `.opencode/` in current project | `.codex/` in current project | `--local` |
+| **local** | `.claude/` plus `.mcp.json` in current project | `.opencode/` in current project | Unsupported for Codex | `--local` |
 
 For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cvm` only manages its `mcpServers` section.
 
@@ -226,7 +226,7 @@ Codex support is intentionally limited to portable instructions copied as-is int
 |------|-------------|
 | `AGENTS.md` | Harness instructions |
 
-`cvm` respects `$CODEX_HOME` for global Codex installs and otherwise targets `~/.codex/`. It does not translate Claude settings JSON, hooks, agents, skills, MCP config, or conceptual `portable/settings.toml` into Codex `config.toml`; those assets require explicit harness-specific support before they are managed.
+`cvm` respects `$CODEX_HOME` for global Codex installs and otherwise targets `~/.codex/`. Codex local scope is not supported because Codex does not read a project-local `.codex/` config home by default. `cvm` does not translate Claude settings JSON, hooks, agents, skills, MCP config, or conceptual `portable/settings.toml` into Codex `config.toml`; those assets require explicit harness-specific support before they are managed.
 
 Codex runtime and user-owned files are **never** touched, including `config.toml`, `auth.json`, `history.jsonl`, `sessions/`, and `log/`.
 

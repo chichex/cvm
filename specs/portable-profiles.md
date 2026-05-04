@@ -96,4 +96,4 @@ Harness-specific assets win over portable assets for the same logical asset. `cv
 
 ## Codex Status
 
-Codex support is limited to explicit Codex asset dirs containing `AGENTS.md`. `cvm` targets `$CODEX_HOME` or `~/.codex` for global installs and does not translate `portable/instructions.md`, `portable/settings.toml`, Claude settings, hooks, MCP, skills, or agents into Codex native formats yet.
+Codex support is limited to explicit Codex asset dirs containing `AGENTS.md`. `cvm` targets `$CODEX_HOME` or `~/.codex` for global installs only. Local scope is unsupported until Codex has a native project-local config home or `cvm` adds an explicit activation model for one. `cvm` does not translate `portable/instructions.md`, `portable/settings.toml`, Claude settings, hooks, MCP, skills, or agents into Codex native formats yet.

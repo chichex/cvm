@@ -21,10 +21,11 @@ func (codexHarness) Name() string {
 	return "codex"
 }
 
+func (codexHarness) SupportsScope(scope config.Scope) bool {
+	return scope == config.ScopeGlobal
+}
+
 func (codexHarness) TargetDir(scope config.Scope, projectPath string) string {
-	if scope == config.ScopeLocal {
-		return filepath.Join(projectPath, ".codex")
-	}
 	if dir := os.Getenv("CODEX_HOME"); dir != "" {
 		return dir
 	}
@@ -49,9 +50,12 @@ func (codexHarness) MarkdownInstructionsFile() string {
 }
 
 func (codexHarness) IsUserMCPPath(profilePath string) bool {
+	// Codex MCP support is not managed by cvm yet; config.toml stays user-owned
+	// and outside ManagedDirItems until cvm has explicit TOML merge semantics.
 	return false
 }
 
 func (codexHarness) IsMCPPath(profilePath string) bool {
+	// Revisit this if Codex gains a managed MCP asset so additive merge rules apply.
 	return false
 }

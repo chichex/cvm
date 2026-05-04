@@ -12,13 +12,14 @@ func TestCodexTargetDir(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	h := Codex()
+	if !h.SupportsScope(config.ScopeGlobal) {
+		t.Fatal("codex should support global scope")
+	}
+	if h.SupportsScope(config.ScopeLocal) {
+		t.Fatal("codex should not support local scope")
+	}
 	if got, want := h.TargetDir(config.ScopeGlobal, ""), filepath.Join(home, ".codex"); got != want {
 		t.Fatalf("global target = %q, want %q", got, want)
-	}
-
-	project := filepath.Join(home, "project")
-	if got, want := h.TargetDir(config.ScopeLocal, project), filepath.Join(project, ".codex"); got != want {
-		t.Fatalf("local target = %q, want %q", got, want)
 	}
 }
 
