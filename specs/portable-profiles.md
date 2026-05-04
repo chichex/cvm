@@ -1,8 +1,10 @@
-# Portable Profile Contract v1
+# Portable Profile Contract v0.1 Experimental
 
 ## Goal
 
 Define the small profile surface that `cvm` owns across harnesses. Portable assets are authored as `cvm` concepts first, then rendered or copied into Claude, OpenCode, Codex, or another harness when that harness has a compatible equivalent.
+
+This is an experimental v0.1 contract. The current implementation covers manifest parsing and portable asset-dir fallback only; renderer and merge-engine behavior is planned. Treat the layout as subject to tightening until at least one non-Claude renderer consumes it.
 
 ## Portable Rule
 
@@ -13,7 +15,9 @@ An asset is portable when all of these are true:
 - A missing or partial harness equivalent can be omitted or degraded explicitly.
 - The mapping is 1:1 or close to 1:1.
 
-If an asset requires semantic translation, behavior rewrites, or runtime-specific hooks, it is not portable v1.
+Portable v0.1 is exactly the included set below. Anything outside that set is harness-specific by default.
+
+If an asset requires semantic translation, behavior rewrites, or runtime-specific hooks, it is not portable v0.1.
 
 ## Included Assets
 
@@ -26,14 +30,21 @@ If an asset requires semantic translation, behavior rewrites, or runtime-specifi
 
 ## Excluded Assets
 
-These assets are harness-specific in portable v1:
+These assets are harness-specific in portable v0.1:
 
 - hooks
 - plugins
 - commands legacy
 - MCP config with incompatible formats
 - raw vendor settings files
+- statusline commands
+- keybindings
+- output styles
+- teams
+- path-scoped rules
 - runtime-specific memory, transcript, session, or cache data
+
+A skill is portable only when it avoids harness-specific subagent invocation, harness-specific filesystem paths, and cross-skill contracts that depend on harness state or output conventions. Skills that assume those behaviors must stay under `<harness>/skills/`.
 
 ## Layout
 
@@ -65,7 +76,7 @@ opencode = "opencode"
 codex = "codex"
 ```
 
-If a harness-specific asset dir is omitted, `cvm` may use `[assets].portable` as the fallback. If neither is present, legacy profiles default to the profile root and `harnesses = ["claude"]`.
+If a declared harness omits its harness-specific asset dir, `cvm` uses `[assets].portable` as the fallback. Profile authors are responsible for keeping that fallback directory limited to portable-shaped assets. If neither is present, legacy profiles default to the profile root and `harnesses = ["claude"]`.
 
 ## Merge Model
 
@@ -80,3 +91,5 @@ Harness-specific assets win over portable assets for the same logical asset. `cv
 ## Lite Profile Status
 
 `profiles/lite` now declares this contract and extracts neutral instructions into `portable/instructions.md`. It still declares only `claude` support because the current skills, statusline, MCP config, and memory rules depend on Claude Code behavior. OpenCode and Codex support for `lite` should be enabled only after renderers can map portable instructions and skills into native formats without promising unsupported hooks, MCP, or memory behavior.
+
+`lite` intentionally keeps Claude assets at the profile root with `claude = "."` for compatibility with the existing profile layout. New profiles may use the canonical sibling layout shown above when they do not need legacy root assets.

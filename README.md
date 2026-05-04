@@ -167,15 +167,16 @@ harnesses = ["claude"]
 
 [assets]
 portable = "portable"
-claude = "claude"
-opencode = "opencode"
+claude = "."
 ```
 
-Portable v1 is intentionally small: `instructions`, `skills`, instruction-only `agents`, and conceptual `settings`. Hooks, plugins, MCP with incompatible formats, raw vendor settings, runtime memory, transcripts, sessions, and caches are not portable and must live in harness-specific override directories.
+Portable v0.1 is experimental and intentionally small: `instructions`, portable `skills`, instruction-only `agents`, and conceptual `settings`. Everything else is harness-specific by default, including hooks, plugins, MCP with incompatible formats, raw vendor settings, statusline commands, keybindings, output styles, teams, path rules, runtime memory, transcripts, sessions, and caches.
+
+Portable skills must not assume harness-specific subagents, harness filesystem paths, or cross-skill contracts tied to harness output conventions.
 
 If a harness-specific asset dir is not declared, `cvm` can use `[assets].portable` as the fallback. Legacy profiles without a manifest still behave as Claude profiles rooted at the profile directory.
 
-See `specs/portable-profiles.md` for the full contract and merge model.
+See `specs/portable-profiles.md` for the full experimental contract and merge model.
 
 ### Claude
 
