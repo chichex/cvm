@@ -53,6 +53,49 @@ func TestLoadManifestSupportsHarnessSpecificAssetDir(t *testing.T) {
 	}
 }
 
+func TestLoadManifestUsesPortableAssetDirAsHarnessFallback(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("name = \"lite\"\nharnesses = [\"claude\"]\n\n[assets]\nportable = \"portable\"\n")
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), body, 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+
+	assetDir, err := manifest.AssetDir(dir, harness.Claude())
+	if err != nil {
+		t.Fatalf("AssetDir: %v", err)
+	}
+	want := filepath.Join(dir, "portable")
+	if assetDir != want {
+		t.Fatalf("unexpected asset dir: got %q want %q", assetDir, want)
+	}
+}
+
+func TestLoadManifestTreatsExplicitEmptyAssetDirAsProfileRoot(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("name = \"lite\"\nharnesses = [\"claude\"]\n\n[assets]\nportable = \"\"\nclaude = \"\"\n")
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), body, 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+
+	assetDir, err := manifest.AssetDir(dir, harness.Claude())
+	if err != nil {
+		t.Fatalf("AssetDir: %v", err)
+	}
+	if assetDir != dir {
+		t.Fatalf("unexpected asset dir: got %q want %q", assetDir, dir)
+	}
+}
+
 func TestManifestRejectsEscapingAssetDir(t *testing.T) {
 	dir := t.TempDir()
 	body := []byte("harnesses = [\"claude\"]\n\n[assets]\nclaude = \"../escape\"\n")

@@ -105,6 +105,9 @@ func (m *Manifest) SupportsHarness(name string) bool {
 
 func (m *Manifest) AssetDir(profileDir string, h harness.Harness) (string, error) {
 	raw := strings.TrimSpace(m.Assets[h.Name()])
+	if raw == "" {
+		raw = strings.TrimSpace(m.Assets["portable"])
+	}
 	if raw == "" || raw == "." {
 		return profileDir, nil
 	}
