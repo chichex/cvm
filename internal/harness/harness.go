@@ -1,15 +1,27 @@
 package harness
 
-import "github.com/chichex/cvm/internal/config"
+import (
+	"os"
+
+	"github.com/chichex/cvm/internal/config"
+)
 
 type ManagedPath struct {
 	ProfilePath string
 	LivePath    string
 }
 
+type ScaffoldAsset struct {
+	ProfilePath string
+	Content     string
+	Mode        os.FileMode
+}
+
 type Harness interface {
 	Name() string
 	TargetDir(scope config.Scope, projectPath string) string
+	DefaultAssetDir(profileDir string) string
+	ScaffoldAsset(kind, name string) (ScaffoldAsset, error)
 	ManagedDirItems() []string
 	ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool)
 	ProfileDiscoveryItems() []string

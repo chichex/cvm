@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -125,6 +126,75 @@ func (m *Manifest) AssetDir(profileDir string, h harness.Harness) (string, error
 func HasManifest(profileDir string) bool {
 	_, err := os.Stat(filepath.Join(profileDir, manifestFileName))
 	return err == nil
+}
+
+func SaveManifest(profileDir string, manifest *Manifest) error {
+	if manifest.Name == "" {
+		manifest.Name = filepath.Base(profileDir)
+	}
+	if len(manifest.Harnesses) == 0 {
+		return fmt.Errorf("harnesses must not be empty")
+	}
+
+	var b strings.Builder
+	b.WriteString("name = ")
+	b.WriteString(strconv.Quote(manifest.Name))
+	b.WriteByte('\n')
+	b.WriteString("harnesses = [")
+	for i, harnessName := range manifest.Harnesses {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(strconv.Quote(harnessName))
+	}
+	b.WriteString("]\n")
+
+	keys := manifestAssetKeys(manifest)
+	if len(keys) > 0 {
+		b.WriteString("\n[assets]\n")
+		for _, key := range keys {
+			b.WriteString(key)
+			b.WriteString(" = ")
+			b.WriteString(strconv.Quote(manifest.Assets[key]))
+			b.WriteByte('\n')
+		}
+	}
+
+	if err := os.MkdirAll(profileDir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(profileDir, manifestFileName), []byte(b.String()), 0644)
+}
+
+func manifestAssetKeys(manifest *Manifest) []string {
+	if len(manifest.Assets) == 0 {
+		return nil
+	}
+
+	seen := map[string]bool{}
+	keys := []string{}
+	appendKey := func(key string) {
+		if _, ok := manifest.Assets[key]; !ok || seen[key] {
+			return
+		}
+		seen[key] = true
+		keys = append(keys, key)
+	}
+
+	appendKey("portable")
+	for _, harnessName := range manifest.Harnesses {
+		appendKey(harnessName)
+	}
+
+	remaining := make([]string, 0, len(manifest.Assets)-len(keys))
+	for key := range manifest.Assets {
+		if !seen[key] {
+			remaining = append(remaining, key)
+		}
+	}
+	sort.Strings(remaining)
+	keys = append(keys, remaining...)
+	return keys
 }
 
 func LooksLikeProfileDir(profileDir string) bool {

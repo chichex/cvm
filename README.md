@@ -62,6 +62,20 @@ When adding from a repo without a path, cvm auto-discovers the profile:
 3. If the repo root is a profile, uses that
 4. If multiple profiles found, lists them for you to pick
 
+### Author profile assets
+
+```bash
+cvm profile add instructions --profile work
+cvm profile add skill deploy --profile work
+cvm profile add agent reviewer --profile work
+cvm profile add hook post --profile work --harness claude
+cvm profile add skill deploy --profile work --harness opencode --from-file ./deploy.md
+```
+
+By default, `instructions`, `skill`, and `agent` are portable authoring assets written under `portable/`. Portable assets are inputs for the portable contract; harness rendering is planned separately, so use `--harness` when you need an asset applied by today's activation flow. Passing `--harness` writes a harness-specific asset under that harness directory. Hooks are always harness-specific and require `--harness`.
+
+Use `cvm profile add` to author the base profile. Use `cvm override add` for personal customizations layered on top of an active profile.
+
 ### Switch profiles
 
 ```bash

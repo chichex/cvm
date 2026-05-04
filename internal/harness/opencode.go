@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -36,6 +37,23 @@ func (opencodeHarness) TargetDir(scope config.Scope, projectPath string) string 
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "opencode")
+}
+
+func (h opencodeHarness) DefaultAssetDir(profileDir string) string {
+	return h.Name()
+}
+
+func (h opencodeHarness) ScaffoldAsset(kind, name string) (ScaffoldAsset, error) {
+	switch kind {
+	case "instructions":
+		return ScaffoldAsset{ProfilePath: h.MarkdownInstructionsFile(), Content: "# Profile Instructions\n\n", Mode: 0644}, nil
+	case "skill":
+		return ScaffoldAsset{ProfilePath: filepath.Join("skills", name, "SKILL.md"), Content: "---\ndescription: TODO\n---\n\n", Mode: 0644}, nil
+	case "agent":
+		return ScaffoldAsset{ProfilePath: filepath.Join("agents", name+".md"), Content: "# " + name + "\n\n", Mode: 0644}, nil
+	default:
+		return ScaffoldAsset{}, fmt.Errorf("opencode does not support %s scaffolding", kind)
+	}
 }
 
 func (opencodeHarness) ManagedDirItems() []string {
