@@ -205,11 +205,12 @@ func ListWithHarness(scope config.Scope, projectPath string, h harness.Harness) 
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		assetDir, err := profileAssetDir(filepath.Join(dir, e.Name()), h)
+		assetDir, cleanup, err := profileActivationDir(filepath.Join(dir, e.Name()), h)
 		if err != nil {
 			return nil, err
 		}
 		items := countItems(h, scope, assetDir, projectPath)
+		cleanup()
 		profiles = append(profiles, ProfileInfo{
 			Name:   e.Name(),
 			Active: e.Name() == active,
@@ -297,9 +298,12 @@ func Save(scope config.Scope, name string, projectPath string) error {
 
 func SaveWithHarness(scope config.Scope, name string, projectPath string, h harness.Harness) error {
 	profileDir := ProfileDir(scope, name)
-	dir, err := profileAssetDir(profileDir, h)
+	dir, ok, err := profileCaptureDir(profileDir, h)
 	if err != nil {
 		return err
+	}
+	if !ok {
+		return nil
 	}
 	tgt := targetDirForHarness(h, scope, projectPath)
 	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
@@ -1080,10 +1084,12 @@ func renderPortableAssets(portableDir, renderedDir string, h harness.Harness) er
 	if err := renderPortableFile(filepath.Join(portableDir, "instructions.md"), filepath.Join(renderedDir, h.MarkdownInstructionsFile())); err != nil {
 		return err
 	}
-	if h.Name() != "codex" {
+	if h.SupportsPortableSkills() {
 		if err := renderPortableCollection(filepath.Join(portableDir, "skills"), renderedDir, filepath.Join("skills", "%s", "SKILL.md")); err != nil {
 			return err
 		}
+	}
+	if h.SupportsPortableAgents() {
 		if err := renderPortableCollection(filepath.Join(portableDir, "agents"), renderedDir, filepath.Join("agents", "%s.md")); err != nil {
 			return err
 		}
@@ -1120,6 +1126,29 @@ func renderPortableCollection(srcDir, renderedDir, targetPattern string) error {
 		}
 	}
 	return nil
+}
+
+func profileCaptureDir(profileDir string, h harness.Harness) (string, bool, error) {
+	manifest, err := LoadManifest(profileDir)
+	if err != nil {
+		return "", false, fmt.Errorf("loading manifest for profile %q: %w", filepath.Base(profileDir), err)
+	}
+	if !manifest.SupportsHarness(h.Name()) {
+		return "", false, fmt.Errorf("profile %q does not support harness %q", filepath.Base(profileDir), h.Name())
+	}
+	if raw, ok := manifest.Assets[h.Name()]; ok {
+		_, hasPortable := manifest.Assets["portable"]
+		if (strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == ".") && hasPortable {
+			return "", false, nil
+		}
+		dir, err := assetDirFromRaw(profileDir, raw)
+		return dir, true, err
+	}
+	if _, ok := manifest.Assets["portable"]; ok {
+		return "", false, nil
+	}
+	dir, err := manifest.AssetDir(profileDir, h)
+	return dir, true, err
 }
 
 func clearDirContents(dir string) error {

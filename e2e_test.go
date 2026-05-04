@@ -61,6 +61,8 @@ func (e *testEnv) run(args ...string) (string, error) {
 	cmd.Dir = e.projectDir
 	cmd.Env = append(os.Environ(),
 		"HOME="+e.home,
+		"CODEX_HOME=",
+		"OPENCODE_CONFIG_DIR=",
 	)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -91,7 +93,7 @@ func (e *testEnv) runWithEnv(extra map[string]string, args ...string) string {
 	e.t.Helper()
 	cmd := exec.Command(cvmBin, args...)
 	cmd.Dir = e.projectDir
-	env := append(os.Environ(), "HOME="+e.home)
+	env := append(os.Environ(), "HOME="+e.home, "CODEX_HOME=", "OPENCODE_CONFIG_DIR=")
 	for k, v := range extra {
 		env = append(env, k+"="+v)
 	}
@@ -394,6 +396,17 @@ func TestPortableAssetsRenderForOpenCode(t *testing.T) {
 	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# portable instructions")
 	assertFileContent(t, filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md"), "---\ndescription: Deploy app\n---")
 	assertFileContent(t, filepath.Join(opencodeDir, "agents", "reviewer.md"), "# reviewer")
+
+	e.mustRun("use", "--none", "--harness", "opencode")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "---\ndescription: Deploy app\n---")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "agents", "reviewer.md"), "# reviewer")
+	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("portable dir should not capture native AGENTS.md, got err %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "skills", "deploy", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("portable dir should not capture native skill layout, got err %v", err)
+	}
 }
 
 func TestHarnessAssetsOverrideRenderedPortableAssets(t *testing.T) {
@@ -425,6 +438,13 @@ func TestPortableInstructionsRenderForCodex(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(codexDir, "skills")); !os.IsNotExist(err) {
 		t.Fatalf("codex should not install portable skills without native support, got err %v", err)
 	}
+
+	e.mustRun("use", "--none", "--harness", "codex")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# codex instructions")
+	assertFileContent(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
+	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("portable dir should not capture codex AGENTS.md, got err %v", err)
+	}
 }
 
 func TestLiteProfileActivatesForAllHarnesses(t *testing.T) {
@@ -438,6 +458,9 @@ func TestLiteProfileActivatesForAllHarnesses(t *testing.T) {
 	out := e.mustRun("use", "lite", "--harness", "claude")
 	assertContains(t, out, "Switched claude harness")
 	assertFileContains(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# Lite Profile")
+	e.mustRun("use", "--none", "--harness", "claude")
+	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "harnesses = [\"claude\", \"opencode\", \"codex\"]")
+	assertFileContains(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# Lite Profile")
 
 	out = e.mustRun("use", "lite", "--harness", "opencode")
 	assertContains(t, out, "Switched opencode harness")

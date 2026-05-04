@@ -26,6 +26,8 @@ type Harness interface {
 	ExternalManagedPath(scope config.Scope, projectPath string) (ManagedPath, bool)
 	ProfileDiscoveryItems() []string
 	MarkdownInstructionsFile() string
+	SupportsPortableSkills() bool
+	SupportsPortableAgents() bool
 	IsUserMCPPath(profilePath string) bool
 	IsMCPPath(profilePath string) bool
 }

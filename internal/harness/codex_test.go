@@ -10,6 +10,7 @@ import (
 func TestCodexTargetDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
 
 	h := Codex()
 	if got, want := h.TargetDir(config.ScopeGlobal, ""), filepath.Join(home, ".codex"); got != want {

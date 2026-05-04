@@ -62,6 +62,14 @@ func (codexHarness) MarkdownInstructionsFile() string {
 	return "AGENTS.md"
 }
 
+func (codexHarness) SupportsPortableSkills() bool {
+	return false
+}
+
+func (codexHarness) SupportsPortableAgents() bool {
+	return false
+}
+
 func (codexHarness) IsUserMCPPath(profilePath string) bool {
 	// Codex MCP support is not managed by cvm yet; config.toml stays user-owned
 	// and outside ManagedDirItems until cvm has explicit TOML merge semantics.
