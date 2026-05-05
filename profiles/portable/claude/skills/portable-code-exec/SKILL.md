@@ -48,6 +48,13 @@ gh pr checkout "$PR"
 git pull --ff-only origin "$BRANCH" 2>/dev/null || true
 ```
 
+### 6b. Asegurar labels de estado (idempotente)
+```bash
+gh label create "code:exec"   --color "FBCA04" --description "portable-code: last op was exec, pending validate" 2>/dev/null || true
+gh label create "code:passed" --color "0E8A16" --description "portable-code: last validate emitted PASS"          2>/dev/null || true
+gh label create "code:failed" --color "B60205" --description "portable-code: last validate emitted FAIL"          2>/dev/null || true
+```
+
 ### 7. Leer el plan
 `Read` sobre `PLAN_FILE` → `PLAN_TEXT`. **No** imprimirlo al usuario.
 
@@ -88,6 +95,13 @@ last_feedback (vacio en single-shot):
 
 Esperar el resultado. Parsear el `## Exec report`.
 
+## Aplicar label de estado
+
+```bash
+gh pr edit "$PR" --add-label "code:exec" --remove-label "code:passed" --remove-label "code:failed" 2>/dev/null
+```
+(`--remove-label` no falla si el label no estaba aplicado.)
+
 ## Cierre
 
 Imprimir el reporte tal cual lo devolvio el agent (es informacion util para el usuario), seguido de:
@@ -98,6 +112,7 @@ Imprimir el reporte tal cual lo devolvio el agent (es informacion util para el u
 - pr: #<PR>
 - branch: <BRANCH>
 - mode: single-shot exec (sin validacion)
+- label_applied: code:exec
 
 Para validar: /portable-code-validate <PR>
 Para loop completo (exec + validate iterativo): /portable-code-loop <PR>
@@ -116,5 +131,5 @@ Para loop completo (exec + validate iterativo): /portable-code-loop <PR>
 - No validar nada vos mismo (no correr tests/checks). Es responsabilidad de `/portable-code-validate`.
 - No hacer mas de una pasada — para iterar usar `/portable-code-loop`.
 - No correr build/test/lint desde el orquestador.
-- No tocar labels del PR.
+- No tocar labels del PR distintos de `code:exec` / `code:passed` / `code:failed`.
 - No persistir nada en auto-memory.

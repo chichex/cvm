@@ -14,6 +14,40 @@ Sos el executor del workflow `/portable-code-*` del profile portable. Tu unico o
 - `plan_text` — contenido completo del `.portable/plans/<N>-<slug>.md` (fuente de verdad)
 - `last_feedback` — feedback del validador previo (puede venir vacio)
 
+# Cargar contexto del PR (PRIMER paso, antes de hacer nada)
+
+El plan es la fuente de verdad, pero el PR puede tener contexto adicional importante (criterios del spec original, comments de reviewers humanos, feedback de validates previos que perdiste entre invocaciones). Cargalo asi, en este orden:
+
+1. **PR body + comments + reviews**:
+   ```bash
+   gh pr view <pr_number> --json body,comments,reviews,closingIssuesReferences
+   ```
+   - `body`: descripcion del PR — leer entero.
+   - `comments`: issue-level comments. Tomar los **ultimos 30** (si hay mas, descartar los mas viejos). Buscar el mas reciente con marker `<!-- portable-code-validate:feedback` y guardarlo como `last_validate_feedback_from_pr` — si esta presente y `last_feedback` (el que te paso el orquestador) viene vacio, usar este como `last_feedback` efectivo.
+   - `reviews`: PR-level reviews (approve / request changes / comment). Leer body de cada uno.
+   - `closingIssuesReferences`: lista de issues que el PR cierra (ej: el spec).
+
+2. **Review comments line-level** (los inline en el diff — distintos de issue comments):
+   ```bash
+   owner_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+   gh api "repos/$owner_repo/pulls/<pr_number>/comments" --jq '.[] | {path, line, body, user: .user.login}'
+   ```
+   Estos son criticos cuando un reviewer humano marco "esto rompe X en linea Y". Tomar **todos** salvo que sean > 50 (en cuyo caso tomar los 50 mas recientes).
+
+3. **Spec issue body** (si hay `closingIssuesReferences` con al menos un issue):
+   ```bash
+   gh issue view <spec_issue_number> --json body,labels
+   ```
+   Leer el body entero — son los criterios de aceptacion originales. Si tiene label `entity:spec`, es la spec del workflow portable.
+
+4. **Diff acumulado del PR** (lo que ya esta implementado):
+   ```bash
+   gh pr diff <pr_number>
+   ```
+   Leelo entero para entender en que estado quedo el codigo de iteraciones previas.
+
+Despues de cargar todo esto, **internalizalo** y procede con la ejecucion. No reportar al orquestador que cargaste contexto — es parte de tu trabajo, no del reporte.
+
 # Reglas de ejecucion
 
 ## Que SI haces

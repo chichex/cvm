@@ -39,7 +39,7 @@ Validaciones:
 
 Guardar `BRANCH = headRefName`, `BASE = baseRefName`, `PR_TITLE = title`, `PR_URL = url`.
 
-### 5. Localizar el archivo de plan en el PR y auto-detectar arranque
+### 5. Localizar el archivo de plan en el PR
 ```bash
 gh pr diff "$PR" --name-only
 ```
@@ -49,9 +49,32 @@ No pude localizar un unico archivo .portable/plans/*.md en el PR #<PR>. /portabl
 ```
 Guardar como `PLAN_FILE`.
 
-**Auto-detect del arranque**:
-- Si el diff del PR contiene **solo** `PLAN_FILE` (un solo archivo cambiado y es el plan): `START_WITH = "exec"` — el PR todavia no tiene implementacion.
-- Si el diff contiene `PLAN_FILE` **+ otros archivos**: `START_WITH = "validate"` — ya hay implementacion; auditarla primero. Si el validador la marca FAIL, la siguiente vuelta del loop pasa a exec con el feedback. Si no hay nada que cambiar, sale en una vuelta.
+### 5b. Asegurar labels de estado (idempotente)
+```bash
+gh label create "code:exec"   --color "FBCA04" --description "portable-code: last op was exec, pending validate" 2>/dev/null || true
+gh label create "code:passed" --color "0E8A16" --description "portable-code: last validate emitted PASS"          2>/dev/null || true
+gh label create "code:failed" --color "B60205" --description "portable-code: last validate emitted FAIL"          2>/dev/null || true
+```
+
+### 5c. Auto-detect del arranque
+
+Estrategia en dos capas — labels primero, diff como fallback.
+
+**Capa 1: leer labels del PR** (ya cargados en step 4 como `LABELS`).
+- Si tiene `code:passed`: abortar con
+  ```
+  PR #<PR> ya tiene label code:passed (validate previo dio PASS). No hay nada que iterar.
+  Si querés re-validar igual, corré: /portable-code-validate <PR>
+  ```
+- Si tiene `code:failed`: `START_WITH = "exec"`. Recuperar el ultimo feedback del validator:
+  ```bash
+  gh pr view "$PR" --json comments --jq '.comments | map(select(.body | startswith("<!-- portable-code-validate:feedback"))) | last | .body // ""'
+  ```
+  Si devuelve un body, extraer el `## Validate report` que esta despues del marker y guardarlo como `last_feedback` (asi el primer exec arranca con contexto, no ciego).
+- Si tiene `code:exec`: `START_WITH = "validate"`.
+- Si NO tiene ninguno de los tres: **fallback heurística diff**:
+  - Si el diff del PR contiene **solo** `PLAN_FILE`: `START_WITH = "exec"` (PR todavia sin implementacion).
+  - Si el diff contiene `PLAN_FILE` **+ otros archivos**: `START_WITH = "validate"` (ya hay implementacion sin label de estado — auditarla).
 
 ### 6. Checkout local de la branch del PR
 ```bash
@@ -124,6 +147,12 @@ last_feedback (resolve esto primero, vacio si es la primera vuelta):
 
 Esperar el resultado. Parsear el `## Exec report` y guardar `last_exec_report = <bloque completo>`.
 
+**Aplicar label `code:exec`** (idempotente, mutuamente exclusivo con los otros dos):
+```bash
+gh pr edit "$PR" --add-label "code:exec" --remove-label "code:passed" --remove-label "code:failed" 2>/dev/null
+```
+(`--remove-label` no falla si el label no estaba aplicado.)
+
 ### Fase VALIDATE — subagent portable-code-validator
 
 Llamar `Agent` tool con:
@@ -152,6 +181,35 @@ exec_report (vacio si esta vuelta arranco por validate sin exec previo):
 Esperar el resultado. Parsear el `## Validate report`. Guardar:
 - `last_verdict = verdict`
 - `last_feedback = feedback_for_next_exec` (vacio si PASS)
+- `last_validate_report = <bloque completo>`
+
+**Aplicar label segun verdict** (mutuamente exclusivo):
+```bash
+if [ "$last_verdict" = "PASS" ]; then
+  gh pr edit "$PR" --add-label "code:passed" --remove-label "code:exec" --remove-label "code:failed" 2>/dev/null
+else
+  gh pr edit "$PR" --add-label "code:failed" --remove-label "code:exec" --remove-label "code:passed" 2>/dev/null
+fi
+```
+
+**Postear el feedback como comment del PR** (para que sobreviva a la sesion del orquestador). Generar via `Write` a un tempfile (NUNCA interpolar el reporte en double-quoted shell commands):
+```bash
+COMMENT_FILE="$(mktemp -t cvm-portable-code-loop-feedback.XXXXXX).md"
+```
+Body del comment:
+```markdown
+<!-- portable-code-validate:feedback iter=<iter> verdict=<last_verdict> -->
+## Validate feedback (iter <iter>/<MAX_ITER>) — <last_verdict>
+
+<last_validate_report>
+
+---
+_Posted by `/portable-code-loop`._
+```
+Postear:
+```bash
+gh pr comment "$PR" --body-file "$COMMENT_FILE"
+```
 
 ### Resumen compacto al usuario por iteracion
 
@@ -196,14 +254,17 @@ PR listo para review/merge: <PR_URL>
 Loop agotado sin alcanzar PASS. El PR quedo en su ultimo estado en <BRANCH>. Revisa el feedback arriba y decidi si correr de nuevo (con mas iteraciones via `--max`), retomar a mano, o cerrar el PR.
 ```
 
-No tocar labels en GitHub al cierre — el contrato del profile no define un `validated:loop`.
+El estado del PR queda reflejado en el label `code:passed` o `code:failed` (aplicado en cada vuelta del validate). El ultimo feedback queda persistido como comment del PR con marker `<!-- portable-code-validate:feedback ... -->`, asi una invocacion futura de `/portable-code-loop` puede recuperarlo.
 
 ## MUST DO
 
 - Validar `gh repo view`, working tree limpio y existencia/estado del PR ANTES de empezar el loop.
 - Verificar que el PR tiene label `entity:plan` (o pedir confirmacion si no).
 - Localizar exactamente un `.portable/plans/<N>-<slug>.md` en el diff del PR.
-- Auto-detectar el arranque (`exec` si solo esta el plan, `validate` si ya hay otros archivos).
+- Crear los labels `code:exec`, `code:passed`, `code:failed` (idempotente) antes del loop.
+- Auto-detectar el arranque: labels primero (`code:passed` → abortar; `code:failed` → exec con feedback recuperado del comment marker; `code:exec` → validate); si no hay label, fallback a heurística del diff.
+- Aplicar label de estado mutuamente exclusivo despues de cada exec (`code:exec`) y validate (`code:passed`/`code:failed`).
+- Postear el `## Validate report` como comment del PR con marker `<!-- portable-code-validate:feedback ... -->` despues de cada validate, via `--body-file` (Write tool genera el archivo).
 - Hacer `gh pr checkout` antes de delegar a los subagents.
 - Delegar exec a `portable-code-executor` (no a `general-purpose`).
 - Delegar validate a `portable-code-validator` (no a `general-purpose`).
@@ -221,7 +282,8 @@ No tocar labels en GitHub al cierre — el contrato del profile no define un `va
 - No imprimir el contenido completo del plan al usuario (solo confirmar el path).
 - No mezclar roles ni tipos de subagent.
 - No usar `git push --force` ni mergear el PR ni tocar otras branches.
-- No agregar/quitar labels al PR durante el loop.
+- No agregar/quitar labels al PR distintos de `code:exec` / `code:passed` / `code:failed`. NO tocar `entity:plan` ni otros.
+- No interpolar el reporte del validator en double-quoted shell commands — siempre via `--body-file` con Write tool.
 - No avanzar del pre-flight sin confirmacion explicita del usuario.
 - No persistir estado entre invocaciones (cada `/portable-code-loop` arranca de cero).
 - No persistir nada en auto-memory.

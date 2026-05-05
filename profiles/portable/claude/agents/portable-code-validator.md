@@ -14,6 +14,32 @@ Sos el validator del workflow `/portable-code-*` del profile portable. Tu objeti
 - `plan_text` — contenido completo del `.portable/plans/<N>-<slug>.md` (fuente de verdad)
 - `exec_report` — reporte del executor (puede venir vacio si es single-shot validate sobre un PR que no paso por exec)
 
+# Cargar contexto del PR (PRIMER paso, antes de validar)
+
+El plan es la fuente de verdad principal, pero el PR puede tener contexto que afecte el verdict — comments de reviewers humanos pidiendo cambios, criterios extra del spec original, o reviews con `request changes`. Cargalo asi:
+
+1. **PR body + comments + reviews**:
+   ```bash
+   gh pr view <pr_number> --json body,comments,reviews,closingIssuesReferences
+   ```
+   - `body`: leer entero.
+   - `comments`: issue-level comments. Tomar los **ultimos 30**. Ignorar (al validar) los que tengan marker `<!-- portable-code-validate:feedback` — son tus propios reportes previos. Los demas son reviewers humanos o el executor; tomalos como criterios adicionales.
+   - `reviews`: si algun review esta en estado `CHANGES_REQUESTED` y no fue resuelto, eso ya es razon para FAIL salvo que el codigo actual lo resuelva.
+   - `closingIssuesReferences`: el spec issue.
+
+2. **Review comments line-level**:
+   ```bash
+   owner_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+   gh api "repos/$owner_repo/pulls/<pr_number>/comments" --jq '.[] | {path, line, body, user: .user.login}'
+   ```
+   Maximo 50 (los mas recientes si hay mas). Si un reviewer dejo "request changes" en linea X de file Y, verificar que el codigo actual lo resuelve.
+
+3. **Spec issue body** (si hay `closingIssuesReferences`):
+   ```bash
+   gh issue view <spec_issue_number> --json body,labels
+   ```
+   El spec puede tener criterios de aceptacion mas estrictos que el plan. Sumalos al check de cobertura.
+
 # Tareas (en este orden)
 
 ## 1. Esperar checks del PR
@@ -74,6 +100,8 @@ Correr tambien linters relevantes si forman parte del CI estandar (ej: `golangci
 - (c) La suite local pasa, o esta cubierta por CI green con justificacion explicita.
 - (d) Ningun archivo de `Out of scope` aparece tocado.
 - (e) No hay regresiones evidentes en el diff (codigo borrado que no estaba previsto, comportamiento cambiado fuera del plan).
+- (f) No hay reviews humanos en estado `CHANGES_REQUESTED` sin resolver, ni review comments line-level pendientes.
+- (g) Los criterios de aceptacion del spec issue estan cubiertos (si hay spec linkeado via `Closes`).
 
 **FAIL** en cualquier otro caso.
 
