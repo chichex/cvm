@@ -46,6 +46,45 @@ func TestPullByProfileUpdatesAndReappliesActiveProfile(t *testing.T) {
 	assertFileContent(t, filepath.Join(harness.Claude().TargetDir(), "CLAUDE.md"), "new remote")
 }
 
+func TestPullByProfileUpdatesAndReappliesActiveOpenCodeProfile(t *testing.T) {
+	home := t.TempDir()
+
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", withFakeGit(t))
+
+	manifest := "name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n"
+	writeFile(t, filepath.Join(profile.ProfileDir("open"), "cvm.profile.toml"), manifest)
+	writeFile(t, filepath.Join(profile.ProfileDir("open"), "opencode", "AGENTS.md"), "old profile")
+	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "open", "cvm.profile.toml"), manifest)
+	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "open", "opencode", "AGENTS.md"), "new remote")
+	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "open", "opencode", "skills", "portable-plan", "SKILL.md"), "plan skill")
+
+	st := &state.State{
+		Remotes: make(map[string]state.Remote),
+	}
+	st.SetGlobalHarness("opencode", "open")
+	st.PutRemote(state.Remote{
+		Repo:    "example/global",
+		Path:    filepath.Join("profiles", "open"),
+		Branch:  "main",
+		Profile: "open",
+	})
+	if err := st.Save(); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	updated, err := Pull("open")
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if len(updated) != 1 || updated[0] != "open" {
+		t.Fatalf("unexpected updated profiles: %v", updated)
+	}
+
+	assertFileContent(t, filepath.Join(harness.OpenCode().TargetDir(), "AGENTS.md"), "new remote")
+	assertFileContent(t, filepath.Join(harness.OpenCode().TargetDir(), "skills", "portable-plan", "SKILL.md"), "plan skill")
+}
+
 func TestLooksLikeProfileWithManifestBackedClaudeAssets(t *testing.T) {
 	root := t.TempDir()
 

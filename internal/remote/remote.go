@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/harness"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/state"
 )
@@ -256,14 +257,16 @@ func Pull(profileName string) ([]string, error) {
 
 		updated = append(updated, updatedLabel(r))
 
-		// If this profile is currently active, re-apply directly
-		// (don't use profile.Use() because it saves ~/.claude/ back to
-		// the profile dir first, which would overwrite what we just pulled)
-		active := st.GetGlobalHarness("claude")
-		if active == name {
-			fmt.Printf("  re-applying active profile %q...\n", name)
-			if err := profile.Reapply(name); err != nil {
-				fmt.Printf("  warning: re-apply failed for active profile %s: %v\n", name, err)
+		// If this profile is currently active, re-apply directly.
+		// Don't use profile.Use(): it saves live files back to the profile dir first,
+		// which would overwrite what we just pulled.
+		for _, h := range harness.All() {
+			if st.GetGlobalHarness(h.Name()) != name {
+				continue
+			}
+			fmt.Printf("  re-applying active %s profile %q...\n", h.Name(), name)
+			if err := profile.ReapplyWithHarness(name, h); err != nil {
+				fmt.Printf("  warning: re-apply failed for active %s profile %s: %v\n", h.Name(), name, err)
 			}
 		}
 	}

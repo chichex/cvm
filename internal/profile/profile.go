@@ -1043,7 +1043,12 @@ func StripOverrides(h harness.Harness, name string, liveDir string) error {
 // Reapply re-applies the active profile and its overrides to the live directory
 // without saving the current state first. Used by "cvm override apply".
 func Reapply(name string) error {
-	h := defaultHarness()
+	return ReapplyWithHarness(name, defaultHarness())
+}
+
+// ReapplyWithHarness re-applies the active profile for a specific harness and
+// its overrides to the live directory without saving the current state first.
+func ReapplyWithHarness(name string, h harness.Harness) error {
 	profileDir := ProfileDir(name)
 	dir, cleanup, err := profileActivationDir(profileDir, h)
 	if err != nil {
@@ -1053,7 +1058,7 @@ func Reapply(name string) error {
 	if _, err := os.Stat(profileDir); os.IsNotExist(err) {
 		return fmt.Errorf("profile %q not found", name)
 	}
-	tgt := targetDir()
+	tgt := targetDirForHarness(h)
 	// Strip current overrides to clean stale keys before fresh re-apply
 	if err := StripOverrides(h, name, tgt); err != nil {
 		return fmt.Errorf("stripping overrides: %w", err)
