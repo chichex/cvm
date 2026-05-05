@@ -38,5 +38,6 @@ func init() {
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(bypassCmd)
+	rootCmd.AddCommand(upgradeCmd)
 
 }

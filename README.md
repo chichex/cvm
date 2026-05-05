@@ -90,6 +90,30 @@ cvm restore --harness claude
 cvm restore --harness opencode
 ```
 
+### Upgrade cvm
+
+```bash
+cvm upgrade
+```
+
+Downloads the latest stable release from GitHub and atomically replaces the
+running binary. Shows current vs latest version:
+
+```
+current: v0.23.0
+latest:  v0.24.0
+Downloading v0.24.0...
+Upgraded to v0.24.0
+```
+
+If already on the latest version:
+
+```
+Already on latest version (v0.24.0)
+```
+
+If installed via Homebrew, the command exits with an instruction to use `brew upgrade chichex/tap/cvm` instead. The upgrade never touches profiles or harness configs.
+
 ### Bypass permissions
 
 Toggle bypass mode on the active profile. Stored as an override, so it survives `cvm pull`.
