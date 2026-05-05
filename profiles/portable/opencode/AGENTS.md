@@ -12,6 +12,7 @@ Profile orientado a definir specs portables y reutilizables a partir de historia
 | `/portable-code-exec` | Una sola pasada de implementacion sobre un PR con label `entity:plan`. Wrapper thin sobre el agent `portable-code-executor`. Aplica label `code:exec` al final. Sin validacion. |
 | `/portable-code-validate` | Una sola pasada de validacion sobre un PR con label `entity:plan`. Wrapper thin sobre el agent `portable-code-validator`. Aplica label `code:passed` o `code:failed` y postea el feedback como comment del PR. Sirve para auditar PRs propios o ajenos sin tocar codigo. |
 | `/portable-recover` | Adopta issues y PRs preexistentes al workflow portable: detecta el tipo de entidad, diagnostica labels y artefactos, genera `.portable/plans/<N>-<slug>.md` si falta, commitea y pushea al branch del PR, aplica `entity:spec` o `entity:plan`, y sugiere el siguiente comando del workflow. |
+| `/portable-auto` | Pipeline end-to-end automatico desde prompt o issue hasta PR validado: crea spec, crea plan y ejecuta code-loop sin confirmaciones normales. Soporta `--continue-on-warning` y `--max N` (default 5). |
 
 ## Agents
 
@@ -22,7 +23,7 @@ Profile orientado a definir specs portables y reutilizables a partir de historia
 
 ## Modelo de ejecucion OpenCode
 
-Los 5 workflows se ejecutan como **skills primarios**. Solo las partes autonomas de implementacion y validacion se delegan a subagents.
+Los 6 workflows se ejecutan como **skills primarios**. Solo las partes autonomas de implementacion y validacion se delegan a subagents.
 
 | Workflow | Entry point primario | Delegacion a subagent |
 |----------|----------------------|------------------------|
@@ -31,8 +32,10 @@ Los 5 workflows se ejecutan como **skills primarios**. Solo las partes autonomas
 | Exec | `/portable-code-exec` | Si, delega a `portable-code-executor`. |
 | Validate | `/portable-code-validate` | Si, delega a `portable-code-validator`. |
 | Loop | `/portable-code-loop` | Si, orquesta `portable-code-executor` y `portable-code-validator`. |
+| Auto | `/portable-auto` | Si, solo para la fase code-loop; spec y plan se generan automaticamente en el orquestador principal. |
 
 No crear subagents separados para `/portable-spec` o `/portable-plan` salvo que el flujo deje de ser interactivo. Esos skills necesitan refinar asunciones con el usuario antes de persistir issue/PR.
+`/portable-auto` es la excepcion no interactiva: acepta defaults seguros de spec/plan y solo pausa por input faltante/ambiguo, errores duros o warning de tamano sin `--continue-on-warning`.
 
 ## Labels de estado (aplicados por los skills `/portable-code-*`)
 
