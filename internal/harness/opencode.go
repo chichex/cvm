@@ -1,10 +1,18 @@
 package harness
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/chichex/cvm/internal/config"
 )
+
+// opencodeBypassValue is the global "allow" shorthand documented at
+// https://opencode.ai/docs/permissions/. Setting permission to the literal
+// string "allow" disables every approval prompt.
+const opencodeBypassValue = "allow"
 
 type opencodeHarness struct{}
 
@@ -81,4 +89,101 @@ func (opencodeHarness) IsUserMCPPath(profilePath string) bool {
 
 func (opencodeHarness) IsMCPPath(profilePath string) bool {
 	return profilePath == "opencode.json"
+}
+
+// EnableBypass writes the OpenCode bypass permission block to the profile's
+// override opencode.json. opencode.json is a managed item, so reapply merges
+// the override into ~/.config/opencode/opencode.json.
+func (opencodeHarness) EnableBypass(profileName string) error {
+	overrideDir := config.OverrideDir(profileName)
+	overridePath := filepath.Join(overrideDir, "opencode.json")
+	cfg, err := readOpenCodeJSON(overridePath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+	cfg["permission"] = opencodeBypassValue
+	if err := os.MkdirAll(overrideDir, 0755); err != nil {
+		return err
+	}
+	return writeOpenCodeJSON(overridePath, cfg)
+}
+
+// DisableBypass removes the bypass permission key from the profile's override
+// opencode.json (and removes the file entirely if it becomes empty).
+func (opencodeHarness) DisableBypass(profileName string) error {
+	overridePath := filepath.Join(config.OverrideDir(profileName), "opencode.json")
+	cfg, err := readOpenCodeJSON(overridePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if _, ok := cfg["permission"]; !ok {
+		return nil
+	}
+	delete(cfg, "permission")
+	if len(cfg) == 0 {
+		if err := os.Remove(overridePath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return writeOpenCodeJSON(overridePath, cfg)
+}
+
+// BypassStatus reports the current permission value persisted in the
+// profile's override opencode.json.
+func (opencodeHarness) BypassStatus(profileName string) (string, error) {
+	overridePath := filepath.Join(config.OverrideDir(profileName), "opencode.json")
+	cfg, err := readOpenCodeJSON(overridePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	switch v := cfg["permission"].(type) {
+	case string:
+		return v, nil
+	case map[string]any:
+		// Pretty-print object form as e.g. "{bash: allow, edit: ask}".
+		// Status only needs to convey "non-default", not full content.
+		if len(v) == 0 {
+			return "", nil
+		}
+		return "custom", nil
+	default:
+		return "", nil
+	}
+}
+
+func readOpenCodeJSON(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := map[string]any{}
+	if len(data) == 0 {
+		return cfg, nil
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func writeOpenCodeJSON(path string, cfg map[string]any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0644)
 }

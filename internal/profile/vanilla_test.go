@@ -62,6 +62,18 @@ func (h testHarness) IsMCPPath(profilePath string) bool {
 	return false
 }
 
+func (h testHarness) EnableBypass(profileName string) error {
+	return nil
+}
+
+func (h testHarness) DisableBypass(profileName string) error {
+	return nil
+}
+
+func (h testHarness) BypassStatus(profileName string) (string, error) {
+	return "", nil
+}
+
 func TestVanillaBackupIsScopedByHarness(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

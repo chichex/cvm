@@ -20,6 +20,20 @@ Profile orientado a definir specs portables y reutilizables a partir de historia
 | `portable-code-executor` | Implementa pasos de un plan (`.portable/plans/<N>-<slug>.md`) sobre la branch del PR. Antes de empezar carga contexto rico del PR (body, comments, reviews, review comments line-level, ultimo feedback del validator, spec issue body). Build/typecheck minimo + 1-3 unit tests acotados. Commit + push. Sin WebFetch/WebSearch. |
 | `portable-code-validator` | Valida un PR de plan: carga contexto del PR (mismo set que el executor), espera `gh pr checks`, corre suite completa local, contrasta diff vs cada paso/archivo/riesgo del plan. Emite verdict PASS/FAIL + feedback accionable. Sin Edit/Write. |
 
+## Modelo de ejecucion OpenCode
+
+Los 5 workflows se ejecutan como **skills primarios**. Solo las partes autonomas de implementacion y validacion se delegan a subagents.
+
+| Workflow | Entry point primario | Delegacion a subagent |
+|----------|----------------------|------------------------|
+| Spec | `/portable-spec` | No. Interactivo multi-turno en el orquestador principal. |
+| Plan | `/portable-plan` | No. Interactivo multi-turno en el orquestador principal. |
+| Exec | `/portable-code-exec` | Si, delega a `portable-code-executor`. |
+| Validate | `/portable-code-validate` | Si, delega a `portable-code-validator`. |
+| Loop | `/portable-code-loop` | Si, orquesta `portable-code-executor` y `portable-code-validator`. |
+
+No crear subagents separados para `/portable-spec` o `/portable-plan` salvo que el flujo deje de ser interactivo. Esos skills necesitan refinar asunciones con el usuario antes de persistir issue/PR.
+
 ## Labels de estado (aplicados por los skills `/portable-code-*`)
 
 | Label | Significado | Aplicado por |
