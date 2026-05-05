@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/chichex/cvm/internal/config"
+	"github.com/chichex/cvm/internal/settings"
 )
 
 type claudeHarness struct{}
@@ -96,4 +99,53 @@ func (claudeHarness) IsUserMCPPath(profilePath string) bool {
 
 func (claudeHarness) IsMCPPath(profilePath string) bool {
 	return profilePath == ".claude.json"
+}
+
+// EnableBypass writes Claude's bypass permissions block to the profile's
+// override settings.json. Reapply (called by the bypass command after) will
+// then merge it into the live ~/.claude/settings.json.
+func (claudeHarness) EnableBypass(profileName string) error {
+	overrideDir := config.OverrideDir(profileName)
+	overrideSettings := filepath.Join(overrideDir, "settings.json")
+
+	cfg, err := settings.Read(overrideSettings)
+	if err != nil {
+		return err
+	}
+	for k, v := range settings.BypassConfig() {
+		cfg[k] = v
+	}
+	if err := os.MkdirAll(overrideDir, 0755); err != nil {
+		return err
+	}
+	return settings.Write(overrideSettings, cfg)
+}
+
+// DisableBypass strips the bypass permissions block from the profile's
+// override settings.json. The override file is removed entirely if no other
+// keys remain.
+func (claudeHarness) DisableBypass(profileName string) error {
+	overrideSettings := filepath.Join(config.OverrideDir(profileName), "settings.json")
+	cfg, err := settings.Read(overrideSettings)
+	if err != nil {
+		return err
+	}
+	if settings.RemovePermissions(cfg) {
+		if err := os.Remove(overrideSettings); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return settings.Write(overrideSettings, cfg)
+}
+
+// BypassStatus reads the override settings.json and returns the current
+// permissions.defaultMode value. Empty string means "not bypassed".
+func (claudeHarness) BypassStatus(profileName string) (string, error) {
+	overrideSettings := filepath.Join(config.OverrideDir(profileName), "settings.json")
+	mode, err := settings.GetPermissionsMode(overrideSettings)
+	if err != nil {
+		return "", err
+	}
+	return mode, nil
 }

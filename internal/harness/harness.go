@@ -28,6 +28,17 @@ type Harness interface {
 	SupportsPortableAgents() bool
 	IsUserMCPPath(profilePath string) bool
 	IsMCPPath(profilePath string) bool
+
+	// EnableBypass puts the harness into "bypass permissions" mode for the
+	// given active profile. Implementations decide whether the change is
+	// persisted as a profile override (so it survives `cvm pull`) or written
+	// directly to the live config dir.
+	EnableBypass(profileName string) error
+	// DisableBypass restores the harness to its default permissions mode.
+	DisableBypass(profileName string) error
+	// BypassStatus returns a short human-readable status of the current
+	// bypass state ("" or "(default)" means "not bypassed").
+	BypassStatus(profileName string) (string, error)
 }
 
 func ManagedProfileItems(h Harness) []string {
