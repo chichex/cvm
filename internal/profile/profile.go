@@ -390,6 +390,11 @@ func CleanManagedItems(h harness.Harness, liveDir string) error {
 			if err := removeUserMCPServers(item.LivePath); err != nil {
 				return err
 			}
+			if h.Name() == "opencode" {
+				if err := removeOpenCodeSkillsPath(item.LivePath, filepath.Join(liveDir, "skills")); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if err := os.RemoveAll(item.LivePath); err != nil && !os.IsNotExist(err) {
@@ -425,6 +430,11 @@ func CopyManagedItems(h harness.Harness, srcProfileDir, dstLiveDir string) error
 			if err := CopyFile(srcPath, dstPath); err != nil {
 				return err
 			}
+		}
+	}
+	if h.Name() == "opencode" {
+		if err := ensureOpenCodeSkillsPath(filepath.Join(dstLiveDir, "opencode.json"), filepath.Join(dstLiveDir, "skills")); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -557,6 +567,97 @@ func removeUserMCPServers(path string) error {
 	}
 
 	return writeJSONFile(path, cfg)
+}
+
+func ensureOpenCodeSkillsPath(configPath, skillsPath string) error {
+	if _, err := os.Stat(skillsPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	cfg, err := readJSONFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+
+	skills, _ := cfg["skills"].(map[string]any)
+	if skills == nil {
+		skills = map[string]any{}
+	}
+	paths := appendJSONPath(skills["paths"], skillsPath)
+	skills["paths"] = paths
+	cfg["skills"] = skills
+
+	return writeJSONFile(configPath, cfg)
+}
+
+func removeOpenCodeSkillsPath(configPath, skillsPath string) error {
+	cfg, err := readJSONFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	skills, ok := cfg["skills"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	paths, changed := removeJSONPath(skills["paths"], skillsPath)
+	if !changed {
+		return nil
+	}
+	if len(paths) > 0 {
+		skills["paths"] = paths
+	} else {
+		delete(skills, "paths")
+	}
+	if len(skills) == 0 {
+		delete(cfg, "skills")
+	} else {
+		cfg["skills"] = skills
+	}
+
+	if len(cfg) == 0 {
+		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return writeJSONFile(configPath, cfg)
+}
+
+func appendJSONPath(value any, path string) []any {
+	paths, _ := value.([]any)
+	for _, existing := range paths {
+		if existing == path {
+			return paths
+		}
+	}
+	return append(paths, path)
+}
+
+func removeJSONPath(value any, path string) ([]any, bool) {
+	paths, ok := value.([]any)
+	if !ok {
+		return nil, false
+	}
+	filtered := make([]any, 0, len(paths))
+	changed := false
+	for _, existing := range paths {
+		if existing == path {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, existing)
+	}
+	return filtered, changed
 }
 
 func readJSONFile(path string) (map[string]any, error) {
