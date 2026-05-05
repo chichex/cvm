@@ -16,8 +16,8 @@ Fetches the latest version tag, compares it to the running version, and if a
 newer release exists downloads the appropriate tarball, extracts the binary, and
 atomically replaces the current executable.
 
-If cvm was installed via Homebrew, upgrade is delegated to Homebrew:
-  brew upgrade chichex/tap/cvm`,
+If cvm was installed via Homebrew, upgrade is delegated to Homebrew by
+invoking: brew upgrade chichex/tap/cvm`,
 	RunE: runUpgrade,
 }
 
@@ -31,7 +31,8 @@ func runUpgrade(cmd *cobra.Command, _ []string) error {
 	}
 
 	if upgrade.IsHomebrew(binPath) {
-		return fmt.Errorf("cvm was installed via Homebrew — upgrade it with:\n  brew upgrade chichex/tap/cvm")
+		fmt.Println("cvm was installed via Homebrew — delegating to brew...")
+		return upgrade.RunHomebrewUpgrade()
 	}
 
 	if err := upgrade.CheckWritable(binPath); err != nil {

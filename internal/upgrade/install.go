@@ -3,6 +3,7 @@ package upgrade
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -37,6 +38,24 @@ func IsHomebrew(binPath string) bool {
 		}
 	}
 	return false
+}
+
+// RunHomebrewUpgrade delegates the upgrade to Homebrew by invoking
+// `brew upgrade chichex/tap/cvm`, streaming output to the current process so
+// the user sees brew's progress and errors directly.
+func RunHomebrewUpgrade() error {
+	brew, err := exec.LookPath("brew")
+	if err != nil {
+		return fmt.Errorf("cvm was installed via Homebrew but `brew` is not in PATH — install Homebrew or run manually: brew upgrade chichex/tap/cvm")
+	}
+	cmd := exec.Command(brew, "upgrade", "chichex/tap/cvm")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("brew upgrade chichex/tap/cvm failed: %w", err)
+	}
+	return nil
 }
 
 // CheckWritable verifies that the running binary's directory is writable
