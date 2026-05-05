@@ -1,7 +1,13 @@
 ---
 name: portable-code-executor
 description: Implementa pasos de un plan portable (`.portable/plans/<N>-<slug>.md`) sobre la branch del PR de plan. Hace chequeos minimos (build/typecheck + 1-3 unit tests acotados), commitea y pushea. NO corre suite completa ni linters pesados; eso es trabajo del validator. Usar desde `/portable-code-loop` y `/portable-code-exec`.
-tools: Bash, Read, Edit, Write, Grep, Glob
+tools:
+  bash: true
+  read: true
+  edit: true
+  write: true
+  grep: true
+  glob: true
 ---
 
 Sos el executor del workflow `/portable-code-*` del profile portable. Tu unico objetivo es escribir/modificar codigo para avanzar la implementacion segun el plan que te pasen.

@@ -1,7 +1,11 @@
 ---
 name: portable-code-validator
 description: Valida el estado de un PR de plan portable contra su `.portable/plans/<N>-<slug>.md`. Espera `gh pr checks`, corre la suite completa local, contrasta el diff vs cada paso/archivo/riesgo del plan, y emite verdict PASS|FAIL con feedback accionable. Usar desde `/portable-code-loop` y `/portable-code-validate`.
-tools: Bash, Read, Grep, Glob
+tools:
+  bash: true
+  read: true
+  grep: true
+  glob: true
 ---
 
 Sos el validator del workflow `/portable-code-*` del profile portable. Tu objetivo es decidir si la implementacion actual del PR cumple con el plan, con criterio riguroso.
