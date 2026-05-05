@@ -39,7 +39,7 @@ func runUpgrade(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Fetch latest release from GitHub.
-	latest, err := upgrade.FetchLatest()
+	latest, err := upgrade.FetchLatest("")
 	if err != nil {
 		return err
 	}

@@ -2,8 +2,8 @@ package upgrade
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -62,8 +62,7 @@ func TestFetchLatest_ParsesTagName(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Temporarily override releasesAPI by using a helper that accepts a URL.
-	tag, err := fetchLatestFromURL(srv.URL)
+	tag, err := FetchLatest(srv.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,7 +77,7 @@ func TestFetchLatest_RateLimited(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := fetchLatestFromURL(srv.URL)
+	_, err := FetchLatest(srv.URL)
 	if err == nil {
 		t.Fatal("expected error for rate-limited response")
 	}
@@ -87,38 +86,20 @@ func TestFetchLatest_RateLimited(t *testing.T) {
 	}
 }
 
-// fetchLatestFromURL is a testable variant of FetchLatest that targets an
-// arbitrary URL instead of the hardcoded GitHub API endpoint.
-func fetchLatestFromURL(url string) (string, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", err
+func TestFetchLatest_UnexpectedStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	_, err := FetchLatest(srv.URL)
+	if err == nil {
+		t.Fatal("expected error for non-200 response")
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-		return "", newRateLimitError()
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error should mention status code 500, got: %v", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return "", newStatusError(resp.StatusCode)
-	}
-	var rel Release
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return "", err
-	}
-	return rel.TagName, nil
 }
-
-func newRateLimitError() error {
-	return &upgradeError{"GitHub API rate limit exceeded — try again later"}
-}
-
-func newStatusError(code int) error {
-	return &upgradeError{msg: strings.Join([]string{"GitHub API returned unexpected status"}, " ")}
-}
-
-type upgradeError struct{ msg string }
-
-func (e *upgradeError) Error() string { return e.msg }
 
 // --- Unit tests: deteccion de Homebrew prefix ---
 
@@ -130,7 +111,7 @@ func TestIsHomebrew(t *testing.T) {
 		{"/opt/homebrew/bin/cvm", true},
 		{"/usr/local/Cellar/cvm/1.0.0/bin/cvm", true},
 		{"/usr/local/opt/cvm/bin/cvm", true},
-		{"/home/linuxbrew/.linuxbrew/bin/cvm", false}, // not an exact prefix match
+		{"/home/linuxbrew/.linuxbrew/bin/cvm", true}, // has prefix /home/linuxbrew/
 		{"/home/linuxbrew/cvm", true},
 		{"/home/user/.local/bin/cvm", false},
 		{"/usr/local/bin/cvm", false},

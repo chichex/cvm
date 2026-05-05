@@ -18,9 +18,14 @@ type Release struct {
 
 // FetchLatest queries the GitHub Releases API and returns the latest release tag.
 // Returns an error if the request fails or if rate-limited.
-func FetchLatest() (string, error) {
+// An empty apiURL means the default GitHub Releases endpoint is used; pass a
+// non-empty value only in tests.
+func FetchLatest(apiURL string) (string, error) {
+	if apiURL == "" {
+		apiURL = releasesAPI
+	}
 	client := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequest("GET", releasesAPI, nil)
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("building request: %w", err)
 	}
