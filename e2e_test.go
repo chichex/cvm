@@ -570,6 +570,7 @@ func TestOpenCodeHarnessLocalWorkflow(t *testing.T) {
 }
 
 func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
+	t.Skip("override command removed from core CLI surface")
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
@@ -604,6 +605,7 @@ func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
 }
 
 func TestProfileInspect(t *testing.T) {
+	t.Skip("profile command removed from core CLI surface")
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
@@ -645,6 +647,7 @@ func TestProfileInspect(t *testing.T) {
 }
 
 func TestProfileAddScaffoldsPortableAssets(t *testing.T) {
+	t.Skip("profile command removed from core CLI surface")
 	e := newTestEnv(t)
 
 	e.mustRun("add", "portable")
@@ -670,6 +673,7 @@ func TestProfileAddScaffoldsPortableAssets(t *testing.T) {
 }
 
 func TestProfileAddScaffoldsHarnessSpecificHookFromFile(t *testing.T) {
+	t.Skip("profile command removed from core CLI surface")
 	e := newTestEnv(t)
 
 	e.mustRun("add", "hooks")
@@ -688,6 +692,7 @@ func TestProfileAddScaffoldsHarnessSpecificHookFromFile(t *testing.T) {
 }
 
 func TestProfileAddRejectsInvalidHarnessAndSource(t *testing.T) {
+	t.Skip("profile command removed from core CLI surface")
 	e := newTestEnv(t)
 
 	e.mustRun("add", "invalid")
@@ -707,6 +712,7 @@ func TestProfileAddRejectsInvalidHarnessAndSource(t *testing.T) {
 }
 
 func TestProfileAddDoesNotOverwriteExistingAsset(t *testing.T) {
+	t.Skip("profile command removed from core CLI surface")
 	e := newTestEnv(t)
 
 	e.mustRun("add", "existing")
@@ -722,6 +728,7 @@ func TestProfileAddDoesNotOverwriteExistingAsset(t *testing.T) {
 }
 
 func TestProfileAddDefaultsToActiveProfile(t *testing.T) {
+	t.Skip("profile command removed from core CLI surface")
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
@@ -737,6 +744,7 @@ func TestProfileAddDefaultsToActiveProfile(t *testing.T) {
 }
 
 func TestProfileAddHelpExplainsAuthoringLayers(t *testing.T) {
+	t.Skip("profile command removed from core CLI surface")
 	e := newTestEnv(t)
 
 	out := e.mustRun("profile", "add", "--help")
@@ -970,6 +978,28 @@ func TestVersion(t *testing.T) {
 
 	out := e.mustRun("--version")
 	assertContains(t, out, "cvm version")
+}
+
+// ---------------------------------------------------------------------------
+// Core CLI surface: help output matches expected commands
+// ---------------------------------------------------------------------------
+
+func TestCoreCommandSurface(t *testing.T) {
+	e := newTestEnv(t)
+
+	out := e.mustRun("--help")
+
+	// Core commands must be present
+	for _, want := range []string{"add", "use", "ls", "rm", "current", "save", "pull", "status", "nuke", "restore", "bypass", "remote"} {
+		assertContains(t, out, want)
+	}
+
+	// Removed commands must not appear as top-level commands.
+	// Use Cobra's two-space-prefixed row format ("  <cmd> ") to avoid
+	// false positives against the description text (e.g. "profiles.").
+	for _, notWant := range []string{"  upgrade ", "  override ", "  edit ", "  profile "} {
+		assertNotContains(t, out, notWant)
+	}
 }
 
 // ---------------------------------------------------------------------------
