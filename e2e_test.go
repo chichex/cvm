@@ -345,6 +345,61 @@ func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
 	}
 }
 
+func TestUseAppliesAllManifestHarnessesByDefault(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# claude vanilla")
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode vanilla")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable\"\nharnesses = [\"claude\", \"opencode\"]\n\n[assets]\nclaude = \"claude\"\nopencode = \"opencode\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "claude", "CLAUDE.md"), "# claude portable")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode portable")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "skills", "portable-spec", "SKILL.md"), "---\ndescription: portable spec\n---\n")
+
+	out := e.mustRun("use", "portable")
+	assertContains(t, out, "Switched claude harness")
+	assertContains(t, out, "Switched opencode harness")
+	assertFileContent(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# claude portable")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode portable")
+	assertFileContent(t, filepath.Join(opencodeDir, "skills", "portable-spec", "SKILL.md"), "---\ndescription: portable spec\n---")
+
+	statePath := filepath.Join(e.home, ".cvm", "state.json")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	var raw struct {
+		Global struct {
+			Harnesses map[string]string `json:"harnesses"`
+		} `json:"global"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("parse state: %v", err)
+	}
+	if raw.Global.Harnesses["claude"] != "portable" || raw.Global.Harnesses["opencode"] != "portable" {
+		t.Fatalf("expected both harnesses active, got state: %s", string(data))
+	}
+}
+
+func TestUseHarnessFlagLimitsManifestProfileToOneHarness(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# claude vanilla")
+	opencodeDir := filepath.Join(e.home, ".config", "opencode")
+	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode vanilla")
+
+	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable")
+	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable\"\nharnesses = [\"claude\", \"opencode\"]\n\n[assets]\nclaude = \"claude\"\nopencode = \"opencode\"\n")
+	writeTestFile(t, filepath.Join(profileRoot, "claude", "CLAUDE.md"), "# claude portable")
+	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode portable")
+
+	out := e.mustRun("use", "portable", "--harness", "opencode")
+	assertContains(t, out, "Switched opencode harness")
+	assertNotContains(t, out, "Switched claude harness")
+	assertFileContent(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# claude vanilla")
+	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode portable")
+}
+
 func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	e := newTestEnv(t)
 	opencodeDir := filepath.Join(e.home, ".config", "opencode")
