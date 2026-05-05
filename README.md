@@ -1,6 +1,6 @@
 # cvm - Claude Version Manager
 
-Profile manager for agent harnesses, starting with [Claude Code](https://claude.ai/code), OpenCode, and Codex. Switch configurations instantly, nuke everything, restore to vanilla. Like `nvm` but for your agent setup.
+Profile manager for agent harnesses, starting with [Claude Code](https://claude.ai/code), OpenCode, and Codex. Switch configurations instantly, restore to vanilla. Like `nvm` but for your agent setup.
 
 ## Why
 
@@ -39,9 +39,6 @@ cvm pull
 
 # Go back to vanilla:
 cvm use --none
-
-# Nuke everything:
-cvm nuke -f
 ```
 
 ## Commands
@@ -85,38 +82,12 @@ cvm pull                # pull latest for all remote-linked profiles
 cvm pull chiche         # pull a specific profile
 ```
 
-### Save state
-
-```bash
-cvm save               # save current harness state into the active profile
-```
-
 ### Clean up
 
 ```bash
-cvm nuke                # remove all managed config
-cvm nuke --harness claude
-cvm nuke -f             # skip confirmation
-
 cvm restore             # restore pre-cvm state from vanilla backup
 cvm restore --harness claude
 cvm restore --harness opencode
-```
-
-### Remote management
-
-```bash
-cvm remote ls          # list remote-linked profiles
-cvm remote rm chiche   # unlink from remote (keeps local copy)
-```
-
-### Inspect
-
-```bash
-cvm status             # show active profiles by harness
-cvm status --harness claude
-cvm status --harness opencode
-cvm current            # show the active profile (shortcut)
 ```
 
 ### Bypass permissions

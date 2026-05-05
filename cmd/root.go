@@ -13,7 +13,7 @@ var rootCmd = &cobra.Command{
 	Use:   "cvm",
 	Short: "Claude Version Manager - profile manager for Claude Code",
 	Long: `cvm manages user-level agent harness configuration profiles.
-Switch configs instantly, nuke everything, restore to vanilla.
+Switch configs instantly, restore to vanilla.
 Like nvm but for your agent harness setup.`,
 	Version: Version,
 }
@@ -26,21 +26,17 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+
 	// Core profile management
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(rmCmd)
-	rootCmd.AddCommand(currentCmd)
-	rootCmd.AddCommand(saveCmd)
 
 	// Core operations
 	rootCmd.AddCommand(pullCmd)
-	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(nukeCmd)
 	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(bypassCmd)
 
-	// Remote profile sources
-	rootCmd.AddCommand(remoteCmd)
 }

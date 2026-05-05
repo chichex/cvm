@@ -146,32 +146,17 @@ func TestGlobalWorkflow(t *testing.T) {
 	out = e.mustRun("ls")
 	assertContains(t, out, "work")
 
-	// current before use → vanilla
-	out = e.mustRun("current")
-	assertContains(t, out, "(vanilla)")
-
 	// use
 	out = e.mustRun("use", "work")
 	assertContains(t, out, "Switched claude harness")
-
-	// current after use
-	out = e.mustRun("current")
-	assertContains(t, out, "work")
 
 	// ls shows active marker
 	out = e.mustRun("ls")
 	assertContains(t, out, "IN USE")
 
-	// save
-	out = e.mustRun("save")
-	assertContains(t, out, "Saved current state")
-
 	// use --none
 	out = e.mustRun("use", "--none")
 	assertContains(t, out, "vanilla")
-
-	out = e.mustRun("current")
-	assertContains(t, out, "(vanilla)")
 
 	// rm (now that it's not active)
 	out = e.mustRun("rm", "work")
@@ -232,20 +217,7 @@ func TestLocalWorkflow(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestStatus(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# vanilla")
-
-	// Status with no profiles set
-	out := e.mustRun("status")
-	assertContains(t, out, "claude harness:")
-	assertContains(t, out, "(vanilla)")
-
-	// Set a global profile and check again
-	e.mustRun("add", "statustest")
-	e.mustRun("use", "statustest")
-
-	out = e.mustRun("status")
-	assertContains(t, out, "statustest")
+	t.Skip("status command removed")
 }
 
 func TestUseHarnessPersistsActiveByHarness(t *testing.T) {
@@ -277,28 +249,6 @@ func TestUseHarnessPersistsActiveByHarness(t *testing.T) {
 	if raw.Global.Active != "work" {
 		t.Fatalf("expected legacy active mirror to be work, got state: %s", string(data))
 	}
-
-	out = e.mustRun("status", "--harness", "claude")
-	assertContains(t, out, "claude harness:")
-	assertContains(t, out, "work")
-
-	e.mustRun("nuke", "--harness", "claude", "--force")
-	data, err = os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read nuked state: %v", err)
-	}
-	raw = struct {
-		Global struct {
-			Active    string            `json:"active"`
-			Harnesses map[string]string `json:"harnesses"`
-		} `json:"global"`
-	}{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("parse nuked state: %v", err)
-	}
-	if raw.Global.Harnesses != nil && raw.Global.Harnesses["claude"] != "" {
-		t.Fatalf("expected claude harness to be cleared after nuke, got state: %s", string(data))
-	}
 }
 
 func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
@@ -326,22 +276,6 @@ func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
 	}
 	if strings.TrimSpace(string(data)) != "# manifest profile" {
 		t.Fatalf("unexpected live CLAUDE.md: %q", strings.TrimSpace(string(data)))
-	}
-
-	if err := os.WriteFile(liveClaude, []byte("# saved update"), 0644); err != nil {
-		t.Fatalf("overwrite live CLAUDE.md: %v", err)
-	}
-	e.mustRun("save")
-
-	if _, err := os.Stat(filepath.Join(profileRoot, "cvm.profile.toml")); err != nil {
-		t.Fatalf("manifest should be preserved after save: %v", err)
-	}
-	data, err = os.ReadFile(filepath.Join(profileRoot, "claude", "CLAUDE.md"))
-	if err != nil {
-		t.Fatalf("read saved profile CLAUDE.md: %v", err)
-	}
-	if strings.TrimSpace(string(data)) != "# saved update" {
-		t.Fatalf("unexpected saved CLAUDE.md: %q", strings.TrimSpace(string(data)))
 	}
 }
 
@@ -426,19 +360,6 @@ func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 		t.Fatal("opencode use should not install into Claude paths")
 	}
 
-	out = e.mustRun("status", "--harness", "opencode")
-	assertContains(t, out, "opencode harness:")
-	assertContains(t, out, "open")
-	assertContains(t, out, filepath.Join(e.home, ".config", "opencode"))
-
-	e.mustRun("nuke", "--harness", "opencode", "--force")
-	if _, err := os.Stat(filepath.Join(opencodeDir, "AGENTS.md")); !os.IsNotExist(err) {
-		t.Fatalf("expected opencode AGENTS.md to be nuked, got err %v", err)
-	}
-	assertJSONKeyExists(t, filepath.Join(opencodeDir, "opencode.json"), "theme")
-	assertOpenCodeSkillPathExists(t, filepath.Join(opencodeDir, "opencode.json"), "/custom/skills")
-	assertOpenCodeSkillPathNotExists(t, filepath.Join(opencodeDir, "opencode.json"), filepath.Join(opencodeDir, "skills"))
-	assertMCPServerNotExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
 }
 
 func TestPortableAssetsRenderForOpenCode(t *testing.T) {
@@ -799,22 +720,7 @@ func TestBypassCommand(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNukeGlobal(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# will be nuked")
-
-	// Verify the file exists
-	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
-	if _, err := os.Stat(claudeMD); err != nil {
-		t.Fatal("seed CLAUDE.md should exist before nuke")
-	}
-
-	out := e.mustRun("nuke", "--force")
-	assertContains(t, out, "Nuked config")
-
-	// CLAUDE.md should be gone
-	if _, err := os.Stat(claudeMD); err == nil {
-		t.Fatal("CLAUDE.md should have been removed by nuke")
-	}
+	t.Skip("nuke command removed; restore covers the use case")
 }
 
 // ---------------------------------------------------------------------------
@@ -855,9 +761,6 @@ func TestRestore(t *testing.T) {
 	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
 	os.WriteFile(claudeMD, []byte("# modified by profile"), 0644)
 
-	// Nuke global
-	e.mustRun("nuke", "--force")
-
 	// Restore
 	out := e.mustRun("restore")
 	assertContains(t, out, "Restored config to vanilla")
@@ -884,7 +787,6 @@ func TestRestoreWithHarness(t *testing.T) {
 		t.Fatalf("modify CLAUDE.md: %v", err)
 	}
 
-	e.mustRun("nuke", "--harness", "claude", "--force")
 	out := e.mustRun("restore", "--harness", "claude")
 	assertContains(t, out, "Restored config to vanilla")
 
@@ -948,10 +850,7 @@ func TestEdgeFromNonexistent(t *testing.T) {
 }
 
 func TestEdgeSaveWithNoActiveProfile(t *testing.T) {
-	e := newTestEnv(t)
-
-	out := e.mustFail("save")
-	assertContains(t, out, "no active profile")
+	t.Skip("save command removed")
 }
 
 func TestEdgeLocalSaveNoActive(t *testing.T) {
@@ -990,14 +889,14 @@ func TestCoreCommandSurface(t *testing.T) {
 	out := e.mustRun("--help")
 
 	// Core commands must be present
-	for _, want := range []string{"add", "use", "ls", "rm", "current", "save", "pull", "status", "nuke", "restore", "bypass", "remote"} {
+	for _, want := range []string{"add", "use", "ls", "rm", "pull", "restore", "bypass"} {
 		assertContains(t, out, want)
 	}
 
 	// Removed commands must not appear as top-level commands.
 	// Use Cobra's two-space-prefixed row format ("  <cmd> ") to avoid
 	// false positives against the description text (e.g. "profiles.").
-	for _, notWant := range []string{"  upgrade ", "  override ", "  edit ", "  profile "} {
+	for _, notWant := range []string{"  current ", "  save ", "  status ", "  nuke ", "  remote ", "  completion ", "  upgrade ", "  override ", "  edit ", "  profile "} {
 		assertNotContains(t, out, notWant)
 	}
 }
@@ -1021,11 +920,11 @@ func TestMultipleProfilesCoexist(t *testing.T) {
 
 	// Switch between them
 	e.mustRun("use", "alpha")
-	out = e.mustRun("current")
+	out = e.mustRun("ls")
 	assertContains(t, out, "alpha")
 
 	e.mustRun("use", "beta")
-	out = e.mustRun("current")
+	out = e.mustRun("ls")
 	assertContains(t, out, "beta")
 
 	// Remove non-active profile
@@ -1052,38 +951,7 @@ func TestRestoreNoVanilla(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestProfileContentIsolation(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# vanilla state")
-
-	e.mustRun("add", "p1")
-	e.mustRun("use", "p1")
-
-	// Write unique content while p1 is active
-	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
-	os.WriteFile(claudeMD, []byte("# p1 content"), 0644)
-	e.mustRun("save")
-
-	// Create p2 from scratch and switch
-	e.mustRun("add", "p2")
-	e.mustRun("use", "p2")
-
-	// Write different content for p2
-	os.WriteFile(claudeMD, []byte("# p2 content"), 0644)
-	e.mustRun("save")
-
-	// Switch back to p1 and verify its content
-	e.mustRun("use", "p1")
-	data, _ := os.ReadFile(claudeMD)
-	if !strings.Contains(string(data), "p1 content") {
-		t.Fatalf("expected p1 content after switching back, got: %s", string(data))
-	}
-
-	// Switch to p2 and verify its content
-	e.mustRun("use", "p2")
-	data, _ = os.ReadFile(claudeMD)
-	if !strings.Contains(string(data), "p2 content") {
-		t.Fatalf("expected p2 content after switching, got: %s", string(data))
-	}
+	t.Skip("save command removed; profile snapshot path no longer exposed via CLI")
 }
 
 func TestUseAppliesChicheMCPServersToClaudeUserConfig(t *testing.T) {
