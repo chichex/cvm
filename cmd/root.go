@@ -26,22 +26,21 @@ func Execute() {
 }
 
 func init() {
-	// Primary commands
+	// Core profile management
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(rmCmd)
 	rootCmd.AddCommand(currentCmd)
 	rootCmd.AddCommand(saveCmd)
-	rootCmd.AddCommand(editCmd)
+
+	// Core operations
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(nukeCmd)
 	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(bypassCmd)
 
-	// Subsystems
+	// Remote profile sources
 	rootCmd.AddCommand(remoteCmd)
-	rootCmd.AddCommand(overrideCmd)
-
 }
