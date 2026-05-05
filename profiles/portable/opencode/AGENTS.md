@@ -11,6 +11,7 @@ Profile orientado a definir specs portables y reutilizables a partir de historia
 | `/portable-code-loop` | A partir de un PR con label `entity:plan`, ejecuta el plan iterativamente delegando al agent `portable-code-executor` y al agent `portable-code-validator`. Auto-detecta si arrancar por exec o validate (labels primero, fallback a heuristica del diff). Aplica labels de estado y persiste el feedback como comment del PR. Default 5 iteraciones, configurable con `--max N`. |
 | `/portable-code-exec` | Una sola pasada de implementacion sobre un PR con label `entity:plan`. Wrapper thin sobre el agent `portable-code-executor`. Aplica label `code:exec` al final. Sin validacion. |
 | `/portable-code-validate` | Una sola pasada de validacion sobre un PR con label `entity:plan`. Wrapper thin sobre el agent `portable-code-validator`. Aplica label `code:passed` o `code:failed` y postea el feedback como comment del PR. Sirve para auditar PRs propios o ajenos sin tocar codigo. |
+| `/portable-recover` | Adopta issues y PRs preexistentes al workflow portable: detecta el tipo de entidad, diagnostica labels y artefactos, genera `.portable/plans/<N>-<slug>.md` si falta, commitea y pushea al branch del PR, aplica `entity:spec` o `entity:plan`, y sugiere el siguiente comando del workflow. |
 
 ## Agents
 
