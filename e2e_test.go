@@ -994,8 +994,10 @@ func TestCoreCommandSurface(t *testing.T) {
 		assertContains(t, out, want)
 	}
 
-	// Removed commands must not appear as top-level commands
-	for _, notWant := range []string{"upgrade", "override", "edit", "profile"} {
+	// Removed commands must not appear as top-level commands.
+	// Use Cobra's two-space-prefixed row format ("  <cmd> ") to avoid
+	// false positives against the description text (e.g. "profiles.").
+	for _, notWant := range []string{"  upgrade ", "  override ", "  edit ", "  profile "} {
 		assertNotContains(t, out, notWant)
 	}
 }
