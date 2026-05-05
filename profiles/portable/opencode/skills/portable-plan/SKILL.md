@@ -1,4 +1,5 @@
 ---
+name: portable-plan
 description: Crear un plan de implementacion desde un issue de spec y abrir un PR con label entity:plan
 ---
 
