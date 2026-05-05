@@ -1,0 +1,6 @@
+name = "harness"
+harnesses = ["claude", "opencode"]
+
+[assets]
+claude = "claude"
+opencode = "opencode"
