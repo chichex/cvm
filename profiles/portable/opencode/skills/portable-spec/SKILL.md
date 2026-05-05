@@ -1,4 +1,5 @@
 ---
+name: portable-spec
 description: Definir una spec interactiva desde una historia de usuario y crear un issue GitHub con label entity:spec
 ---
 
