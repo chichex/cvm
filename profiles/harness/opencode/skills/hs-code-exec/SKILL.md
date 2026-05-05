@@ -69,9 +69,9 @@ git pull --ff-only origin "$BRANCH" 2>/dev/null || true
 ### 6b. Asegurar labels de estado (idempotente)
 
 ```bash
-gh label create "code:exec"   --color "FBCA04" --description "portable-code: last op was exec, pending validate" 2>/dev/null || true
-gh label create "code:passed" --color "0E8A16" --description "portable-code: last validate emitted PASS"          2>/dev/null || true
-gh label create "code:failed" --color "B60205" --description "portable-code: last validate emitted FAIL"          2>/dev/null || true
+gh label create "code:exec"   --color "FBCA04" --description "hs-code: last op was exec, pending validate" 2>/dev/null || true
+gh label create "code:passed" --color "0E8A16" --description "hs-code: last validate emitted PASS"          2>/dev/null || true
+gh label create "code:failed" --color "B60205" --description "hs-code: last validate emitted FAIL"          2>/dev/null || true
 ```
 
 ### 7. Leer el plan
