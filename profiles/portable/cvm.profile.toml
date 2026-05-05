@@ -1,0 +1,5 @@
+name = "portable"
+harnesses = ["opencode"]
+
+[assets]
+opencode = "opencode"
