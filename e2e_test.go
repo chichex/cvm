@@ -403,7 +403,7 @@ func TestUseHarnessFlagLimitsManifestProfileToOneHarness(t *testing.T) {
 func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	e := newTestEnv(t)
 	opencodeDir := filepath.Join(e.home, ".config", "opencode")
-	writeTestFile(t, filepath.Join(opencodeDir, "opencode.json"), `{"theme":"system","mcpServers":{"user-server":{"type":"local"}}}`)
+	writeTestFile(t, filepath.Join(opencodeDir, "opencode.json"), `{"theme":"system","skills":{"paths":["/custom/skills"]},"mcpServers":{"user-server":{"type":"local"}}}`)
 
 	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "open")
 	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
@@ -419,6 +419,8 @@ func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 		t.Fatalf("expected opencode skill to be installed: %v", err)
 	}
 	assertJSONKeyExists(t, filepath.Join(opencodeDir, "opencode.json"), "theme")
+	assertOpenCodeSkillPathExists(t, filepath.Join(opencodeDir, "opencode.json"), "/custom/skills")
+	assertOpenCodeSkillPathExists(t, filepath.Join(opencodeDir, "opencode.json"), filepath.Join(opencodeDir, "skills"))
 	assertMCPServerExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
 	if _, err := os.Stat(filepath.Join(e.home, ".claude", "AGENTS.md")); err == nil {
 		t.Fatal("opencode use should not install into Claude paths")
@@ -434,6 +436,8 @@ func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 		t.Fatalf("expected opencode AGENTS.md to be nuked, got err %v", err)
 	}
 	assertJSONKeyExists(t, filepath.Join(opencodeDir, "opencode.json"), "theme")
+	assertOpenCodeSkillPathExists(t, filepath.Join(opencodeDir, "opencode.json"), "/custom/skills")
+	assertOpenCodeSkillPathNotExists(t, filepath.Join(opencodeDir, "opencode.json"), filepath.Join(opencodeDir, "skills"))
 	assertMCPServerNotExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
 }
 
@@ -1282,6 +1286,44 @@ func assertJSONKeyExists(t *testing.T, path, want string) {
 	if _, ok := cfg[want]; !ok {
 		t.Fatalf("json %s missing key %q", path, want)
 	}
+}
+
+func assertOpenCodeSkillPathExists(t *testing.T, path, want string) {
+	t.Helper()
+	if !openCodeSkillPathExists(t, path, want) {
+		t.Fatalf("opencode config %s missing skills path %q", path, want)
+	}
+}
+
+func assertOpenCodeSkillPathNotExists(t *testing.T, path, notWant string) {
+	t.Helper()
+	if openCodeSkillPathExists(t, path, notWant) {
+		t.Fatalf("opencode config %s should not contain skills path %q", path, notWant)
+	}
+}
+
+func openCodeSkillPathExists(t *testing.T, path, want string) bool {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read json %s: %v", path, err)
+	}
+
+	var cfg struct {
+		Skills struct {
+			Paths []string `json:"paths"`
+		} `json:"skills"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal json %s: %v", path, err)
+	}
+	for _, got := range cfg.Skills.Paths {
+		if got == want {
+			return true
+		}
+	}
+	return false
 }
 
 func assertFileContent(t *testing.T, path, want string) {

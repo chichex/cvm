@@ -172,7 +172,7 @@ cvm override rm skill foo        # remove an override file
 | OpenCode | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` |
 | Codex | `~/.codex/` or `$CODEX_HOME` |
 
-For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cvm` only manages its `mcpServers` section.
+For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cvm` only manages its `mcpServers` section and the profile-owned `skills.paths` entry.
 
 Project-local profiles were hard-deleted. `cvm local`, `cvm global`, `--local`, `--global`, project `.claude/`, project `.opencode/`, and project `.mcp.json` are no longer part of the model. Existing project-local files are left untouched on disk; remove them manually if you no longer want them, for example `rm -rf .claude .opencode .mcp.json` from the affected project.
 

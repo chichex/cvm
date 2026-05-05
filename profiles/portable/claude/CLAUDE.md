@@ -7,6 +7,7 @@ Profile orientado a definir specs portables y reutilizables a partir de historia
 | Skill | Que hace |
 |-------|----------|
 | `/portable-spec` | A partir de una historia de usuario, redacta una spec, lista las asunciones no-tecnicas/funcionales, refina las que el usuario marca como incorrectas (preguntas one-by-one con barra de progreso), y crea un issue en GitHub con label `entity:spec`. |
+| `/portable-plan` | A partir de un issue de spec (`entity:spec`), redacta un plan de implementacion, lista las asunciones tecnicas/de implementacion, refina las que el usuario marca como incorrectas, y crea un PR en GitHub con un `.md` en `.portable/plans/<N>-<slug>.md` y label `entity:plan`. |
 
 ## Reglas
 
