@@ -1,0 +1,5 @@
+name = "portable"
+harnesses = ["claude"]
+
+[assets]
+claude = "claude"
