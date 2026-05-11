@@ -6,7 +6,8 @@ Profile orientado a harness engineering: define specs y planes reutilizables a p
 
 | Skill | Que hace |
 |-------|----------|
-| `/hs-spec` | A partir de una historia de usuario, redacta una spec, lista las asunciones no-tecnicas/funcionales, refina las que el usuario marca como incorrectas (preguntas one-by-one con barra de progreso), y crea un issue en GitHub con label `entity:spec`. |
+| `/clarify` | Refina iterativamente asunciones sobre un issue de GitHub o un prompt libre. Lista asunciones tagueadas por temperatura (`[directa]/[media]/[especulativa]`), deja al usuario marcar cuales clarificar, pregunta una por una con multiple-choice (4 + "otra") y barra de progreso. Persiste appendeando una seccion "Clarificaciones" al issue existente o creando uno nuevo si vino un prompt. Sin label propio. |
+| `/hs-spec` | Wrapper sobre `/clarify` para definir specs desde una historia de usuario: fuerza modo prompt, filtra asunciones a no-tecnicas/funcionales, usa estructura de body Historia/Asunciones/Criterios/Notas, y aplica label `entity:spec`. Para refinar un issue ya existente, usar `/clarify` directo. |
 | `/hs-plan` | A partir de un issue de spec (`entity:spec`), redacta un plan de implementacion, lista las asunciones tecnicas/de implementacion, refina las que el usuario marca como incorrectas, y crea un PR en GitHub con un `.md` en `.harness/plans/<N>-<slug>.md` y label `entity:plan`. |
 | `/hs-code-loop` | A partir de un PR con label `entity:plan`, ejecuta el plan iterativamente delegando al agent `hs-code-executor` y al agent `hs-code-validator`. Auto-detecta si arrancar por exec o validate (labels primero, fallback a heuristica del diff). Aplica labels de estado y persiste el feedback como comment del PR. Default 5 iteraciones, configurable con `--max N`. |
 | `/hs-code-exec` | Una sola pasada de implementacion sobre un PR con label `entity:plan`. Wrapper thin sobre el agent `hs-code-executor`. Aplica label `code:exec` al final. Sin validacion. |
@@ -35,7 +36,8 @@ Los 6 workflows se ejecutan como **skills primarios**. Solo las partes autonomas
 
 | Workflow | Entry point primario | Delegacion a subagent |
 |----------|----------------------|------------------------|
-| Spec | `/hs-spec` | No. Interactivo multi-turno en el orquestador principal. |
+| Clarify | `/clarify` | No. Interactivo multi-turno en el orquestador principal. |
+| Spec | `/hs-spec` | No. Interactivo multi-turno en el orquestador principal (wrapper sobre `/clarify`). |
 | Plan | `/hs-plan` | No. Interactivo multi-turno en el orquestador principal. |
 | Exec | `/hs-code-exec` | Si, delega a `hs-code-executor`. |
 | Validate | `/hs-code-validate` | Si, delega a `hs-code-validator`. |
