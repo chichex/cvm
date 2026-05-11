@@ -16,6 +16,14 @@ Profile orientado a harness engineering: define specs y planes reutilizables a p
 
 ## Agents
 
+### Primary (Tab-selectable)
+
+| Agent | Que hace |
+|-------|----------|
+| `detach` | Antesala para tareas ruidosas. El usuario lo elige con Tab cuando quiere preservar el contexto del agente primario anterior. Bias fuerte a delegar trabajo pesado a subagents via Task tool y devolver solo un bloque `## Result` de 3 lineas (status / summary / artifacts). |
+
+### Subagents (invocados via Task)
+
 | Agent | Que hace |
 |-------|----------|
 | `hs-code-executor` | Implementa pasos de un plan (`.harness/plans/<N>-<slug>.md`) sobre la branch del PR. Antes de empezar carga contexto rico del PR (body, comments, reviews, review comments line-level, ultimo feedback del validator, spec issue body). Build/typecheck minimo + 1-3 unit tests acotados. Commit + push. Sin WebFetch/WebSearch. |
