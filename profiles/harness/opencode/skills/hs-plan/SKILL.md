@@ -304,7 +304,7 @@ Plan de implementacion para #<N>: **<titulo>**.
 
 Archivo: `.harness/plans/<N>-<SLUG>.md`
 
-Este PR es el inicio del trabajo sobre la spec; los PRs de implementacion vendran despues, referenciando este plan.
+Este PR arranca con el plan y sera la branch de trabajo para `/hs-code-*`: la implementacion se commitea sobre este mismo PR hasta quedar validada.
 
 ---
 

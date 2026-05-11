@@ -48,4 +48,4 @@ Los tres labels `code:*` son **mutuamente exclusivos** (cuando uno se aplica, lo
 
 - Skills persisten output en GitHub (issues con labels) cuando aplica.
 - La copia desplegada de CLAUDE.md (`~/.claude/CLAUDE.md`) NUNCA se modifica en runtime.
-- Este archivo (`profiles/harness/CLAUDE.md`) es la fuente del profile y se edita por PR.
+- Este archivo (`profiles/harness/claude/CLAUDE.md`) es la fuente del profile y se edita por PR.

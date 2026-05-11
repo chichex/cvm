@@ -233,20 +233,29 @@ El `plan_text` sintetizado se usa solo en memoria para alimentar a los agents; n
 
 ### Loop validate-first
 
-`ITER=0`. Loop hasta `ITER >= MAX_ITER` o `verdict == PASS`.
+Inicializar:
+
+- `VALIDATE_ATTEMPT=0`
+- `EXEC_COUNT=0`
+- `last_exec_report="none"`
+- `LOOP_VERDICT="FAIL"`
+
+Loop hasta `VALIDATE_ATTEMPT >= MAX_ITER` o `verdict == PASS`.
 
 #### Paso A — Validate
+
+Antes de delegar, incrementar `VALIDATE_ATTEMPT = VALIDATE_ATTEMPT + 1`.
 
 Delegar al agent `hs-code-validator` con prompt:
 
 ```
-iter: <ITER + 1>
+iter: <VALIDATE_ATTEMPT>/<MAX_ITER>
 max_iter: <MAX_ITER>
 pr_number: <PR_NUMBER>
 branch: <PR_BRANCH>
 plan_text: |
   <contenido completo>
-exec_report: <reporte del exec anterior, o "none" si es la primera validate>
+exec_report: <last_exec_report>
 ```
 
 Parsear el `## Validate report` que devuelve. Capturar:
@@ -257,7 +266,7 @@ Parsear el `## Validate report` que devuelve. Capturar:
 Postear el report como comment del PR via `gh pr comment "$PR_NUMBER" --body-file <tmp>` con un marker propio:
 
 ```
-<!-- hs-auto:validate iter=<ITER + 1> -->
+<!-- hs-auto:validate iter=<VALIDATE_ATTEMPT> -->
 
 <reporte tal cual>
 ```
@@ -266,12 +275,14 @@ NO aplicar labels `code:*`.
 
 Si `verdict == PASS` → `LOOP_VERDICT=PASS`, romper loop.
 
-#### Paso B — Exec (solo si verdict == FAIL y ITER + 1 < MAX_ITER)
+Si `verdict == FAIL` y `VALIDATE_ATTEMPT >= MAX_ITER` → `LOOP_VERDICT=FAIL`, romper loop sin ejecutar: ya no queda una validacion posterior para auditar nuevos cambios.
 
-Incrementar `ITER`. Delegar al agent `hs-code-executor` con prompt:
+#### Paso B — Exec (solo si verdict == FAIL y `VALIDATE_ATTEMPT < MAX_ITER`)
+
+Incrementar `EXEC_COUNT = EXEC_COUNT + 1`. Delegar al agent `hs-code-executor` con prompt:
 
 ```
-iter: <ITER>
+iter: <EXEC_COUNT>/<MAX_ITER - 1>
 max_iter: <MAX_ITER>
 pr_number: <PR_NUMBER>
 branch: <PR_BRANCH>
@@ -281,16 +292,16 @@ last_feedback: |
   <feedback_for_next_exec del validate previo>
 ```
 
-Parsear el `## Exec report` que devuelve. Guardar el reporte para pasarselo al proximo validate. NO aplicar labels.
+Parsear el `## Exec report` que devuelve. Guardarlo como `last_exec_report` para pasarselo al proximo validate. NO aplicar labels.
 
 Volver al Paso A.
 
 #### Salida del loop
 
 Si rompimos por `verdict == PASS`, `LOOP_VERDICT=PASS`.
-Si rompimos por `ITER >= MAX_ITER` sin PASS, `LOOP_VERDICT=FAIL`.
+Si agotamos `VALIDATE_ATTEMPT >= MAX_ITER` sin PASS, `LOOP_VERDICT=FAIL`.
 
-Guardar `ITER_USED = ITER`.
+Guardar `ITER_USED = VALIDATE_ATTEMPT` y `EXEC_USED = EXEC_COUNT`.
 
 ## Resultado final
 
@@ -298,8 +309,8 @@ Clasificar fit:
 
 | Categoria | Criterios |
 |-----------|-----------|
-| `encajo limpio` | `LOOP_VERDICT == PASS` y `ITER_USED == 0` (la primera validate ya paso) |
-| `encajo con friccion` | `LOOP_VERDICT == PASS` y `ITER_USED >= 1` |
+| `encajo limpio` | `LOOP_VERDICT == PASS` y `EXEC_USED == 0` (la primera validate ya paso) |
+| `encajo con friccion` | `LOOP_VERDICT == PASS` y `EXEC_USED >= 1` |
 | `no encajo` | `LOOP_VERDICT == FAIL` |
 
 Output:
@@ -311,7 +322,7 @@ Output:
 - spec: <SPEC_URL o "skipped (entro por issue o pr)">
 - plan: <PLAN_URL o "skipped (entro por pr existente)">
 - pr: <PR_URL>
-- iteraciones: <ITER_USED>/<MAX_ITER>
+- iteraciones: <ITER_USED>/<MAX_ITER> validates, <EXEC_USED> execs
 - verdict: <PASS|FAIL>
 - fit: <categoria>
 
