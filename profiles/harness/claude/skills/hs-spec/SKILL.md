@@ -93,8 +93,14 @@ gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "entity:spec
 
 NUNCA aplicar otros labels.
 
-### R6. Confirmacion y reporte
-La confirmacion antes de tocar GitHub (`Confirmás que persisto en GitHub? (si/no)`) y el bloque `## Result` final salen del protocolo de `/clarify` tal cual, con `mode: prompt`.
+### R6. Forzar persistencia en GitHub
+`/clarify` ahora hace la persistencia opcional con default **no**. `/hs-spec` necesita crear el issue siempre (sin issue no hay spec ni label que aplicar). Override:
+
+- Saltar la pregunta `Querés crear/actualizar el issue en GitHub con este resultado? (si/no, default: no)` de `/clarify`. Tratar `PERSIST=true` por default.
+- Mantener una unica confirmacion antes de crear: `Confirmás que creo el issue con label entity:spec? (si/no)`. Si dice `no`, abortar sin tocar GitHub.
+- Si por algun motivo `HAS_REPO=false`, abortar (cubierto por el pre-flight R0 de `/hs-spec`); `/hs-spec` **no** tiene fallback inline.
+
+El bloque `## Result` final sale del protocolo de `/clarify` con `mode: prompt` y `persisted: true`.
 
 ## MUST DO
 
