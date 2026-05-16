@@ -1,5 +1,6 @@
 name = "product"
-harnesses = ["claude"]
+harnesses = ["claude", "opencode"]
 
 [assets]
 claude = "claude"
+opencode = "opencode"
