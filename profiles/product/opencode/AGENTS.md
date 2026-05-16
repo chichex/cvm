@@ -34,6 +34,13 @@ Genera artefactos de producto, negocio y UX (PRDs, RFCs, briefings, vision, mock
 | `/pm-compete` | Genera analisis competitivo con matriz, pricing, positioning y gaps; puede usar `pm-researcher`; crea issue con `pm:compete`. |
 | `/pm-bmc` | Redacta un Business Model Canvas con consistencia entre bloques y crea issue con `pm:bmc`. |
 | `/pm-decision` | Registra una decision ya tomada como decision log; persistencia opcional con `pm:decision`. |
+| `/ux-propose` | Genera 3-4 propuestas de pantalla en HTML+Tailwind con eje de variacion explicito; crea issue con `ux:proposal`. |
+| `/ux-critique` | Critica UX de pantalla, imagen, URL o HTML con Nielsen 10, heuristicas AI opcionales y label `ux:critique`. |
+| `/ux-a11y-audit` | Audita WCAG 2.2 sobre HTML, URL, imagen o directorio; crea issue con `ux:a11y`. |
+| `/ux-copy-review` | Revisa microcopy, labels, errores, empty states y tono; crea issue con `ux:copy`. |
+| `/ux-design-system` | Genera design system de tokens DTCG `2025.10` y Tailwind config; crea issue con `ux:design-system`. |
+| `/ux-components` | Genera componentes UI HTML+Tailwind desde un design system; crea issue con `ux:components`. |
+| `/ux-extract` | Extrae tokens y componentes reusables desde HTML, URL o directorio; crea issue con `ux:extract`. |
 
 ## Agents
 
@@ -44,8 +51,8 @@ Genera artefactos de producto, negocio y UX (PRDs, RFCs, briefings, vision, mock
 
 ## Modelo De Ejecucion OpenCode
 
-- Los skills `pm-*` son interactivos y corren en el orquestador principal.
-- Solo se delega a subagents para investigacion externa (`pm-researcher`) o review adversarial (`pm-reviewer`).
+- Los skills `pm-*` y `ux-*` son interactivos y corren en el orquestador principal.
+- Solo se delega a subagents para investigacion externa (`pm-researcher`) o review adversarial (`pm-reviewer`) cuando aplica.
 - Cuando un skill diga "invocar" un agent, usar Task con `subagent_type` igual al nombre del agent y un prompt autocontenido.
 - No usar convenciones Claude como `$ARGUMENTS`, `Agent(...)`, `AskUserQuestion` o `Write tool` literal.
 
