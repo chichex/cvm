@@ -1,30 +1,25 @@
 ---
 name: ux-components
-description: Genera componentes UI HTML+Tailwind desde un design system; atoms responsive, compounds dual-file y puede crear issue ux:components.
+description: Genera componentes UI HTML+Tailwind desde un design system; atoms responsive, compounds dual-file y guarda en .ux/components/<slug>/.
 ---
 
-Generar **componentes UI en HTML+Tailwind** que consumen un design system. Default: ~18 componentes esenciales (atoms responsive single-file + compounds dual-file cuando la interaccion difiere). Flags para limitar scope. Los argumentos del skill pueden traer flags y/o lista de componentes especifica.
+Generar **componentes UI en HTML+Tailwind** que consumen un design system. Default: ~18 componentes esenciales (atoms (atomos) responsive single-file + compounds (compuestos) dual-file (archivo separado por viewport) cuando la interaccion difiere). Flags para limitar el alcance. Los argumentos del skill pueden traer flags y/o lista de componentes especifica.
 
 Skill **interactivo**.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar.
-
-### 2. Parsear argumentos del skill
+### 1. Parsear argumentos del skill
 Detectar flags:
 - `--desktop` — generar solo version desktop (sin responsive classes).
 - `--mobile` — generar solo version mobile (sin breakpoints).
 - `--only <list>` — generar solo los componentes listados (comma-separated, ej. `button,input,modal`).
 - `--from <path>` — usar tokens desde `<path>` (default: `.ux/design-system/`).
+- `--slug <name>` — usar `<name>` como subdirectorio (default: `default`).
 
-Si no hay flags, **default**: responsive (mobile + desktop con breakpoints, dual-file donde aplica), todos los 18 esenciales.
+Si no hay flags, **default**: responsive (mobile + desktop con breakpoints, dual-file donde aplica), todos los 18 esenciales, slug `default`.
 
-### 3. Validar tokens disponibles
+### 2. Validar tokens disponibles
 Buscar `.ux/design-system/tailwind.config.js` y `.ux/design-system/tokens/semantic.json`.
 
 Si no existen:
@@ -35,7 +30,15 @@ No encontre un design system en `.ux/design-system/`. Opciones:
 3) Generar componentes con paleta default (Tailwind base, no recomendado)
 ```
 
-## Fase 4 — Definir scope de componentes
+### 3. Confirmar slug
+
+Si el usuario no paso `--slug`, preguntar:
+```
+Como llamamos al set de componentes? (kebab-case, max 40 chars — default: "default")
+```
+Guardar `SLUG`. El output va a `.ux/components/<slug>/`.
+
+## Fase 1 — Definir alcance de componentes
 
 ### Lista completa por defecto (18 componentes)
 
@@ -74,21 +77,21 @@ Total: 18 atoms/compounds single-file + 6 compounds que generan 2 archivos = **2
 Si flags `--desktop` o `--mobile`, los dual-file se reducen a un solo archivo cada uno.
 Si flag `--only`, generar solo los listados.
 
-Mostrar al usuario el scope final antes de generar:
+Mostrar al usuario el alcance final antes de generar:
 ```
 Voy a generar:
 - 12 atoms (single-file)
 - 6 single-file compounds
 - 6 dual-file compounds (12 archivos)
 
-Total: <N> archivos en `.ux/components/`
+Total: <N> archivos en `.ux/components/<slug>/`
 
 Procedo? (si/no/ajustar)
 ```
 
-## Fase 5 — Generar archivos
+## Fase 2 — Generar archivos
 
-Path base: `.ux/components/`
+Path base: `.ux/components/<slug>/`
 
 Por cada componente, generar archivo HTML self-contained:
 
@@ -101,7 +104,7 @@ Por cada componente, generar archivo HTML self-contained:
   <title><componente></title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = /* import desde ../design-system/tailwind.config.js */
+    tailwind.config = /* import desde ../../design-system/tailwind.config.js */
   </script>
   <style>
     @media (prefers-reduced-motion: reduce) {
@@ -152,8 +155,8 @@ Por cada componente, generar archivo HTML self-contained:
 
 ### Reglas de generacion por componente
 
-- **Usar solo semantic tokens** del design system (ej. `bg-action-primary`, `text-text-primary`). Nunca primitives.
-- **WCAG 2.2 AA built-in**: contraste, focus visible, target size ≥24px, labels, ARIA donde corresponda.
+- **Usar solo tokens semanticos** del design system (ej. `bg-action-primary`, `text-text-primary`). Nunca primitivos.
+- **WCAG 2.2 AA built-in**: contraste, focus visible, touch target ≥24px, labels, ARIA donde corresponda.
 - **Mostrar estados**: default, hover, focus, disabled, error (cuando aplica).
 - **Para dual-file**: cada archivo declara su target (`<!-- target: desktop -->` o `<!-- target: mobile -->`). Tokens compartidos.
 
@@ -167,14 +170,14 @@ Por cada componente, generar archivo HTML self-contained:
 | `filters-bar` / `filters-sheet` | Row horizontal con chips/selects | Button "Filtros" → bottom sheet con form |
 | `date-picker` / `date-picker-fullscreen` | Popover calendar 280x320 | Modal full-screen con scroll-pickers |
 
-## Fase 6 — Generar indice
+## Fase 3 — Generar indice
 
-`.ux/components/README.md`:
+`.ux/components/<slug>/README.md`:
 
 ```markdown
 # Componentes UI
 
-Generado con `/ux-components`. Consume tokens de `../design-system/`.
+Generado con `/ux-components`. Consume tokens de `../../design-system/`.
 
 ## Atoms (single-file responsive)
 
@@ -202,50 +205,42 @@ Abri cada `.html` en browser. Tailwind CDN + tokens del design system cargados.
 Para usar en tu app: copiar el snippet HTML del componente, asegurarse de tener el `tailwind.config.js` del design system.
 ```
 
-## Fase 7 — Confirmar y persistir GitHub
+## Fase 4 — Confirmar y guardar
 
-Default: **si**.
+Preguntar: `Confirmás que guardo el output en .ux/components/<slug>/? (si/no, default: si)`. Si acepta, si la carpeta `.ux/components/<slug>/` no existe, crearla con `mkdir -p .ux/components/<slug>/` antes de escribir. Luego crear cada `.html` y el `README.md` con el tool de edicion seguro disponible.
 
-```
-Confirmás que creo el issue con label `ux:components` linkeando los archivos? (si/no, default: si)
-```
+## Fase 5 — Reportar
 
-```bash
-gh label create "ux:components" --color "BFD4F2" --description "UX components" 2>/dev/null || true
+Reportar skill, directorio, design system de origen, target, cantidad de componentes, archivos generados, lista de componentes dual-file y si se guardo.
 
-BODY_FILE="$(mktemp -t ux-components-body.XXXXXX).md"
-gh issue create --title "Componentes UI" --body-file "$BODY_FILE" --label "ux:components"
-```
-
-## Fase 8 — Reportar
-
-```
 ## Result
-- skill: /ux-components
-- directory: .ux/components/
-- design_system_from: <path>
-- target: <responsive | desktop | mobile>
-- components_count: <N>
-- files_generated: <N>
-- dual_file_components: <list>
-- persisted: <true | false>
-- url: <URL si persisted>
+
+```yaml
+skill: /ux-components
+saved: true
+directory: .ux/components/<slug>/
+design_system_from: <path>
+target: <responsive | desktop | mobile>
+components_count: <N>
+files_generated: <N>
+dual_file_components: <list>
 ```
 
 ## MUST DO
 
 - Validar existencia del design system antes de generar.
 - Aplicar default (responsive + todos los 18) si no hay flags.
-- Usar solo semantic tokens del design system (nunca primitives).
+- Usar solo tokens semanticos del design system (nunca primitivos).
 - Mostrar estados (default, hover, focus, disabled, error) por componente.
 - Para dual-file: tokens compartidos, solo cambian estructura + interaccion.
 - WCAG 2.2 AA built-in.
+- Guardar todo en `.ux/components/<slug>/`.
 
 ## MUST NOT DO
 
 - No generar componentes sin design system (forzar `/ux-design-system` primero).
 - No duplicar archivos en componentes que son genuinamente responsive (atoms).
 - No generar dual-file para componentes que no lo necesitan (eso es overhead).
-- No usar primitives directamente (siempre semantic).
-- No interpolar contenido en double-quoted shell commands.
+- No usar primitivos directamente (siempre semanticos).
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

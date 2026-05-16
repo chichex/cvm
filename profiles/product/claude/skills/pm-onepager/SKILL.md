@@ -4,125 +4,122 @@ Skill **interactivo**, mas corto que `/pm-prd`. Foco en velocidad.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar como en `/pm-prd`.
+### 1. Validar input
 
-### 2. Validar input
 - Vacio: pedir `Describime la feature en 2-3 lineas.` y esperar.
-- Issue#: derivar a `/clarify`.
+- Si parece un numero o URL de issue: abortar con `/pm-onepager es para one-pagers nuevos. Para refinar algo existente, pegá el material en el prompt.`
 
-## Fase 1 — Clarify rapido (max 5 asunciones)
+## Fase 1 — Clarificacion rapida (max 5 supuestos)
 
-Cargar `/clarify` (`../clarify/SKILL.md`) en `MODO=prompt`. **Restricciones**:
+Aplicar clarificacion inline, limitada a maximo 5 supuestos. Priorizar los mas criticos: a quien apunta, alcance, impacto esperado.
 
-- En Fase 2 de `/clarify`, limitar la lista a **maximo 5 asunciones** (no listar mas, aunque haya). Priorizar las mas criticas: audiencia, scope, impacto esperado.
-- Filtrar a asunciones de producto (no tecnicas).
-- Saltar la pregunta de persistencia.
+1. Listar hasta 5 supuestos sobre la feature, taggeados `[directo]`, `[medio]`, `[especulativo]`. Filtrar a supuestos de producto/negocio, NO tecnicos.
+2. Mostrar al usuario:
+   ```
+   Detecté estos supuestos:
+   1. [especulativo] <supuesto>
+   2. [medio] <supuesto>
+   ...
+   Cuáles te gustaría clarificar? (numeros separados por coma, o 'todos', o 'ninguno')
+   ```
+3. Para cada supuesto seleccionado, preguntar multiple choice con 4 opciones + `otra`, mostrando progreso `Pregunta X/Y`.
+4. Actualizar el material base con las respuestas.
 
 ## Fase 2 — Estructura compacta
 
-Generar body con esta estructura **estricta** — no agregar secciones extra:
+Generar contenido con esta estructura **estricta** — no agregar secciones extra:
 
 ```markdown
 ## Problema
 
 <2 lineas max: que duele, a quien>
 
-## Audiencia
+## A quien apunta
 
-<1 linea: segmento / persona>
+<1 linea: tipo de cliente / perfil>
 
 ## Solucion
 
-<3 lineas max: que hacemos. Outcome, no implementacion.>
+<3 lineas max: que hacemos. Resultado para el usuario, no implementacion.>
 
 ## Impacto esperado
 
-<1 metrica con baseline (si hay) y target. Si no hay baseline, decir "TBD — baseline a medir antes de lanzar".>
+<1 metrica con baseline (si hay) y target. Si no hay baseline, decir "por medir antes de lanzar".>
 
 ## Costo aproximado
 
-<effort: S/M/L/XL + tiempo aproximado>
+<esfuerzo: S/M/L/XL + tiempo aproximado>
 
 ## Decision pedida
 
-<1-2 lineas: que necesitas que decidan los stakeholders (greenlight / scope / timing / no-go).>
+<1-2 lineas: que necesitas que decidan los stakeholders (avanzar / ajustar alcance / timing / no avanzar).>
 ```
 
 ## Fase 3 — Verificar longitud
 
-Contar palabras del body completo. Si > 500 palabras, mostrar:
+Contar palabras del contenido completo. Si > 500 palabras, mostrar:
 ```
 El one-pager quedó en <N> palabras (limite: 500). Querés:
 1) Recortar automaticamente (te muestro version corta para revisar)
-2) Dejarlo asi y crear igual
+2) Dejarlo asi y guardar igual
 3) Volver a editar
 ```
 
 Default 1. Si elige 1, recortar respetando la estructura (priorizar Problema, Solucion, Decision pedida — comprimir Impacto y Costo).
 
-## Fase 4 — Confirmar y persistir
+## Fase 4 — Confirmar y guardar
 
-Default de persistencia para onepager: **no** (drafts rapidos, muchas veces se descartan o se promueven a PRD).
+Default de guardado para onepager: **si** (es un artefacto final, aunque corto).
+
+Slug: kebab-case del titulo de la feature, max 40 chars. Path: `.pm/pm-onepager/<slug>.md`.
 
 ```
-Querés crear el issue con label `pm:onepager`? (si/no, default: no)
+Confirmás que guardo el one-pager en `.pm/pm-onepager/<slug>.md`? (si/no, default: si)
 ```
 
-Si no: mostrar el body inline para que el usuario lo copie. Saltar a reporte.
+Si no: mostrar el contenido inline para que el usuario lo copie. Saltar a reporte.
 
-Si si:
-```bash
-gh label create "pm:onepager" --color "FBCA04" --description "Feature one-pager" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t pm-onepager-body.XXXXXX).md"
-# Write tool genera el archivo
-gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "pm:onepager"
-```
-
-Titulo: "One-pager: <feature>" o imperativo corto.
+Si si: si la carpeta `.pm/pm-onepager/` no existe, crearla con `mkdir -p .pm/pm-onepager/` antes de escribir. Luego usar el `Write` tool (NUNCA via echo/heredoc) para crear el archivo. Titulo: "One-pager: <feature>" o imperativo corto.
 
 ## Fase 5 — Reportar
 
-### Si persisted=true
+### Si saved=true
 ```
 ## Result
 - skill: /pm-onepager
-- persisted: true
-- url: <URL>
+- saved: true
+- file: .pm/pm-onepager/<slug>.md
 - title: <titulo>
 - word_count: <N>
 ```
-Y `Issue creado: <URL>`.
+Y `One-pager guardado: .pm/pm-onepager/<slug>.md`.
 
-### Si persisted=false
+### Si saved=false
 ```
 ## Result
 - skill: /pm-onepager
-- persisted: false
+- saved: false
 - word_count: <N>
 
 ---
 
 ## One-pager
 
-<body inline>
+<contenido inline>
 ```
 
 ## MUST DO
 
-- Limitar `/clarify` a max 5 asunciones (override Fase 2 de clarify).
+- Limitar la clarificacion a max 5 supuestos.
 - Enforzar estructura compacta de 6 secciones.
 - Verificar longitud < 500 palabras.
-- Default de persistencia: NO.
+- Default de guardado: si (artefacto final).
+- Si el usuario confirma guardar, usar `Write` tool en `.pm/pm-onepager/<slug>.md`.
 
 ## MUST NOT DO
 
-- No incluir mas de 5 asunciones del clarify.
-- No agregar secciones extra al body (sin "Riesgos", sin "Open questions" — eso es trabajo del PRD).
-- No describir implementacion en "Solucion" — solo outcome.
-- No interpolar contenido en double-quoted shell commands.
+- No incluir mas de 5 supuestos en la clarificacion.
+- No agregar secciones extra al contenido (sin "Riesgos", sin "Preguntas abiertas" — eso es trabajo del PRD).
+- No describir implementacion en "Solucion" — solo resultado para el usuario.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

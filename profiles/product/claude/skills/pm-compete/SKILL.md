@@ -1,42 +1,39 @@
-**Competitive analysis**: matriz comparativa de features × competidores, pricing, posicionamiento, gaps. Delega a `pm-researcher` para enrichment externo (WebSearch/WebFetch) si el usuario lo pide. `$ARGUMENTS` es categoria/producto/competidores (puede venir vacio).
+**Analisis competitivo**: matriz comparativa de features × competidores, precios, posicionamiento, vacios. Delega a `pm-researcher` para investigacion externa (WebSearch/WebFetch) si el usuario lo pide. `$ARGUMENTS` es categoria/producto/competidores (puede venir vacio).
 
 Skill **interactivo**.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar como en `/pm-prd`.
+### 1. Validar input
 
-### 2. Validar input
-- Vacio: pedir `Que categoria o competidores querés analizar? Lista los competidores que ya conocés y el foco (features, pricing, posicionamiento, etc).` y esperar.
+- Vacio: pedir `Que categoria o competidores querés analizar? Lista los competidores que ya conocés y el foco (features, precios, posicionamiento, etc).` y esperar.
 
-### 3. Preguntar foco
+### 2. Preguntar foco
+
 ```
 Foco del analisis:
 1) Features (que ofrecen / que faltan)
-2) Pricing (modelo, tiers, precio)
-3) Positioning (como se venden, audiencia)
+2) Precios (modelo, tiers, precio)
+3) Posicionamiento (como se venden, a quien)
 4) Reviews (que dicen los usuarios)
 5) General (combinacion de los anteriores)
 6) Otra
 ```
 Guardar `FOCO`.
 
-### 4. Preguntar enrichment externo
+### 3. Preguntar investigacion externa
+
 ```
-Querés que el subagent `pm-researcher` busque info externa (web, reviews, pricing pages)?
-1) Si, full enrichment (recomendado si no tenés data pegada)
+Querés que el subagent `pm-researcher` busque info externa (web, reviews, paginas de precios)?
+1) Si, investigacion completa (recomendado si no tenés data pegada)
 2) No, trabajo con la data que te paso
 3) Mixto — yo paso lo que tengo, vos completá lo que falte
 ```
-Guardar `ENRICHMENT`.
+Guardar `INVESTIGACION`.
 
 ## Fase 1 — Obtener data
 
-### Caso 1: Si `ENRICHMENT=1` (full)
+### Caso 1: Si `INVESTIGACION=1` (completa)
 - Extraer competidores conocidos del prompt (si los menciono).
 - Invocar `pm-researcher` con:
   - `topic: <categoria o producto del usuario>`
@@ -46,16 +43,16 @@ Guardar `ENRICHMENT`.
 - Esperar el reporte estructurado.
 - Mostrar resumen al usuario y preguntar si esta bien para seguir.
 
-### Caso 2: Si `ENRICHMENT=2` (no externa)
+### Caso 2: Si `INVESTIGACION=2` (no externa)
 - Pedir al usuario que pegue la data que tiene:
   ```
-  Pegá lo que tengas (features list, pricing, links, quotes). Cuando termines, decí `listo`.
+  Pegá lo que tengas (lista de features, precios, links, quotes). Cuando termines, decí `listo`.
   ```
 
-### Caso 3: Si `ENRICHMENT=3` (mixto)
+### Caso 3: Si `INVESTIGACION=3` (mixto)
 - Pedir data del usuario primero.
-- Identificar gaps (competidores mencionados sin data, o focos sin info).
-- Invocar `pm-researcher` solo sobre los gaps.
+- Identificar faltantes (competidores mencionados sin data, o focos sin info).
+- Invocar `pm-researcher` solo sobre los faltantes.
 
 ## Fase 2 — Estructurar matriz
 
@@ -65,40 +62,40 @@ Generar las siguientes secciones (cada una si aplica al `FOCO`):
 ```
 | Feature                  | Nosotros | Comp A | Comp B | Comp C |
 |--------------------------|----------|--------|--------|--------|
-| <feature 1>              | ✓        | ✓      | ✗      | parcial |
-| <feature 2>              | ✗        | ✓      | ✓      | ✓      |
+| <feature 1>              | si       | si     | no     | parcial |
+| <feature 2>              | no       | si     | si     | si      |
 ```
 
 Categorias de features:
-- **Table stakes**: features que tienen >50% de competidores (lo que se asume).
+- **Basico**: features que tienen >50% de competidores (lo que se asume).
 - **Diferenciadores actuales**: features unicas (1-2 competidores).
-- **Gaps**: features que faltan en todos.
+- **Vacios**: features que faltan en todos.
 
-### Pricing
+### Precios
 ```
-| Competidor | Modelo | Tier inicial | Tier maximo | Free tier? | Notas |
-|------------|--------|--------------|-------------|------------|-------|
+| Competidor | Modelo | Tier inicial | Tier maximo | Tier gratis? | Notas |
+|------------|--------|--------------|-------------|--------------|-------|
 ```
 
-### Positioning
+### Posicionamiento
 - Headline por competidor (1 linea).
-- Audiencia implicita.
+- A quien le hablan implicitamente.
 - Tono/estilo dominante.
 
-### Reviews signal (si FOCO incluye reviews)
+### Señal de reviews (si FOCO incluye reviews)
 - Top elogios por competidor.
 - Top quejas por competidor.
-- Patrones cross-cutting (que valoran/odian los usuarios de la categoria).
+- Patrones transversales (que valoran/odian los usuarios de la categoria).
 
-## Fase 3 — Insights y gaps
+## Fase 3 — Insights y vacios
 
 Generar:
-- **Donde ganamos**: features/pricing/posicionamiento donde nuestro producto esta mejor que >50% de los competidores.
+- **Donde ganamos**: features/precios/posicionamiento donde nuestro producto esta mejor que >50% de los competidores.
 - **Donde perdemos**: lo opuesto.
-- **Gaps de mercado**: necesidades que ningun competidor cubre bien.
+- **Vacios de mercado**: necesidades que ningun competidor cubre bien.
 - **Riesgos competitivos**: lo que un competidor podria sacar pronto y nos lastimaria.
 
-## Fase 4 — Estructura del body
+## Fase 4 — Estructura del contenido
 
 ```markdown
 ## Resumen
@@ -112,26 +109,26 @@ Generar:
 
 <tabla>
 
-### Table stakes
+### Basico
 - <lista>
 
 ### Diferenciadores actuales
 - <feature> → <competidor>
 
-### Gaps (no cubierto por nadie)
+### Vacios (no cubierto por nadie)
 - <feature potencial>
 
-## Pricing
+## Precios
 
 <tabla>
 
 **Patron dominante**: <modelo + rango>
 
-## Positioning
+## Posicionamiento
 
 <por competidor>
 
-## Reviews signal
+## Señal de reviews
 
 <solo si aplica>
 
@@ -143,7 +140,7 @@ Generar:
 ### Donde perdemos
 - <bullet>
 
-### Gaps de mercado
+### Vacios de mercado
 - <bullet>
 
 ### Riesgos competitivos
@@ -155,58 +152,56 @@ Generar:
 
 ---
 
-_Competitive analysis generado por `/pm-compete`._
+_Analisis competitivo generado por `/pm-compete`._
 ```
 
-## Fase 5 — Review opcional
+## Fase 5 — Revision opcional
 
 ```
 Querés que `pm-reviewer` audite el analisis? (si/no, default: no — la matriz se audita sola)
 ```
 
-Si si: invocar con `artefact_type: compete`. El reviewer va a buscar: matriz donde ganamos en todo (sospechoso), pricing sin fuente, posicionamiento copy-pasted del marketing.
+Si si: invocar con `artefact_type: compete`. El reviewer va a buscar: matriz donde ganamos en todo (sospechoso), precios sin fuente, posicionamiento copy-pasted del marketing.
 
-## Fase 6 — Confirmar y persistir
+## Fase 6 — Confirmar y guardar
+
+Slug: kebab-case del titulo, max 40 chars. Path: `.pm/pm-compete/<slug>.md`.
 
 ```
-Confirmás que creo el issue con label `pm:compete`? (si/no, default: si)
+Confirmás que guardo el analisis en `.pm/pm-compete/<slug>.md`? (si/no, default: si)
 ```
 
-```bash
-gh label create "pm:compete" --color "FBCA04" --description "Competitive analysis" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t pm-compete-body.XXXXXX).md"
-gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "pm:compete"
-```
-
-Titulo formato: "Compete: <categoria> <fecha>" o "Compete vs <competidor> <fecha>".
+Si si: si la carpeta `.pm/pm-compete/` no existe, crearla con `mkdir -p .pm/pm-compete/` antes de escribir. Luego usar el `Write` tool (NUNCA via echo/heredoc) para crear el archivo. Titulo formato: "Compete: <categoria> <fecha>" o "Compete vs <competidor> <fecha>".
 
 ## Fase 7 — Reportar
 
 ```
 ## Result
 - skill: /pm-compete
-- persisted: true
-- url: <URL>
+- saved: true
+- file: .pm/pm-compete/<slug>.md
 - title: <titulo>
 - foco: <FOCO>
-- enrichment: <ENRICHMENT>
+- investigacion: <INVESTIGACION>
 - competidores_analizados: <N>
-- gaps_detectados: <N>
+- vacios_detectados: <N>
 - reviewer_used: <true | false>
 ```
 
+Y debajo: `Analisis guardado: .pm/pm-compete/<slug>.md`.
+
 ## MUST DO
 
-- Preguntar `FOCO` y `ENRICHMENT` antes de pedir data.
-- Si `ENRICHMENT=1`, delegar a `pm-researcher` con focus claro.
-- Generar matriz con table stakes / diferenciadores / gaps separados.
+- Preguntar `FOCO` e `INVESTIGACION` antes de pedir data.
+- Si `INVESTIGACION=1`, delegar a `pm-researcher` con foco claro.
+- Generar matriz con basico / diferenciadores / vacios separados.
 - Citar fuentes cuando vengan del researcher.
+- Guardar en `.pm/pm-compete/<slug>.md` con `Write` tool.
 
 ## MUST NOT DO
 
 - No inventar datos de competidores que no hayan venido del researcher o del usuario.
 - No declarar "ganamos en todo" sin justificacion item por item.
-- No omitir gaps de mercado (eso es la oportunidad mas valiosa del analisis).
-- No interpolar contenido en double-quoted shell commands.
+- No omitir vacios de mercado (eso es la oportunidad mas valiosa del analisis).
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

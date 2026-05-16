@@ -1,24 +1,18 @@
 ---
 name: ux-design-system
-description: Genera un design system de tokens DTCG 2025.10, primitive y semantic, con Tailwind config y puede crear issue ux:design-system.
+description: Genera un design system de tokens DTCG 2025.10, primitivos y semanticos, con Tailwind config y guarda en .ux/design-system/.
 ---
 
-Generar un **design system de tokens** segun la spec W3C DTCG `2025.10`. **Solo tokens**; para componentes usar `/ux-components`. Output: `tokens/primitive.json` + `tokens/semantic.json` + `tailwind.config.js` generado. Los argumentos del skill son el prompt con producto/brand y pueden venir vacios.
+Generar un **design system de tokens** segun la spec W3C DTCG (Design Tokens Community Group) `2025.10`. **Solo tokens**; para componentes usar `/ux-components`. Output: `tokens/primitive.json` + `tokens/semantic.json` + `tailwind.config.js` generado. Los argumentos del skill son el prompt con producto/brand y pueden venir vacios.
 
 Skill **interactivo**.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar.
+### 1. Validar input
+- Vacio: pedir `Describime el producto/brand. Tono visual deseado (sobrio / expresivo / juguetón / tecnico), audiencia, y cualquier referencia (color base, fuente preferida, sitios que te gustan).` y esperar.
 
-### 2. Validar input
-- Vacio: pedir `Describime el producto/brand. Tono visual deseado (sobrio / expresivo / playful / tecnico), audiencia, y cualquier referencia (color base, fuente preferida, sitios que te gustan).` y esperar.
-
-### 3. Preguntar modo
+### 2. Preguntar modo
 ```
 Como armamos los tokens?
 1) Desde cero — yo te propongo paleta + escala + fuente y vos ajustas
@@ -28,7 +22,7 @@ Como armamos los tokens?
 ```
 Guardar `MODE`.
 
-### 4. Preguntar dark mode
+### 3. Preguntar dark mode
 ```
 Incluis dark mode?
 1) Si — generamos semantic para light y dark (default)
@@ -36,15 +30,15 @@ Incluis dark mode?
 ```
 Guardar `DARK_MODE`.
 
-## Fase 1 — Definir primitives
+## Fase 1 — Definir capa primitiva
 
 ### Color
 - 1 paleta primary (escala 50-900, 10 stops).
 - 1 paleta neutral / gray (escala 50-950).
-- 3 paletas semantic-base: success (green), warning (yellow/amber), danger (red). Escala 50-900 cada una.
+- 3 paletas base semanticas: success (green), warning (yellow/amber), danger (red). Escala 50-900 cada una.
 - Opcional: 1 accent (preguntar al usuario si quiere).
 
-Generar valores con metodo OKLCH (mejor preservacion de perceptual contrast) o HSL si simpler:
+Generar valores con metodo OKLCH (espacio de color perceptual, mejor preservacion de contraste perceptual) o HSL si es mas simple:
 - Si `MODE=2`: derivar escala desde el hex usando shifts de luminosidad.
 - Si `MODE=3`: extraer colores del sitio de referencia via WebFetch (o pedir al usuario que pegue los colores).
 
@@ -69,9 +63,9 @@ Generar valores con metodo OKLCH (mejor preservacion de perceptual contrast) o H
 - Easings: `ease-out`, `ease-in-out`.
 - Convencion: incluir nota explicita en el doc sobre respetar `prefers-reduced-motion`.
 
-Mostrar al usuario los primitives propuestos:
+Mostrar al usuario los tokens primitivos propuestos:
 ```
-## Primitive tokens propuestos
+## Tokens primitivos propuestos
 
 ### Color
 - primary: <preview de la escala — bloques de color>
@@ -90,9 +84,9 @@ Ajustar algo? (si/no — si si, decime que)
 
 Iterar hasta que el usuario apruebe.
 
-## Fase 2 — Definir semantic
+## Fase 2 — Definir capa semantica
 
-Mapear roles a primitives. Estructura DTCG:
+Mapear roles a primitivos. Estructura DTCG:
 
 ```json
 {
@@ -124,12 +118,12 @@ Mapear roles a primitives. Estructura DTCG:
       "danger":          { "$value": "{color.red.600}",     "$type": "color" }
     }
   },
-  "spacing": { /* alias a primitives spacing */ },
+  "spacing": { /* alias a primitivos spacing */ },
   "radius":  { /* alias */ }
 }
 ```
 
-Si `DARK_MODE=si`, generar ademas `semantic.dark.json` con los mismos roles pero apuntando a diferentes primitives (ej. `text.primary → gray.50`, `bg.page → gray.950`).
+Si `DARK_MODE=si`, generar ademas `semantic.dark.json` con los mismos roles pero apuntando a diferentes primitivos (ej. `text.primary → gray.50`, `bg.page → gray.950`).
 
 ## Fase 3 — Generar Tailwind config
 
@@ -176,23 +170,23 @@ Spec: W3C Design Tokens (DTCG `2025.10`)
 - `tokens/primitive.json` — paleta cruda (colores, spacing, type, etc).
 - `tokens/semantic.json` — roles (text.primary, bg.surface, etc).
 - `tokens/semantic.dark.json` — variantes dark (si aplica).
-- `tailwind.config.js` — consumidor de los tokens para Tailwind v3+.
+- `tailwind.config.js` — consume los tokens para Tailwind v3+.
 
 ## Como usar
 
-En tu HTML/JSX, usá las semantic via Tailwind:
+En tu HTML/JSX, usá los semanticos via Tailwind:
 \`\`\`html
 <button class="bg-action-primary hover:bg-action-primary-hover text-text-inverse">
   Crear cuenta
 </button>
 \`\`\`
 
-NUNCA uses primitives directamente (`bg-primary-500`) — siempre el semantic.
+NUNCA uses primitivos directamente (`bg-primary-500`) — siempre el semantico.
 
 ## Reglas
 
-- Cambios de paleta → editar primitives. Propaga a todos los semantic.
-- Cambios de rol (ej. "ahora errors son orange en lugar de red") → editar semantic. No toca primitives.
+- Cambios de paleta → editar primitivos. Propaga a todos los semanticos.
+- Cambios de rol (ej. "ahora errors son orange en lugar de red") → editar semanticos. No toca primitivos.
 - Dark mode: el toggle es via `class="dark"` en `<html>`.
 
 ## Generado por
@@ -200,94 +194,48 @@ NUNCA uses primitives directamente (`bg-primary-500`) — siempre el semantic.
 `/ux-design-system` — version <fecha>.
 ```
 
-## Fase 5 — Persistir archivos
+## Fase 5 — Confirmar y guardar
 
 Path base: `.ux/design-system/`
 
-Archivos:
+Archivos a escribir:
 - `tokens/primitive.json`
 - `tokens/semantic.json`
 - (si DARK_MODE) `tokens/semantic.dark.json`
 - `tailwind.config.js`
 - `README.md`
 
-Usar una edicion segura para cada uno (NO `echo` / heredoc).
+Preguntar: `Confirmás que guardo el output en .ux/design-system/? (si/no, default: si)`. Si acepta, si las carpetas `.ux/design-system/` y `.ux/design-system/tokens/` no existen, crearlas con `mkdir -p .ux/design-system/tokens/` antes de escribir. Luego crear cada archivo con el tool de edicion seguro disponible (NO `echo` / heredoc).
 
-## Fase 6 — Confirmar y persistir GitHub
+## Fase 6 — Reportar
 
-Default: **si**.
+Reportar skill, directorio, modo, si tiene dark mode, conteo de tokens primitivos y semanticos, y si se guardo.
 
-```
-Confirmás que creo el issue con label `ux:design-system` linkeando los archivos? (si/no, default: si)
-```
-
-```bash
-gh label create "ux:design-system" --color "0E8A16" --description "UX design system" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t ux-ds-body.XXXXXX).md"
-```
-
-Body:
-```markdown
-## Design System: <producto>
-
-Generado con `/ux-design-system`. Spec: DTCG `2025.10`.
-
-## Archivos
-
-- `.ux/design-system/tokens/primitive.json`
-- `.ux/design-system/tokens/semantic.json`
-- `.ux/design-system/tokens/semantic.dark.json` (si aplica)
-- `.ux/design-system/tailwind.config.js`
-- `.ux/design-system/README.md`
-
-## Resumen
-
-- Paleta primary: <color base>
-- Dark mode: <si/no>
-- Fuente sans: <font>
-
-## Siguientes pasos sugeridos
-
-- Generar componentes que consuman estos tokens con `/ux-components`.
-- Mockup de pantallas: `/ux-propose` puede recibir el path del design system.
-- Auditar a11y de componentes generados: `/ux-a11y-audit`.
-
----
-
-_Design system generado por `/ux-design-system`._
-```
-
-```bash
-gh issue create --title "Design System: <producto>" --body-file "$BODY_FILE" --label "ux:design-system"
-```
-
-## Fase 7 — Reportar
-
-```
 ## Result
-- skill: /ux-design-system
-- directory: .ux/design-system/
-- mode: <MODE>
-- dark_mode: <si | no>
-- tokens_primitive: <count colores + spacing + radii + shadow + motion>
-- tokens_semantic: <count roles>
-- persisted: <true | false>
-- url: <URL si persisted>
+
+```yaml
+skill: /ux-design-system
+saved: <true | false>
+directory: .ux/design-system/
+mode: <MODE>
+dark_mode: <si | no>
+tokens_primitive: <N>
+tokens_semantic: <N>
 ```
 
 ## MUST DO
 
 - Seguir spec DTCG `2025.10`: `$value` + `$type` por token, refs con `{...}`.
-- Generar las 3 capas: primitive, semantic (light + dark si aplica), Tailwind config.
-- Generar `README.md` con instrucciones de uso explicitas (usar semantic, no primitives).
+- Generar las 3 capas: primitiva, semantica (light + dark si aplica), Tailwind config.
+- Generar `README.md` con instrucciones de uso explicitas (usar semanticos, no primitivos).
 - Incluir nota sobre `prefers-reduced-motion` en el doc de motion.
+- Guardar todo en `.ux/design-system/`.
 
 ## MUST NOT DO
 
 - No generar componentes (eso es `/ux-components`).
-- No usar primitives directamente en ejemplos del README (semantic siempre).
+- No usar primitivos directamente en ejemplos del README (semanticos siempre).
 - No omitir dark mode si el usuario lo pidio.
-- No generar `component tokens` (capa 3) — para sistemas chicos, primitive + semantic alcanza.
-- No interpolar contenido en double-quoted shell commands.
+- No generar `component tokens` (capa 3) — para sistemas chicos, primitiva + semantica alcanza.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

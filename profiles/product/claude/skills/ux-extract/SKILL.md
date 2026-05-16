@@ -1,16 +1,10 @@
-**Extractor**: dado un HTML mockup (de `/ux-propose` o externo), extrae tokens y propone componentes reusables para alimentar `/ux-design-system` y `/ux-components`. Cierra el loop entre exploracion (mockup) y sistema. `$ARGUMENTS` es path al HTML, URL, o directorio.
+**Extractor**: dado un HTML mockup (de `/ux-propose` o externo), extrae tokens y propone componentes reusables para alimentar `/ux-design-system` y `/ux-components`. Cierra el ciclo entre exploracion (mockup) y sistema. `$ARGUMENTS` es path al HTML, URL, o directorio.
 
 Skill **interactivo**.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar.
-
-### 2. Detectar target
+### 1. Detectar target
 
 Casos:
 - Path a archivo `.html`: extraer de ese archivo.
@@ -18,7 +12,7 @@ Casos:
 - URL: WebFetch del HTML (sin screenshot — necesitamos el codigo).
 - Vacio: pedir `Pasame path a HTML mockup, directorio, o URL.` y esperar.
 
-### 3. Preguntar foco
+### 2. Preguntar foco
 ```
 Que querés extraer?
 1) Tokens (colores, spacing, type, radii, shadows) — alimenta `/ux-design-system`
@@ -27,7 +21,7 @@ Que querés extraer?
 ```
 Guardar `FOCUS`.
 
-### 4. Preguntar destino
+### 3. Preguntar destino
 ```
 Donde mergeas el output?
 1) Crear nuevo design system en `.ux/design-system/` (si no existe)
@@ -35,6 +29,10 @@ Donde mergeas el output?
 3) Solo generar reporte, no escribir archivos
 ```
 Guardar `DEST`.
+
+### 4. Derivar slug
+
+Derivar `<slug>` desde el target (filename, hostname, o directorio) en kebab-case, max 40 chars. Se usa para guardar en `.ux/extract/<slug>/`.
 
 ## Fase 1 — Cargar HTML
 
@@ -44,7 +42,7 @@ Leer el archivo o concatenar todos los del directorio. Parsear inline styles, cl
 
 ### Colores
 - Listar **todos** los colores que aparecen (`color:`, `background:`, `border-color:`, Tailwind classes `text-*`, `bg-*`, `border-*`).
-- Agrupar por similitud perceptual (OKLCH delta E < 10 → mismo color).
+- Agrupar por similitud perceptual (OKLCH (espacio de color perceptual) delta E < 10 → mismo color).
 - Inferir paleta:
   - Color con mas usos en backgrounds primarios → candidato a `primary`.
   - Colores neutros (saturacion baja) → candidatos a `gray scale`.
@@ -53,7 +51,7 @@ Leer el archivo o concatenar todos los del directorio. Parsear inline styles, cl
 
 ### Spacing
 - Listar todos los valores de `padding`, `margin`, `gap` (en px, rem, o Tailwind classes `p-*`, `m-*`, `gap-*`).
-- Detectar escala dominante (¿multiples de 4? de 8?).
+- Detectar escala dominante (¿multiplos de 4? de 8?).
 
 ### Typography
 - Fonts en `font-family` o Tailwind `font-*`.
@@ -78,7 +76,9 @@ Para cada componente detectado:
 - Variantes detectadas (ej. button: primary, secondary, ghost).
 - Snippet representativo.
 
-## Fase 4 — Estructurar reporte
+## Fase 4 — Estructurar reporte de componentes
+
+Generar contenido para `.ux/extract/<slug>/components.md`:
 
 ```markdown
 ## Extraccion: <target>
@@ -86,7 +86,7 @@ Para cada componente detectado:
 **Archivos procesados**: <N>
 **Foco**: <FOCUS>
 
-## Tokens extraidos
+## Tokens extraidos (resumen)
 
 ### Color
 
@@ -158,45 +158,40 @@ Para cada componente detectado:
 _Extraccion generada por `/ux-extract`._
 ```
 
-## Fase 5 — Escribir archivos (si DEST != 3)
+## Fase 5 — Archivos a escribir (si DEST != 3)
+
+Path base: `.ux/extract/<slug>/`
 
 ### Si DEST=1 (nuevo design system)
 
-Generar en `.ux/design-system/`:
-- `tokens/primitive.json` (DTCG spec) con los tokens extraidos.
-- `tokens/semantic.json` con roles inferidos.
-- `tailwind.config.js` generado desde los tokens.
-- `README.md`.
+Generar en `.ux/extract/<slug>/`:
+- `tokens.json` (DTCG spec) con los tokens extraidos en formato primitivo + semantico.
+- `components.md` con el reporte de componentes detectados + reescritura sugerida.
+- `README.md` con instrucciones para adoptar el design system.
 
-(Mismo formato que `/ux-design-system` — el ouput es DTCG-compliant.)
+Adicionalmente, si el usuario confirma, copiar `tokens.json` a `.ux/design-system/tokens/primitive.json` + `tokens/semantic.json` y generar `tailwind.config.js` (mismo formato que `/ux-design-system`).
 
 ### Si DEST=2 (merge)
 
-NO sobreescribir. Generar:
-- `.ux/extract/<timestamp>-diff.md` con los diffs detectados.
-- `.ux/extract/<timestamp>-proposed-tokens.json` con tokens nuevos a agregar.
-- `.ux/extract/<timestamp>-proposed-components.md` con componentes a promover.
+NO sobreescribir el design system. Generar:
+- `.ux/extract/<slug>/diff.md` con los diffs detectados.
+- `.ux/extract/<slug>/proposed-tokens.json` con tokens nuevos a agregar.
+- `.ux/extract/<slug>/components.md` con componentes a promover.
 
 El usuario revisa y mergea manualmente (o pide que `/ux-design-system` haga el merge oficial despues).
 
 ### Si DEST=3 (solo reporte)
 
-No escribir archivos. Solo el reporte inline + persistencia como issue.
+No escribir archivos. Mostrar el reporte inline en la conversacion.
 
-## Fase 6 — Confirmar y persistir GitHub
-
-Default: **si**.
+## Fase 6 — Confirmar y guardar
 
 ```
-Confirmás que creo el issue con label `ux:extract`? (si/no, default: si)
+Confirmás que guardo el output en .ux/extract/<slug>/? (si/no, default: si)
 ```
 
-```bash
-gh label create "ux:extract" --color "5319E7" --description "UX token/component extraction" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t ux-extract-body.XXXXXX).md"
-gh issue create --title "Extract: <target>" --body-file "$BODY_FILE" --label "ux:extract"
-```
+Si si y DEST != 3: si la carpeta `.ux/extract/<slug>/` no existe, crearla con `mkdir -p .ux/extract/<slug>/` antes de escribir. Luego usar `Write` tool para cada archivo.
+Si DEST=3: no escribir, solo mostrar el reporte inline.
 
 ## Fase 7 — Reportar
 
@@ -210,9 +205,9 @@ gh issue create --title "Extract: <target>" --body-file "$BODY_FILE" --label "ux
 - tokens_spacing_inferred: <N>
 - components_detected: <list>
 - dark_mode_detected: <true | false>
+- directory: .ux/extract/<slug>/
 - files_written: <list o "ninguno" si DEST=3>
-- persisted: <true | false>
-- url: <URL si persisted>
+- saved: <true | false>
 ```
 
 ## MUST DO
@@ -222,11 +217,12 @@ gh issue create --title "Extract: <target>" --body-file "$BODY_FILE" --label "ux
 - Marcar componentes como reusables solo con count >= 3 (igual que patrones en `/pm-feedback`).
 - Si DEST=1, generar output DTCG-compliant (igual estructura que `/ux-design-system`).
 - Reportar diffs claros si DEST=2 (no sobreescribir).
+- Guardar todo en `.ux/extract/<slug>/` con `Write` tool.
 
 ## MUST NOT DO
 
 - No sobreescribir un design system existente sin que el usuario lo pida con DEST=1 sobre directorio vacio.
 - No promover a componente algo que aparece 1-2 veces (eso es one-off, no patron).
 - No inventar tokens — todo lo extraido viene del HTML.
-- No interpolar contenido en double-quoted shell commands.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

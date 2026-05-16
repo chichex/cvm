@@ -4,64 +4,77 @@ Genera artefactos de producto, negocio y UX (PRDs, RFCs, briefings, vision, mock
 
 ## Rules
 
-- Sacar ambiguedades antes de redactar; los skills relevantes reusan `/clarify` si esta disponible en el entorno.
+- Sacar dudas antes de redactar — cada skill incluye una fase de clarificación inline.
 - Desambiguar con multiple choice (4 opciones + "otra"), excepto pastes libres (feedback, copy, HTML).
-- Pedir `stage?` y `model?` solo donde el artefacto cambia con esos parametros.
+- Pedir `etapa?` y `tipo de negocio?` solo donde el artefacto cambia con esos parametros.
 - Responder corto y directo.
+- Lenguaje simple; evitar jerga de producto innecesaria (mantener nombres de artefactos: PRD, RFC, BMC).
 - Espanol por default.
 - Evitar flags GNU-only (`grep -P`); usar `grep -E` por compat macOS.
 
 ## Defaults
 
-- **Stage**: `early-stage / founder-mode` cuando el usuario no declara.
-- **Modelo de negocio**: agnostico (B2B / B2C / marketplace).
+- **Etapa**: `etapa temprana` cuando el usuario no declara.
+- **Tipo de negocio**: agnostico (para empresas / consumidor final / marketplace).
 - **WCAG**: 2.2 AA built-in en todo skill UX. Ignorar 3.0 hasta Recommendation (~2028).
-- **Design tokens**: spec W3C DTCG `2025.10`. Solo capa primitive + semantic.
-- **Frontend output**: HTML + Tailwind CDN single-file. Atoms responsive; compounds dual-file cuando la interaccion mobile/desktop difiere.
-- **Persistencia GitHub**: confirmable antes de `gh issue create`. Cada skill aplica su label `pm:*` o `ux:*`.
+- **Design tokens**: spec W3C DTCG (Design Tokens Community Group) `2025.10`. Solo capa primitive + semantic.
+- **Frontend output**: HTML + Tailwind CDN single-file. Atoms (atomos) responsive; compounds (compuestos) dual-file (archivo separado por viewport) cuando la interaccion mobile/desktop difiere.
+
+## Output
+
+Todos los skills guardan archivos locales; nunca crean issues ni dependen de GitHub.
+
+- **PM skills** (`.md`): `.pm/<skill>/<slug>.md` (ej. `.pm/pm-prd/exportar-reportes-csv.md`).
+- **UX skills** (`.md` o directorios con `.html`):
+  - `/ux-critique` → `.ux/critique/<slug>.md`
+  - `/ux-a11y-audit` → `.ux/a11y/<slug>.md`
+  - `/ux-copy-review` → `.ux/copy/<slug>.md`
+  - `/ux-propose` → `.ux/proposals/<slug>/variant-<N>-<nombre>.html` + `README.md`
+  - `/ux-components` → `.ux/components/<slug>/<component>.html` + `README.md`
+  - `/ux-extract` → `.ux/extract/<slug>/tokens.json` + `components.md`
+  - `/ux-design-system` → `.ux/design-system/tokens.json` + `tailwind.config.js` + `README.md` (singleton, sin slug)
+- **Slug**: derivado del titulo del artefacto, kebab-case, max 40 chars.
+- **Confirmar antes de escribir**: cada skill pide confirmacion al usuario antes de guardar.
+- **Crear directorio**: si el path no existe, crear con `mkdir -p` antes de escribir.
 
 ## Skills
 
 | Skill | Que hace |
 |-------|----------|
-| `/pm-prd` | Redacta un PRD desde una feature o idea, refina asunciones de producto, ofrece review adversarial y crea issue con `pm:prd`. |
-| `/pm-rfc` | Redacta un RFC de producto para decidir entre 2-4 alternativas reales y crea issue con `pm:rfc`. |
-| `/pm-onepager` | Produce un one-pager corto de feature/decision para alineacion rapida; persistencia opcional con `pm:onepager`. |
-| `/pm-briefing` | Genera un briefing ejecutivo orientado a decision y crea issue con `pm:briefing`. |
-| `/pm-experiment` | Disena un experimento falsable con metricas, guardrails y stop conditions; crea issue con `pm:experiment`. |
-| `/pm-feedback` | Triagia feedback de usuarios en temas, severidad, oportunidades y acciones; crea issue con `pm:feedback`. |
-| `/pm-vision` | Define vision de producto, north star, anti-vision y apuestas estrategicas; crea issue con `pm:vision`. |
-| `/pm-compete` | Genera analisis competitivo con matriz, pricing, positioning y gaps; puede usar `pm-researcher`; crea issue con `pm:compete`. |
-| `/pm-bmc` | Redacta un Business Model Canvas con consistencia entre bloques y crea issue con `pm:bmc`. |
-| `/pm-decision` | Registra una decision ya tomada como decision log; persistencia opcional con `pm:decision`. |
-| `/ux-propose` | Genera 3-4 propuestas de pantalla en HTML+Tailwind con eje de variacion explicito; crea issue con `ux:proposal`. |
-| `/ux-critique` | Critica UX de pantalla, imagen, URL o HTML con Nielsen 10, heuristicas AI opcionales y label `ux:critique`. |
-| `/ux-a11y-audit` | Audita WCAG 2.2 sobre HTML, URL, imagen o directorio; crea issue con `ux:a11y`. |
-| `/ux-copy-review` | Revisa microcopy, labels, errores, empty states y tono; crea issue con `ux:copy`. |
-| `/ux-design-system` | Genera design system de tokens DTCG `2025.10` y Tailwind config; crea issue con `ux:design-system`. |
-| `/ux-components` | Genera componentes UI HTML+Tailwind desde un design system; crea issue con `ux:components`. |
-| `/ux-extract` | Extrae tokens y componentes reusables desde HTML, URL o directorio; crea issue con `ux:extract`. |
+| `/pm-prd` | Redacta un PRD desde una feature o idea, refina supuestos de producto, ofrece revision critica y guarda el archivo. |
+| `/pm-rfc` | Redacta un RFC de producto para decidir entre 2-4 alternativas reales y guarda el archivo. |
+| `/pm-onepager` | Produce un one-pager corto de feature/decision para alineacion rapida. |
+| `/pm-briefing` | Genera un briefing ejecutivo orientado a decision. |
+| `/pm-experiment` | Disena un experimento comprobable con metricas, limites y condiciones para cortar. |
+| `/pm-feedback` | Triagia feedback de usuarios en temas, severidad, oportunidades y acciones. |
+| `/pm-vision` | Define vision de producto, metrica principal, anti-vision y apuestas estrategicas. |
+| `/pm-compete` | Genera analisis competitivo con matriz, precios, posicionamiento y faltantes; puede usar `pm-researcher`. |
+| `/pm-bmc` | Redacta un Business Model Canvas con consistencia entre bloques. |
+| `/pm-decision` | Registra una decision ya tomada como decision log. |
+| `/ux-propose` | Genera 3-4 propuestas de pantalla en HTML+Tailwind con eje de variacion explicito. |
+| `/ux-critique` | Critica UX de pantalla, imagen, URL o HTML con Nielsen 10 y heuristicas AI opcionales. |
+| `/ux-a11y-audit` | Audita WCAG 2.2 sobre HTML, URL, imagen o directorio. |
+| `/ux-copy-review` | Revisa microcopy, labels, errores, empty states y tono. |
+| `/ux-design-system` | Genera design system de tokens DTCG `2025.10` y Tailwind config. |
+| `/ux-components` | Genera componentes UI HTML+Tailwind desde un design system. |
+| `/ux-extract` | Extrae tokens y componentes reusables desde HTML, URL o directorio. |
 
 ## Agents
 
 | Agent | Que hace |
 |-------|----------|
 | `pm-researcher` | Investigacion externa de producto/mercado con WebSearch/WebFetch cuando estan disponibles. Solo lectura. |
-| `pm-reviewer` | Auditor adversarial de artefactos de producto. Solo lectura. |
+| `pm-reviewer` | Auditor critico de artefactos de producto. Solo lectura. |
 
 ## Modelo De Ejecucion OpenCode
 
 - Los skills `pm-*` y `ux-*` son interactivos y corren en el orquestador principal.
-- Solo se delega a subagents para investigacion externa (`pm-researcher`) o review adversarial (`pm-reviewer`) cuando aplica.
+- Solo se delega a subagents para investigacion externa (`pm-researcher`) o revision critica (`pm-reviewer`) cuando aplica.
 - Cuando un skill diga "invocar" un agent, usar Task con `subagent_type` igual al nombre del agent y un prompt autocontenido.
 - No usar convenciones Claude como `$ARGUMENTS`, `Agent(...)`, `AskUserQuestion` o `Write tool` literal.
 
-## Labels
-
-Namespace `pm:*` para PM, `ux:*` para UX. Cada skill registra su label antes de crear el issue (`gh label create ... 2>/dev/null || true`). No colisionan con `entity:*` / `code:*` del profile `harness`.
-
 ## Persistencia
 
-- Skills persisten output en GitHub solo con confirmacion del usuario.
+- Skills guardan archivos locales en `.pm/` o `.ux/` solo con confirmacion del usuario.
 - La copia desplegada de AGENTS.md (`~/.config/opencode/AGENTS.md` o `$OPENCODE_CONFIG_DIR/AGENTS.md`) NUNCA se modifica en runtime.
 - Este archivo (`profiles/product/opencode/AGENTS.md`) es la fuente del profile y se edita por PR.

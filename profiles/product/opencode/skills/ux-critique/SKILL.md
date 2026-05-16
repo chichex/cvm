@@ -1,6 +1,6 @@
 ---
 name: ux-critique
-description: Critica UX de una pantalla, imagen, URL o HTML; aplica Nielsen 10, heuristicas AI opcionales, prioriza hallazgos y puede crear issue ux:critique.
+description: Critica UX de una pantalla, imagen, URL o HTML; aplica Nielsen 10, heuristicas AI opcionales, prioriza hallazgos y guarda en .ux/critique/<slug>.md.
 ---
 
 **Critica de UX** sobre una pantalla (imagen, URL, o HTML pegado). Aplica Nielsen 10 + heuristicas de AI cuando corresponde, cubre 7 dimensiones, prioriza hallazgos por severidad. Los argumentos del skill son el target a criticar y pueden venir vacios.
@@ -9,13 +9,7 @@ Skill **interactivo**.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar.
-
-### 2. Detectar tipo de target
+### 1. Detectar tipo de target
 
 Trim de los argumentos del skill. Guardar como `TARGET`.
 
@@ -31,21 +25,25 @@ Trim de los argumentos del skill. Guardar como `TARGET`.
   3) HTML pegado
   ```
 
-### 3. Preguntar contexto
+### 2. Preguntar contexto
 ```
-Que pantalla es? (1 linea — ej. "login B2B", "checkout de e-commerce", "dashboard de metricas")
+Que pantalla es? (1 linea — ej. "login para empresas", "checkout de e-commerce", "dashboard de metricas")
 ```
 Guardar `CONTEXT`.
 
 ```
-La pantalla incluye features de AI (chat, autocomplete con LLM, generative outputs)? (si/no, default: no)
+La pantalla incluye features de AI (chat, autocomplete con LLM, outputs generativos)? (si/no, default: no)
 ```
 Guardar `HAS_AI`. Si si, se aplican heuristicas extra de AI.
+
+### 3. Derivar slug
+
+Derivar `<slug>` desde `CONTEXT` (kebab-case, max 40 chars). Se usa para guardar el archivo en `.ux/critique/<slug>.md`.
 
 ## Fase 1 — Cargar el target
 
 ### TYPE=image
-Leer la imagen directamente con `Read` (Claude la procesa visualmente).
+Leer la imagen directamente con `Read` (la procesa visualmente).
 
 ### TYPE=url
 Dos pasos en paralelo:
@@ -67,56 +65,56 @@ El HTML viene en los argumentos del skill o como paste. Renderizarlo mentalmente
 ## Fase 2 — Evaluar por 7 dimensiones
 
 Para cada dimension, generar hallazgos. Cada hallazgo tiene:
-- **Severity**: `blocker` | `major` | `minor` | `nit`
-- **Where**: ubicacion en la pantalla (header, formulario, CTA primario, etc.)
-- **Issue**: que esta mal en 1-2 lineas
+- **Severidad**: `urgente` | `importante` | `menor` | `nit`
+- **Donde**: ubicacion en la pantalla (header, formulario, boton principal, etc.)
+- **Problema**: que esta mal en 1-2 lineas
 - **Fix**: accion concreta sugerida
 
-### 1. Clarity (Nielsen #2, #6)
+### 1. Claridad (Nielsen #2, #6)
 - El proposito de la pantalla es obvio en 5 segundos?
 - Labels y CTAs usan lenguaje del usuario, no de la empresa?
 - Hay items ambiguos o redundantes?
 
-### 2. Hierarchy
+### 2. Jerarquia
 - El item mas importante se distingue visualmente?
 - La grilla / spacing respeta agrupacion logica?
 - F-pattern / Z-pattern de lectura coherente con prioridad?
 
 ### 3. Affordance (Nielsen #6)
 - Los elementos clickeables se ven clickeables?
-- Hover states / focus states presentes?
+- Estados de hover / focus presentes?
 - Iconos sin label son interpretables solos?
 
 ### 4. Feedback (Nielsen #1)
 - Hay loading states donde se esperan operaciones >300ms?
-- Acciones destructivas tienen confirmacion o undo?
+- Acciones destructivas tienen confirmacion o forma de deshacer?
 - Errores se muestran cerca de la causa, no en banner global ambiguo?
 
-### 5. Error prevention (Nielsen #5)
-- Formularios validan in-line, no solo on-submit?
-- Acciones one-way (delete, send, pay) tienen friccion proporcional?
+### 5. Prevencion de errores (Nielsen #5)
+- Formularios validan in-line, no solo al enviar?
+- Acciones irreversibles (borrar, enviar, pagar) tienen friccion proporcional?
 - Defaults seguros (ej. "guardar como borrador" vs "publicar")?
 
-### 6. Accessibility (Nielsen #4 + WCAG 2.2 AA)
+### 6. Accesibilidad (Nielsen #4 + WCAG 2.2 AA)
 - Contraste ≥4.5:1 (texto normal), ≥3:1 (texto grande)?
 - Focus visible en todos los interactivos?
-- Target size ≥24×24 CSS px (24 minimo, 44-48 recomendado mobile)?
+- Touch target ≥24×24 CSS px (24 minimo, 44-48 recomendado mobile)?
 - Heading hierarchy correcta?
 - Labels en inputs (formales o `aria-label`)?
 - Alt text en imagenes con contenido?
 
-### 7. Performance perception
+### 7. Percepcion de performance
 - Hay skeletons / placeholders donde puede haber loading?
 - Imagenes con `loading="lazy"` (si se ve en el HTML)?
 - Animaciones respetan `prefers-reduced-motion`?
 
-### Bonus — AI heuristics (solo si `HAS_AI=true`)
+### Bonus — heuristicas de AI (solo si `HAS_AI=true`)
 
 Aplicar adicionalmente:
 - **Transparencia**: el usuario sabe que esta interactuando con AI? Sabe que puede y que no puede?
-- **Control sobre delegacion**: puede el usuario corregir, undo, ajustar el output?
-- **Manejo de incertidumbre**: outputs probabilisticos se muestran como tal (confidence, "sugerencia", "tal vez")?
-- **Recovery**: si el AI se equivoca, hay path claro de correccion?
+- **Control sobre delegacion**: puede el usuario corregir, deshacer, ajustar el output?
+- **Manejo de incertidumbre**: outputs probabilisticos se muestran como tal (confianza, "sugerencia", "tal vez")?
+- **Recuperacion**: si el AI se equivoca, hay camino claro de correccion?
 
 ## Fase 3 — Estructurar reporte
 
@@ -130,18 +128,18 @@ Aplicar adicionalmente:
 ## Resumen
 
 - Total hallazgos: <N>
-- Blockers: <N> | Majors: <N> | Minors: <N> | Nits: <N>
+- Urgentes: <N> | Importantes: <N> | Menores: <N> | Nits: <N>
 
 ## Hallazgos por dimension
 
-### 1. Clarity
+### 1. Claridad
 
-- [<sev>] **<where>** — <issue>
+- [<sev>] **<donde>** — <problema>
   - Fix: <accion concreta>
-- [<sev>] **<where>** — <issue>
+- [<sev>] **<donde>** — <problema>
   - Fix: <accion>
 
-### 2. Hierarchy
+### 2. Jerarquia
 
 (igual)
 
@@ -153,29 +151,29 @@ Aplicar adicionalmente:
 
 (igual)
 
-### 5. Error prevention
+### 5. Prevencion de errores
 
 (igual)
 
-### 6. Accessibility (WCAG 2.2 AA)
+### 6. Accesibilidad (WCAG 2.2 AA)
 
 (igual — incluir referencia al criterio especifico ej. "WCAG 1.4.3 Contrast")
 
-### 7. Performance perception
+### 7. Percepcion de performance
 
 (igual)
 
 <Solo si HAS_AI=true:>
-### Bonus — AI heuristics
+### Bonus — heuristicas de AI
 
 (igual)
 
 ## Top 5 fixes prioritarios
 
-1. [<sev>] <where>: <issue resumido>
+1. [<sev>] <donde>: <problema resumido>
 2. ...
 
-## Strengths
+## Fortalezas
 
 - <que esta bien — 2-4 bullets cortos>
 
@@ -183,58 +181,49 @@ Aplicar adicionalmente:
 
 - Recall ~50-80% — herramientas automaticas no cubren todo lo que cubre un experto humano.
 - <si TYPE=html sin screenshot: agregar "Sin imagen — perdimos hallazgos visuales como microcopy en spacing, jerarquia tipografica real, animaciones.">
-- <si TYPE=image: agregar "Sin HTML — perdimos hallazgos de structura semantica, ARIA, keyboard nav.">
+- <si TYPE=image: agregar "Sin HTML — perdimos hallazgos de structura semantica, ARIA, navegacion por teclado.">
 
 ---
 
 _Critica generada con `/ux-critique`._
 ```
 
-## Fase 4 — Confirmar y persistir
+## Fase 4 — Confirmar y guardar
 
-Default persistencia: **si** (las criticas se referencian para fixes).
-
-```
-Confirmás que creo el issue con label `ux:critique`? (si/no, default: si)
-```
-
-```bash
-gh label create "ux:critique" --color "D73A4A" --description "UX critique findings" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t ux-critique-body.XXXXXX).md"
-gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "ux:critique"
-```
-
-Titulo formato: `Critica UX: <CONTEXT>`.
+Preguntar: `Confirmás que guardo el output en .ux/critique/<slug>.md? (si/no, default: si)`. Si acepta, si la carpeta `.ux/critique/` no existe, crearla con `mkdir -p .ux/critique/` antes de escribir. Luego crear el archivo con el tool de edicion seguro disponible.
 
 ## Fase 5 — Reportar
 
-```
+Reportar skill, tipo de target, si se uso vision, total de hallazgos, conteo de urgentes e importantes, file resultante y si se guardo.
+
 ## Result
-- skill: /ux-critique
-- target_type: <image | url | html>
-- vision_used: <true | false>
-- has_ai_features: <true | false>
-- findings_total: <N>
-- findings_blocker: <N>
-- findings_major: <N>
-- persisted: <true | false>
-- url: <URL si persisted>
+
+```yaml
+skill: /ux-critique
+saved: <true | false>
+file: .ux/critique/<slug>.md
+target_type: <image | url | html>
+vision_used: <true | false>
+has_ai_features: <true | false>
+findings_total: <N>
+findings_urgent: <N>
+findings_important: <N>
 ```
 
 ## MUST DO
 
 - Cubrir las 7 dimensiones en orden.
-- Asignar severity a cada hallazgo.
+- Asignar severidad a cada hallazgo.
 - Incluir un "Fix" accionable por hallazgo (no vaguedades).
 - Declarar limitaciones de la critica (recall, falta de imagen/HTML).
-- Aplicar heuristicas AI solo si `HAS_AI=true`.
+- Aplicar heuristicas de AI solo si `HAS_AI=true`.
+- Guardar en `.ux/critique/<slug>.md`.
 
 ## MUST NOT DO
 
-- No prometer recall del 100% — declarar limit ~50-80%.
-- No usar TYPE=url sin intentar al menos WebFetch del HTML (si no hay playwright, igual hay info).
-- No omitir el "Top 5 fixes prioritarios" — el usuario lo necesita para actuar.
-- No mezclar `ux:critique` con `ux:a11y` — accessibility es subset; `/ux-a11y-audit` cubre eso en profundidad.
-- No interpolar contenido en double-quoted shell commands.
+- No prometer recall del 100% — declarar limite ~50-80%.
+- No usar TYPE=url sin intentar al menos WebFetch del HTML.
+- No omitir el "Top 5 fixes prioritarios".
+- No mezclar critica con auditoria de accesibilidad — `/ux-a11y-audit` cubre eso en profundidad.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

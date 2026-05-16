@@ -1,57 +1,59 @@
-Definir **vision a 3 años** + **north star metric** del producto. Incluye anti-vision (que NO queremos ser). `$ARGUMENTS` es el contexto del producto (puede venir vacio).
+Definir **vision a 3 años** + **metrica principal** del producto. Incluye anti-vision (que NO queremos ser). `$ARGUMENTS` es el contexto del producto (puede venir vacio).
 
 Skill **interactivo profundo** — esperar conversacion mas larga que en otros skills.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar como en `/pm-prd`.
+### 1. Validar input
 
-### 2. Validar input
 - Vacio: pedir `Describime el producto (que hace, para quien, en que estado esta hoy). Parrafo libre.` y esperar.
 
-### 3. Preguntar stage
+### 2. Preguntar etapa
+
 ```
-Stage del producto (afecta el alcance de la vision):
-1) Early-stage / founder-mode (default) — vision puede ser ambiciosa y volatil
-2) Growth-stage — vision se construye desde traction real
-3) Mature — vision tiene que respetar legacy y portfolio existente
+Etapa del producto (afecta el alcance de la vision):
+1) Etapa temprana / recien arrancando (default) — vision puede ser ambiciosa y volatil
+2) En crecimiento — vision se construye desde traccion real
+3) Maduro / empresa grande — vision tiene que respetar legacy y portfolio existente
 4) Otra
 ```
-Guardar `STAGE`.
+Guardar `ETAPA`.
 
-## Fase 1 — Clarify profundo
+## Fase 1 — Clarificacion profunda
 
-Cargar `/clarify` (`../clarify/SKILL.md`) en `MODO=prompt`. **Restricciones especificas**:
+Aplicar clarificacion inline, forzando supuestos de tipo "por que" y "para quien" (no "que").
 
-- Forzar asunciones de tipo "por que" y "para quien", no "que".
-- Asunciones a refinar (priorizar las que esten ausentes en el prompt):
-  - **Problema fundamental** que el producto resuelve (no la feature — el problema en el mundo).
-  - **Usuario futuro** (en 3 años — quien lo usa, donde, en que contexto).
-  - **Estado actual del usuario** (que hace hoy sin el producto).
-  - **Estado futuro del usuario** (que cambia en su vida cuando el producto cumple su vision).
-  - **Por que nosotros** (que ventaja diferencial sostenemos vs alternativas).
-  - **Por que ahora** (que cambio en el mundo hace que esto sea posible/urgente).
-  - **Horizonte temporal** (3 años por default, pero el usuario puede declarar 1 / 5 / 10).
-  - **Anti-vision** (que tipo de producto NO queremos ser, aunque sea facil caer ahi).
+1. Listar 6-10 supuestos (es el ejercicio mas profundo del profile — no limitar artificialmente), taggeados `[directo]`, `[medio]`, `[especulativo]`. Filtrar a supuestos de producto/negocio, NO tecnicos. Priorizar los ausentes del prompt:
+   - **Problema fundamental** que el producto resuelve (no la feature — el problema en el mundo).
+   - **Usuario futuro** (en 3 años — quien lo usa, donde, en que contexto).
+   - **Estado actual del usuario** (que hace hoy sin el producto).
+   - **Estado futuro del usuario** (que cambia en su vida cuando el producto cumple su vision).
+   - **Por que nosotros** (que ventaja diferencial sostenemos vs alternativas).
+   - **Por que ahora** (que cambio en el mundo hace que esto sea posible/urgente).
+   - **Horizonte temporal** (3 años por default, pero el usuario puede declarar 1 / 5 / 10).
+   - **Anti-vision** (que tipo de producto NO queremos ser, aunque sea facil caer ahi).
+2. Mostrar al usuario:
+   ```
+   Detecté estos supuestos:
+   1. [especulativo] <supuesto>
+   2. [medio] <supuesto>
+   ...
+   Cuáles te gustaría clarificar? (numeros separados por coma, o 'todos', o 'ninguno')
+   ```
+3. Para cada supuesto seleccionado, preguntar multiple choice con 4 opciones + `otra`, mostrando progreso `Pregunta X/Y`.
+4. Actualizar el material base con las respuestas.
 
-- No limitar el numero de asunciones — es el ejercicio mas profundo del profile.
-- Saltar la persistencia de `/clarify`.
+## Fase 2 — Sugerir metrica principal
 
-## Fase 2 — Sugerir north star metric
-
-Despues de refinar las asunciones, generar 3 candidatos a north star metric basados en el estado futuro del usuario. Para cada candidato:
+Despues de refinar los supuestos, generar 3 candidatos a metrica principal basados en el estado futuro del usuario. Para cada candidato:
 - Nombre.
 - Definicion operativa (como se mide).
 - Por que conecta con la vision (1 linea).
-- Por que NO seria un buen north star (que sesgo introduciria).
+- Por que NO seria una buena metrica principal (que sesgo introduciria).
 
 Mostrar al usuario:
 ```
-## Candidatos a north star metric
+## Candidatos a metrica principal
 
 1. <candidato 1>
 2. <candidato 2>
@@ -60,29 +62,29 @@ Mostrar al usuario:
 Cual elegis? (1/2/3/otra)
 ```
 
-Guardar `NORTH_STAR`.
+Guardar `METRICA_PRINCIPAL`.
 
 ## Fase 3 — Sugerir anti-vision
 
 Generar 2-3 candidatos de anti-vision (productos/posicionamientos que serian faciles de caer pero no queremos):
 - "Otra herramienta de X mas, sin diferencial real".
 - "Producto que se monetiza con ads y degrada la experiencia".
-- "Tool tecnico que solo entiende el equipo de ingenieria, no el usuario final".
+- "Herramienta tecnica que solo entiende el equipo de ingenieria, no el usuario final".
 - (etc, contextual)
 
 Preguntar al usuario cual le calza o si quiere agregar la suya.
 
-## Fase 4 — Review opcional con `pm-reviewer`
+## Fase 4 — Revision opcional con `pm-reviewer`
 
 ```
-Querés que `pm-reviewer` audite la vision antes de persistir? Particularmente util — visiones genericas son comunes. (si/no, default: si)
+Querés que `pm-reviewer` audite la vision antes de guardar? Particularmente util — visiones genericas son comunes. (si/no, default: si)
 ```
 
-Si si: invocar con `artefact_type: vision`, `artefact_text: <body>`, `context: stage=<STAGE>`. El reviewer va a buscar: visiones indistinguibles de la competencia, north star desconectada, falta de anti-vision, horizonte poco ambicioso o demasiado abstracto.
+Si si: invocar con `artefact_type: vision`, `artefact_text: <contenido>`, `context: etapa=<ETAPA>`. El reviewer va a buscar: visiones indistinguibles de la competencia, metrica principal desconectada, falta de anti-vision, horizonte poco ambicioso o demasiado abstracto.
 
-Iterar issues blocker/major max 2 veces.
+Iterar items urgentes/importantes max 2 veces.
 
-## Fase 5 — Estructura del body
+## Fase 5 — Estructura del contenido
 
 ```markdown
 ## Vision a <N> años
@@ -113,9 +115,9 @@ Iterar issues blocker/major max 2 veces.
 
 <que cambio en el mundo (tech, mercado, comportamiento) hace esto posible o urgente>
 
-## North star metric
+## Metrica principal
 
-- **Nombre**: <NORTH_STAR>
+- **Nombre**: <METRICA_PRINCIPAL>
 - **Definicion**: <como se calcula>
 - **Por que esta metrica**: <1-2 lineas conectando con la vision>
 
@@ -128,56 +130,54 @@ Lo que NO queremos ser, aunque sea facil caer ahi:
 ## Horizonte y revision
 
 - Horizonte: <N> años (fecha de revision: <YYYY>)
-- Triggers para revisar antes: <cambios estructurales que obligarian a repensar>
+- Disparadores para revisar antes: <cambios estructurales que obligarian a repensar>
 
 ---
 
-_Vision definida con `/pm-vision`. Stage: <STAGE>._
+_Vision definida con `/pm-vision`. Etapa: <ETAPA>._
 ```
 
-## Fase 6 — Confirmar y persistir
+## Fase 6 — Confirmar y guardar
 
-Default persistencia: **si**.
+Default guardado: **si**.
+
+Slug: kebab-case del titulo, max 40 chars. Path: `.pm/pm-vision/<slug>.md`.
 
 ```
-Confirmás que creo el issue con label `pm:vision`? (si/no, default: si)
+Confirmás que guardo la vision en `.pm/pm-vision/<slug>.md`? (si/no, default: si)
 ```
 
-```bash
-gh label create "pm:vision" --color "0E8A16" --description "Product vision" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t pm-vision-body.XXXXXX).md"
-gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "pm:vision"
-```
-
-Titulo: imperativo o nominal, max 70 chars. Ej. "Vision: <producto> 2028" o "<vision en 1 frase corta>".
+Si si: si la carpeta `.pm/pm-vision/` no existe, crearla con `mkdir -p .pm/pm-vision/` antes de escribir. Luego usar el `Write` tool (NUNCA via echo/heredoc) para crear el archivo. Titulo: imperativo o nominal, max 70 chars. Ej. "Vision: <producto> 2028" o "<vision en 1 frase corta>".
 
 ## Fase 7 — Reportar
 
 ```
 ## Result
 - skill: /pm-vision
-- persisted: true
-- url: <URL>
+- saved: true
+- file: .pm/pm-vision/<slug>.md
 - title: <titulo>
-- stage: <STAGE>
-- north_star: <NORTH_STAR>
+- etapa: <ETAPA>
+- metrica_principal: <METRICA_PRINCIPAL>
 - horizonte: <N años>
 - reviewer_used: <true | false>
-- reviewer_verdict: <solid | needs-work | weak | n/a>
+- reviewer_verdict: <solido | necesita-trabajo | debil | n/a>
 ```
+
+Y debajo: `Vision guardada: .pm/pm-vision/<slug>.md`.
 
 ## MUST DO
 
 - Refinar profundo: problema fundamental, usuario futuro, estado actual, estado futuro, por que nosotros, por que ahora.
-- Sugerir 3 candidatos de north star antes de elegir.
+- Sugerir 3 candidatos de metrica principal antes de elegir.
 - Forzar anti-vision (lo que NO queremos ser).
-- Ofrecer review con `pm-reviewer` (default si).
+- Ofrecer revision con `pm-reviewer` (default si).
+- Guardar en `.pm/pm-vision/<slug>.md` con `Write` tool.
 
 ## MUST NOT DO
 
 - No aceptar visiones genericas tipo "el mejor X para Y" sin diferencial real.
 - No omitir anti-vision.
-- No mezclar `pm:vision` con `pm:prd` — vision es estrategica, PRD es operativa.
-- No interpolar contenido en double-quoted shell commands.
+- No mezclar vision con PRD — vision es estrategica, PRD es operativa.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

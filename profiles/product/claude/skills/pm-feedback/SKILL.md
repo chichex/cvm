@@ -1,16 +1,10 @@
-Triage de **feedback crudo** (NPS, tickets, sales calls, social, encuestas). Clasifica items en buckets, detecta patrones, rankea por frecuencia + severidad, sugiere proxima accion (probe / build / ignore). `$ARGUMENTS` es el dump de feedback (multilinea, puede ser largo) o vacio.
+Triage de **feedback crudo** (NPS (Net Promoter Score), tickets, sales calls, social, encuestas). Clasifica items en grupos, detecta patrones, rankea por frecuencia + urgencia, sugiere proxima accion (investigar / construir / ignorar). `$ARGUMENTS` es el dump de feedback (multilinea, puede ser largo) o vacio.
 
-Skill **interactivo**. Difiere de los demas — no usa `/clarify`; procesa contenido en batch.
+Skill **interactivo**. Difiere de los demas — no aplica clarificacion de supuestos: procesa contenido en batch.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar como en `/pm-prd`.
-
-### 2. Obtener el dump
+### 1. Obtener el dump
 
 Si `$ARGUMENTS` vacio:
 ```
@@ -20,23 +14,25 @@ Esperar el contenido. Concatenar todas las lineas hasta `listo`.
 
 Si `$ARGUMENTS` no vacio, tomarlo como el dump directo.
 
-### 3. Preguntar fuente
+### 2. Preguntar fuente
+
 ```
 De donde viene este feedback?
-1) NPS / encuestas (rating + comment)
+1) NPS / encuestas (rating + comentario)
 2) Tickets de soporte
-3) Sales calls / customer interviews
+3) Sales calls / entrevistas con clientes
 4) Social / reviews publicas (Reddit, G2, Twitter)
 5) Mezcla / otra fuente
 ```
 Guardar `FUENTE`. Afecta interpretacion:
 - NPS: rating numerico ayuda a filtrar señal.
-- Tickets: bias hacia bugs y dolores agudos.
-- Sales calls: bias hacia "lo que no compraron por X".
-- Social: bias hacia extremos (muy contentos o muy enojados).
+- Tickets: sesgo hacia bugs y dolores agudos.
+- Sales calls: sesgo hacia "lo que no compraron por X".
+- Social: sesgo hacia extremos (muy contentos o muy enojados).
 - Mezcla: tratar item por item segun su contexto.
 
-### 4. Preguntar ventana temporal
+### 3. Preguntar ventana temporal
+
 ```
 Ventana temporal del feedback? (formato libre — ej. "ultimos 30 dias", "Q4 2024", "todo lo recibido")
 ```
@@ -46,7 +42,7 @@ Guardar `VENTANA`.
 
 Detectar items individuales en el dump:
 - Si viene con separadores claros (lineas en blanco, "---", numeracion), usarlos.
-- Si es texto corrido, splitar por parrafos.
+- Si es texto corrido, splitear por parrafos.
 - Si es JSON/CSV pegado, parsearlo.
 
 Anunciar: `Parseé <N> items del dump.`
@@ -54,42 +50,42 @@ Anunciar: `Parseé <N> items del dump.`
 Si N < 5: avisar que el sample es muy chico para detectar patrones, pero seguir.
 Si N > 200: avisar que vamos a procesar todos pero el output va a priorizar patrones, no items individuales.
 
-## Fase 2 — Clasificar cada item en buckets
+## Fase 2 — Clasificar cada item en grupos
 
-Buckets:
+Grupos:
 - **dolor**: el usuario reporta un problema que tuvo (algo le costo, lo frustró, lo trabó).
-- **request**: el usuario pide una feature, capability, o mejora especifica.
+- **pedido**: el usuario pide una feature, capacidad, o mejora especifica.
 - **bug**: comportamiento inesperado o roto.
 - **elogio**: feedback positivo (que les gusta, que valoran).
 - **ruido**: feedback no accionable, generico, fuera de contexto, sin info utilizable.
-- **fuera-de-scope**: feedback sobre algo que no es el producto (competidor, mercado, soporte interno).
+- **fuera-de-alcance**: feedback sobre algo que no es el producto (competidor, mercado, soporte interno).
 
-Para cada item: bucket + 1-line summary + (si aplica) severidad estimada (baja/media/alta).
+Para cada item: grupo + resumen de 1 linea + (si aplica) urgencia estimada (menor/importante/urgente).
 
 ## Fase 3 — Detectar patrones
 
 Patron = 3 o mas items que tocan el mismo tema. Agrupar:
 - Tema (frase corta).
-- Bucket dominante (dolor / request / etc).
+- Grupo dominante (dolor / pedido / etc).
 - Count.
-- Severidad agregada (max de los items).
+- Urgencia agregada (max de los items).
 - 1-2 quotes representativos (cortos, con elipsis si recortados).
 
-Ordenar patrones por: severidad alta primero, luego count desc.
+Ordenar patrones por: urgencia alta primero, luego count desc.
 
 ## Fase 4 — Items destacados unicos
 
-Items que son **unicos** pero tienen severidad alta — no son patron (count=1) pero merecen flag individual (ej. churn de cuenta enterprise grande, security report, regulatory). Listar separado.
+Items que son **unicos** pero tienen urgencia alta — no son patron (count=1) pero merecen flag individual (ej. baja de cuenta empresa grande, reporte de seguridad, tema regulatorio). Listar separado.
 
 ## Fase 5 — Sugerir proxima accion por patron
 
 Para cada patron en top 10, asignar accion sugerida:
-- **probe**: vale la pena entender mejor antes de actuar (entrevistas, instrumentacion). Default si: count alto pero info ambigua.
-- **build**: claro, dimensionado, vale la pena meter en roadmap. Default si: count alto + severidad alta + solucion obvia.
-- **monitor**: dejar en watchlist. Default si: count bajo pero recurrente.
-- **ignore**: no accionable o fuera de prioridades. Default si: count alto pero conflictivo con vision/segmento.
+- **investigar**: vale la pena entender mejor antes de actuar (entrevistas, instrumentacion). Default si: count alto pero info ambigua.
+- **construir**: claro, dimensionado, vale la pena meter en roadmap. Default si: count alto + urgencia alta + solucion obvia.
+- **monitorear**: dejar en seguimiento. Default si: count bajo pero recurrente.
+- **ignorar**: no accionable o fuera de prioridades. Default si: count alto pero conflictivo con vision/segmento.
 
-## Fase 6 — Estructura del body
+## Fase 6 — Estructura del contenido
 
 ```markdown
 ## Resumen
@@ -100,25 +96,25 @@ Para cada patron en top 10, asignar accion sugerida:
 - **Patrones detectados**: <P>
 - **Items destacados unicos**: <U>
 
-## Distribucion por bucket
+## Distribucion por grupo
 
-| Bucket | Count | % |
+| Grupo | Count | % |
 |--------|-------|---|
 | dolor | <n> | <%> |
-| request | <n> | <%> |
+| pedido | <n> | <%> |
 | bug | <n> | <%> |
 | elogio | <n> | <%> |
 | ruido | <n> | <%> |
-| fuera-de-scope | <n> | <%> |
+| fuera-de-alcance | <n> | <%> |
 
 ## Patrones (top 10)
 
-### 1. <tema> — count <N>, severidad <baja/media/alta>, bucket <bucket>
+### 1. <tema> — count <N>, urgencia <menor/importante/urgente>, grupo <grupo>
 
 > "<quote 1 representativo>"
 > "<quote 2 representativo>"
 
-**Accion sugerida**: <probe / build / monitor / ignore> — <razon en 1 linea>
+**Accion sugerida**: <investigar / construir / monitorear / ignorar> — <razon en 1 linea>
 
 ### 2. <tema> — ...
 
@@ -126,8 +122,8 @@ Para cada patron en top 10, asignar accion sugerida:
 
 ## Items destacados unicos
 
-- [<severidad>] <bucket> — <1 linea> — <accion sugerida>
-- [<severidad>] <bucket> — ...
+- [<urgencia>] <grupo> — <1 linea> — <accion sugerida>
+- [<urgencia>] <grupo> — ...
 
 ## Ruido (no accionable)
 
@@ -142,48 +138,46 @@ Count: <N>. <1-2 ejemplos breves si suma>
 _Triage generado por `/pm-feedback`._
 ```
 
-## Fase 7 — Confirmar y persistir
+## Fase 7 — Confirmar y guardar
 
-Default persistencia: **si** (los triages se vuelven a consultar).
+Default guardado: **si** (los triages se vuelven a consultar).
+
+Slug: kebab-case del titulo, max 40 chars. Path: `.pm/pm-feedback/<slug>.md`.
 
 ```
-Confirmás que creo el issue con label `pm:feedback`? (si/no, default: si)
+Confirmás que guardo el triage en `.pm/pm-feedback/<slug>.md`? (si/no, default: si)
 ```
 
-```bash
-gh label create "pm:feedback" --color "C5DEF5" --description "Feedback triage" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t pm-feedback-body.XXXXXX).md"
-gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "pm:feedback"
-```
-
-Titulo formato: "Feedback triage <VENTANA>" o "Feedback triage <FUENTE> <fecha>".
+Si si: si la carpeta `.pm/pm-feedback/` no existe, crearla con `mkdir -p .pm/pm-feedback/` antes de escribir. Luego usar el `Write` tool (NUNCA via echo/heredoc) para crear el archivo. Titulo formato: "Feedback triage <VENTANA>" o "Feedback triage <FUENTE> <fecha>".
 
 ## Fase 8 — Reportar
 
 ```
 ## Result
 - skill: /pm-feedback
-- persisted: true
-- url: <URL>
+- saved: true
+- file: .pm/pm-feedback/<slug>.md
 - title: <titulo>
 - items_processed: <N>
 - patterns_detected: <P>
-- top_action: <build/probe/monitor/ignore — del patron #1>
+- top_action: <construir/investigar/monitorear/ignorar — del patron #1>
 ```
+
+Y debajo: `Triage guardado: .pm/pm-feedback/<slug>.md`.
 
 ## MUST DO
 
 - Parsear items del dump antes de clasificar.
-- Clasificar cada item en exactamente 1 bucket.
+- Clasificar cada item en exactamente 1 grupo.
 - Patrones requieren count >= 3.
-- Sugerir accion (probe/build/monitor/ignore) por patron.
-- Flagear items unicos de alta severidad aparte.
+- Sugerir accion (investigar/construir/monitorear/ignorar) por patron.
+- Marcar items unicos de alta urgencia aparte.
+- Guardar en `.pm/pm-feedback/<slug>.md` con `Write` tool.
 
 ## MUST NOT DO
 
 - No inventar quotes — usar solo los que estan en el dump.
-- No procesar items con info sensible o PII sin avisar al usuario (si detectas emails, nombres, IDs personales, preguntar si los anonimizamos antes de persistir).
+- No procesar items con info sensible o datos personales sin avisar al usuario (si detectas emails, nombres, IDs personales, preguntar si los anonimizamos antes de guardar).
 - No promover patrones con count < 3 al ranking principal.
-- No interpolar contenido en double-quoted shell commands.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

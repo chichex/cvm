@@ -1,97 +1,102 @@
-Diseñar un **experimento** (A/B, holdout, before/after, multivariante) a partir de una hipotesis. Incluye baseline, metricas, sample size estimado, stop conditions y guardrails. `$ARGUMENTS` es la hipotesis o idea a testear (puede venir vacio).
+Diseñar un **experimento** (A/B, grupo de control, antes/despues, multivariable) a partir de una hipotesis. Incluye baseline, metricas, tamaño de muestra estimado, cuando cortar y metricas que no pueden empeorar. `$ARGUMENTS` es la hipotesis o idea a testear (puede venir vacio).
 
 Skill **interactivo**.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar como en `/pm-prd`.
+### 1. Validar input
 
-### 2. Validar input
 - Vacio: pedir `Cual es la hipotesis a testear? Formato sugerido: "Creemos que [cambio] va a [efecto] porque [razon], lo vamos a medir con [metrica]".` y esperar.
 
-### 3. Preguntar tipo de experimento
+### 2. Preguntar tipo de experimento
+
 ```
 Tipo de experimento:
-1) A/B test (split traffic, random assignment)
-2) Holdout (gran mayoria recibe el cambio, % chico queda como control)
-3) Before/after (timeline, sin control concurrente)
-4) Multivariante / multi-arm
+1) A/B test (split de trafico, asignacion aleatoria)
+2) Grupo de control (gran mayoria recibe el cambio, % chico queda como control)
+3) Antes/despues (timeline, sin control concurrente)
+4) Multivariable / multi-arm
 5) Otra
 ```
 Guardar `TIPO`. Cada uno cambia los requisitos:
-- A/B: requiere sample size por brazo, random assignment, duracion minima.
-- Holdout: requiere tamaño del holdout, criterio de salida.
-- Before/after: requiere baseline historico, control de factores estacionales.
-- Multivariante: requiere combinaciones definidas y plan de analisis.
+- A/B: requiere tamaño de muestra por brazo, asignacion aleatoria, duracion minima.
+- Grupo de control: requiere tamaño del grupo, criterio de salida.
+- Antes/despues: requiere baseline historico, control de factores estacionales.
+- Multivariable: requiere combinaciones definidas y plan de analisis.
 
-## Fase 1 — Clarify la hipotesis
+## Fase 1 — Clarificar la hipotesis
 
-Cargar `/clarify` (`../clarify/SKILL.md`) en `MODO=prompt`. **Restricciones**:
+Aplicar clarificacion inline, forzando que la hipotesis sea **comprobable** (tiene que haber un resultado posible que la refute).
 
-- Forzar que la hipotesis sea **falsable**: tiene que haber un resultado posible que la refute.
-- Asunciones a refinar:
-  - Causa propuesta (que cambia) — concreta, no "mejorar la UX".
-  - Efecto esperado (que metrica se mueve, en que direccion, magnitud).
-  - Baseline actual de esa metrica (numero, ventana temporal, segmento).
-  - Audiencia del experimento (quien entra al test, quien queda afuera).
-  - Razon de la hipotesis (por que esperamos ese efecto).
+1. Listar 4-6 supuestos sobre la hipotesis, taggeados `[directo]`, `[medio]`, `[especulativo]`. Filtrar a supuestos de producto/negocio, NO tecnicos. Cubrir:
+   - Causa propuesta (que cambia) — concreta, no "mejorar la UX".
+   - Efecto esperado (que metrica se mueve, en que direccion, magnitud).
+   - Baseline actual de esa metrica (numero, ventana temporal, segmento).
+   - A quien apunta el experimento (quien entra al test, quien queda afuera).
+   - Razon de la hipotesis (por que esperamos ese efecto).
+2. Mostrar al usuario:
+   ```
+   Detecté estos supuestos:
+   1. [especulativo] <supuesto>
+   2. [medio] <supuesto>
+   ...
+   Cuáles te gustaría clarificar? (numeros separados por coma, o 'todos', o 'ninguno')
+   ```
+3. Para cada supuesto seleccionado, preguntar multiple choice con 4 opciones + `otra`, mostrando progreso `Pregunta X/Y`.
+4. Actualizar el material base con las respuestas.
 
-Si la baseline es "no la tenemos medida", marcarlo como blocker — el experimento no se puede correr sin baseline. Preguntar:
+Si la baseline es "no la tenemos medida", marcarlo como urgente — el experimento no se puede correr sin baseline. Preguntar:
 ```
 La metrica no tiene baseline medida. Querés:
 1) Pausar y agregar instrumentacion primero (recomendado)
-2) Estimar baseline desde proxy (riesgo: false positives)
+2) Estimar baseline desde proxy (riesgo: falsos positivos)
 3) Definir baseline al primer dia del experimento (riesgo: contaminacion)
 ```
 
-## Fase 2 — Disenio del experimento
+## Fase 2 — Diseño del experimento
 
-Generar las siguientes secciones, preguntando al usuario los gaps:
+Generar las siguientes secciones, preguntando al usuario los faltantes:
 
 ### Metrica primaria
 - Nombre + definicion operativa (como se calcula).
-- Baseline + ventana temporal (ej. "12% conversion last 30 days").
-- MDE (minimum detectable effect): que cambio chico vale la pena detectar. Default sugerido: 5% relativo.
+- Baseline + ventana temporal (ej. "12% conversion ultimos 30 dias").
+- MDE (minimum detectable effect, mínimo efecto detectable): que cambio chico vale la pena detectar. Default sugerido: 5% relativo.
 - Target esperado: que efecto esperamos ver.
 
 ### Metricas secundarias
 - 2-4 metricas que esperamos mover junto a la primaria.
 
-### Guardrails (lo que NO puede empeorar)
+### Metricas que NO pueden empeorar
 - Lista de metricas que tienen que mantenerse >= baseline. Si caen, abortamos.
 
 ### Diseño
 Segun `TIPO`:
-- A/B: split %, segmentacion, criterio de eleccion del control.
-- Holdout: tamaño del holdout (%), criterio de salida.
-- Before/after: ventana before, ventana after, controles estacionales.
+- A/B: % de split, segmentacion, criterio de eleccion del control.
+- Grupo de control: tamaño del grupo (%), criterio de salida.
+- Antes/despues: ventana antes, ventana despues, controles estacionales.
 
-### Sample size
+### Tamaño de muestra
 Estimacion rapida usando formulas estandar:
 - Para conversion (proporcion): `n ≈ 16 * p * (1-p) / MDE^2` por brazo (alpha=0.05, power=0.8).
 - Para metrica continua: `n ≈ 16 * var / MDE^2` por brazo.
 - Marcar como **estimacion**, recomendar validar con calculadora especializada antes de lanzar.
 
 ### Duracion
-- Si `sample_size / traffic_per_day` < 7 dias, recomendar minimo 1 semana (para capturar ciclos semanales).
-- Si > 4 semanas, alertar (probabilidad alta de novelty effects, cambios de contexto).
+- Si `muestra / trafico_por_dia` < 7 dias, recomendar minimo 1 semana (para capturar ciclos semanales).
+- Si > 4 semanas, alertar (probabilidad alta de efecto novedad, cambios de contexto).
 
-### Stop conditions
-- **Stop por exito temprano**: criterio para parar antes (peligroso — peeking aumenta false positives). Default: no parar antes de sample size completo.
-- **Stop por daño**: si alguna guardrail metric cae >X% con significancia, parar.
-- **Stop por timeout**: si pasa Y dias sin alcanzar sample size, decidir extender o cortar.
+### Cuando cortar
+- **Cortar por exito temprano**: criterio para parar antes (peligroso — revisar antes de tiempo aumenta falsos positivos). Default: no parar antes de completar la muestra.
+- **Cortar por daño**: si alguna metrica limite cae >X% con significancia, parar.
+- **Cortar por timeout**: si pasa Y dias sin alcanzar la muestra, decidir extender o cortar.
 
 ### Riesgos
-- Sesgo de seleccion (random assignment funciona?).
+- Sesgo de seleccion (la asignacion aleatoria funciona?).
 - Contaminacion entre grupos.
-- Novelty effect (efecto que se diluye).
+- Efecto novedad (efecto que se diluye).
 - Volumen insuficiente.
 
-## Fase 3 — Estructura del body
+## Fase 3 — Estructura del contenido
 
 ```markdown
 ## Hipotesis
@@ -115,7 +120,7 @@ Creemos que **<causa>** va a **<efecto>** porque **<razon>**, lo vamos a medir c
 - <metrica 1>
 - <metrica 2>
 
-## Guardrails
+## Metricas que no pueden empeorar
 
 - <metrica 1>: no puede caer por debajo de <umbral>
 - <metrica 2>: ...
@@ -124,19 +129,19 @@ Creemos que **<causa>** va a **<efecto>** porque **<razon>**, lo vamos a medir c
 
 <segun TIPO>
 
-## Sample size estimado
+## Tamaño de muestra estimado
 
 - **Por brazo**: ~<N> usuarios/eventos
-- **Asunciones**: alpha=0.05, power=0.8, baseline=<X>, MDE=<Y>
+- **Supuestos**: alpha=0.05, power=0.8, baseline=<X>, MDE=<Y>
 - _Validar con calculadora especializada antes de lanzar._
 
 ## Duracion estimada
 
-~<N> dias (basado en <traffic/day>)
+~<N> dias (basado en <trafico/dia>)
 
-## Stop conditions
+## Cuando cortar
 
-- **Exito temprano**: <criterio o "no parar antes de sample size completo">
+- **Exito temprano**: <criterio o "no parar antes de completar la muestra">
 - **Daño**: <criterio>
 - **Timeout**: <criterio>
 
@@ -147,39 +152,38 @@ Creemos que **<causa>** va a **<efecto>** porque **<razon>**, lo vamos a medir c
 
 ## Analisis planeado
 
-<que vamos a calcular post-experimento, que stat test, como reportamos>
+<que vamos a calcular post-experimento, que test estadistico, como reportamos>
 
 ---
 
 _Experimento diseñado con `/pm-experiment`._
 ```
 
-## Fase 4 — Review opcional
+## Fase 4 — Revision opcional
 
 ```
 Querés que `pm-reviewer` audite el diseño? (si/no, default: si)
 ```
 
-Si si: invocar con `artefact_type: experiment`, `artefact_text: <body>`. El reviewer va a buscar hipotesis no falsables, falta de baseline, ausencia de guardrails.
+Si si: invocar con `artefact_type: experiment`, `artefact_text: <contenido>`. El reviewer va a buscar hipotesis no comprobables, falta de baseline, ausencia de metricas limite.
 
-## Fase 5 — Persistir
+## Fase 5 — Confirmar y guardar
 
-```bash
-gh label create "pm:experiment" --color "5319E7" --description "Experiment design" 2>/dev/null || true
+Slug: kebab-case del titulo, max 40 chars. Path: `.pm/pm-experiment/<slug>.md`.
 
-BODY_FILE="$(mktemp -t pm-experiment-body.XXXXXX).md"
-gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "pm:experiment"
+```
+Confirmás que guardo el experimento en `.pm/pm-experiment/<slug>.md`? (si/no, default: si)
 ```
 
-Titulo formato: "Exp: <causa> → <metrica>" (ej. "Exp: nuevo onboarding → activacion D7").
+Si si: si la carpeta `.pm/pm-experiment/` no existe, crearla con `mkdir -p .pm/pm-experiment/` antes de escribir. Luego usar el `Write` tool (NUNCA via echo/heredoc) para crear el archivo. Titulo formato: "Exp: <causa> → <metrica>" (ej. "Exp: nuevo onboarding → activacion D7").
 
 ## Fase 6 — Reportar
 
 ```
 ## Result
 - skill: /pm-experiment
-- persisted: true
-- url: <URL>
+- saved: true
+- file: .pm/pm-experiment/<slug>.md
 - title: <titulo>
 - tipo: <TIPO>
 - sample_size: <N por brazo>
@@ -187,18 +191,21 @@ Titulo formato: "Exp: <causa> → <metrica>" (ej. "Exp: nuevo onboarding → act
 - reviewer_used: <true | false>
 ```
 
+Y debajo: `Experimento guardado: .pm/pm-experiment/<slug>.md`.
+
 ## MUST DO
 
-- Forzar hipotesis falsable.
-- Pedir baseline o flagear como blocker si no existe.
-- Calcular sample size estimado.
-- Incluir stop conditions explicitas.
-- Listar guardrails (metricas que no pueden empeorar).
+- Forzar hipotesis comprobable.
+- Pedir baseline o marcar como urgente si no existe.
+- Calcular tamaño de muestra estimado.
+- Incluir condiciones de corte explicitas.
+- Listar metricas que no pueden empeorar.
+- Guardar en `.pm/pm-experiment/<slug>.md` con `Write` tool.
 
 ## MUST NOT DO
 
-- No diseñar experimentos sin baseline (excepto explicitamente con before/after y baseline historico).
-- No omitir guardrails (siempre hay metricas que pueden empeorar).
-- No prometer significancia sin sample size estimado.
-- No interpolar contenido en double-quoted shell commands.
+- No diseñar experimentos sin baseline (excepto explicitamente con antes/despues y baseline historico).
+- No omitir metricas limite (siempre hay metricas que pueden empeorar).
+- No prometer significancia sin tamaño de muestra estimado.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

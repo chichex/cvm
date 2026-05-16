@@ -1,25 +1,22 @@
-**Decision log** estilo ADR (Architecture Decision Record) pero para producto. Registra decisiones tomadas con su contexto, alternativas, criterio, trade-offs y reversibilidad. `$ARGUMENTS` es la decision (puede venir vacio).
+**Decision log** estilo ADR (Architecture Decision Record) pero para producto. Registra decisiones tomadas con su contexto, alternativas, criterio, contrapartidas y reversibilidad. `$ARGUMENTS` es la decision (puede venir vacio).
+
+ADR (Architecture Decision Record) original es un patron de ingenieria; aca lo adaptamos a decisiones de producto.
 
 Skill **interactivo corto** — pensado para registrar una decision ya tomada, no para evaluarla (para eso usar `/pm-rfc`).
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar como en `/pm-prd`.
+### 1. Validar input
 
-### 2. Validar input
 - Vacio: pedir `Que decision se tomo? (1-2 lineas)` y esperar.
 
 ## Fase 1 — Recolectar campos via preguntas
 
-Sin `/clarify` (esto no es ambiguo — son datos). Preguntar uno por uno, mostrando progreso:
+No hace falta clarificacion de supuestos: esto no es ambiguo, son datos directos. Preguntar uno por uno, mostrando progreso:
 
 ### 1/8 — Decision
 Si vino en `$ARGUMENTS`, mostrar y preguntar si esta bien sintetizada o se ajusta. Sino, pedirla.
-Formato sugerido: imperativo o nominal. Ej. "Cobrar por seat en vez de por uso", "Pausar el lanzamiento de feature X hasta Q3".
+Formato sugerido: imperativo o nominal. Ej. "Cobrar por usuario en vez de por uso", "Pausar el lanzamiento de feature X hasta Q3".
 
 ### 2/8 — Fecha
 ```
@@ -54,9 +51,9 @@ No hay alternativas descartadas. Querés:
 Que criterio se uso para elegir entre las alternativas? (impacto / costo / reversibilidad / riesgo / timing / otro)
 ```
 
-### 7/8 — Trade-offs aceptados
+### 7/8 — Contrapartidas aceptadas
 ```
-Que trade-offs aceptamos al elegir esto? (que perdemos o ponemos en riesgo)
+Que contrapartidas aceptamos al elegir esto? (que perdemos o ponemos en riesgo)
 ```
 
 ### 8/8 — Reversibilidad y revision
@@ -64,7 +61,7 @@ Que trade-offs aceptamos al elegir esto? (que perdemos o ponemos en riesgo)
 Reversibilidad:
 1) Alta — podemos volver atras en dias/semanas sin costo significativo
 2) Media — costoso pero posible (1-3 meses, refactor moderado)
-3) Baja — one-way door, costoso revertir
+3) Baja — puerta de una via, costoso revertir
 4) Otra
 ```
 
@@ -76,7 +73,7 @@ Cuando revisitar esta decision? (opcional — default: no programada)
 3) No programar revision
 ```
 
-## Fase 2 — Estructura del body
+## Fase 2 — Estructura del contenido
 
 ```markdown
 ## Decision
@@ -107,10 +104,10 @@ Cuando revisitar esta decision? (opcional — default: no programada)
 
 <que criterio se uso para elegir>
 
-## Trade-offs aceptados
+## Contrapartidas aceptadas
 
-- <trade-off 1>
-- <trade-off 2>
+- <contrapartida 1>
+- <contrapartida 2>
 
 ## Que evidencia cambiaria esta decision
 
@@ -122,47 +119,41 @@ Cuando revisitar esta decision? (opcional — default: no programada)
 _Decision log registrado con `/pm-decision`._
 ```
 
-## Fase 3 — Confirmar y persistir
+## Fase 3 — Confirmar y guardar
 
-Default persistencia: **no** (decisiones operativas chicas no necesariamente quieren un issue — pero la mayor parte del valor del log es la trazabilidad, asi que el usuario decide caso a caso).
+Default guardado: **si** (los decision logs ganan valor con la trazabilidad).
+
+Slug: kebab-case del titulo, max 40 chars. Path: `.pm/pm-decision/<slug>.md`.
 
 ```
-Querés crear el issue con label `pm:decision`? (si/no, default: no)
+Confirmás que guardo el decision log en `.pm/pm-decision/<slug>.md`? (si/no, default: si)
 ```
 
-Si no: mostrar el body inline para que el usuario lo guarde donde quiera (notion, docs, etc).
+Si no: mostrar el contenido inline para que el usuario lo guarde donde quiera.
 
-Si si:
-```bash
-gh label create "pm:decision" --color "BFD4F2" --description "Decision log" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t pm-decision-body.XXXXXX).md"
-gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "pm:decision"
-```
-
-Titulo formato: "Decision: <que se decidio>" — max 70 chars.
+Si si: si la carpeta `.pm/pm-decision/` no existe, crearla con `mkdir -p .pm/pm-decision/` antes de escribir. Luego usar el `Write` tool (NUNCA via echo/heredoc) para crear el archivo. Titulo formato: "Decision: <que se decidio>" — max 70 chars.
 
 ## Fase 4 — Reportar
 
-### Si persisted=true
+### Si saved=true
 ```
 ## Result
 - skill: /pm-decision
-- persisted: true
-- url: <URL>
+- saved: true
+- file: .pm/pm-decision/<slug>.md
 - title: <titulo>
 - fecha: <YYYY-MM-DD>
 - reversibilidad: <alta/media/baja>
 - alternatives_count: <N>
 - revision_scheduled: <fecha/evento/no>
 ```
-Y `Issue creado: <URL>`.
+Y `Decision log guardado: .pm/pm-decision/<slug>.md`.
 
-### Si persisted=false
+### Si saved=false
 ```
 ## Result
 - skill: /pm-decision
-- persisted: false
+- saved: false
 - fecha: <YYYY-MM-DD>
 - alternatives_count: <N>
 
@@ -170,18 +161,18 @@ Y `Issue creado: <URL>`.
 
 ## Decision log
 
-<body inline>
+<contenido inline>
 ```
 
 ## MUST DO
 
 - Recolectar los 8 campos en orden con barra de progreso.
 - Validar minimo 1 alternativa descartada (o forzar al usuario a generarlas).
-- Default de persistencia: NO (decisiones chicas no siempre van a GitHub).
+- Guardar en `.pm/pm-decision/<slug>.md` con `Write` tool si el usuario confirma.
 
 ## MUST NOT DO
 
 - No mezclar `/pm-decision` con `/pm-rfc` — RFC es propuesta pre-decision, decision log es registro post-decision.
 - No usar `/pm-decision` para evaluar alternativas — eso es trabajo del RFC.
-- No interpolar contenido en double-quoted shell commands.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

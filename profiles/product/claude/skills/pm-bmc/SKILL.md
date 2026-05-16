@@ -4,25 +4,21 @@ Skill **interactivo largo** — el ejercicio mas extenso del profile, 9 micro-co
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar como en `/pm-prd`.
+### 1. Validar input
 
-### 2. Validar input
 - Vacio: pedir `Describime el producto/negocio en 2-3 parrafos. Si ya tenés algo de BMC armado en otro lado, pegalo y arrancamos desde ahi.` y esperar.
 
-### 3. Preguntar stage
+### 2. Preguntar etapa
+
 ```
-Stage del negocio (afecta el nivel de concrecion esperado):
-1) Idea / pre-revenue (default)
-2) MVP / early revenue
-3) Growth (revenue creciendo, equipo > 10)
-4) Mature
+Etapa del negocio (afecta el nivel de concrecion esperado):
+1) Idea / sin ingresos (default)
+2) MVP / primeros ingresos
+3) En crecimiento (ingresos creciendo, equipo > 10)
+4) Maduro
 5) Otra
 ```
-Guardar `STAGE`. En `idea` se acepta vaguedad; en `mature` se exige numeros.
+Guardar `ETAPA`. En `idea` se acepta vaguedad; en `maduro` se exige numeros.
 
 ## Fase 1 — Pasar por los 9 bloques en orden
 
@@ -38,7 +34,7 @@ Mostrar barra de progreso `[bloque k/9] ▰▰▰▱▱▱▱▱▱` por bloque.
 ### Bloque 1 — Segmentos de clientes
 Preguntas guia:
 - Para quien creas valor? (segmento concreto, no "todos los que necesiten X")
-- Es un segmento, multiples segmentos, o mass-market?
+- Es un segmento, multiples segmentos, o mercado masivo?
 - Cual es el segmento mas importante?
 
 Restriccion: minimo 1 segmento concreto. "Todos" no es aceptable.
@@ -53,27 +49,27 @@ Restriccion: por segmento, una propuesta de valor diferenciada.
 
 ### Bloque 3 — Canales
 Preguntas guia:
-- Como llegas al segmento? (awareness, evaluation, purchase, delivery, after-sales)
+- Como llegas al segmento? (conocimiento, evaluacion, compra, entrega, post-venta)
 - Cuales canales son mas efectivos? Mas eficientes en costo?
 - Estan integrados con la propuesta de valor?
 
 ### Bloque 4 — Relacion con clientes
 Preguntas guia:
-- Que tipo de relacion espera cada segmento? (self-service, asistencia, community, automatizada)
+- Que tipo de relacion espera cada segmento? (auto-servicio, asistencia, comunidad, automatizada)
 - Como las conseguis, las mantenes, las crecés?
-- El customer success / soporte es parte del producto?
+- El soporte / atencion al cliente es parte del producto?
 
 ### Bloque 5 — Fuentes de ingreso
 Preguntas guia:
 - Por que valor estan pagando los clientes?
-- Modelo: one-time, suscripcion, transaccional, freemium, licencia?
-- Pricing actual o estimado por segmento?
+- Modelo: pago unico, suscripcion, transaccional, freemium, licencia?
+- Precio actual o estimado por segmento?
 
-En `STAGE=mature` o `growth`, exigir numeros (precio, % de mix, contribucion).
+En `ETAPA=maduro` o `en crecimiento`, exigir numeros (precio, % de mix, contribucion).
 
 ### Bloque 6 — Recursos clave
 Preguntas guia:
-- Que recursos necesita la propuesta de valor? (fisicos, IP, humanos, financieros)
+- Que recursos necesita la propuesta de valor? (fisicos, propiedad intelectual, humanos, financieros)
 - Cuales son escasos / caros / dificil de replicar?
 - Cuales son commodity?
 
@@ -86,16 +82,16 @@ Preguntas guia:
 ### Bloque 8 — Socios clave
 Preguntas guia:
 - Quienes son tus socios o proveedores clave?
-- Que motivacion tienen para ser tus socios? (optimization, reduce risk, acquire resources)
-- Hay dependencias riesgosas (single supplier, plataforma de terceros)?
+- Que motivacion tienen para ser tus socios? (optimizacion, reducir riesgo, conseguir recursos)
+- Hay dependencias riesgosas (proveedor unico, plataforma de terceros)?
 
 ### Bloque 9 — Estructura de costos
 Preguntas guia:
-- Cuales son los costos mas importantes? (fixed vs variable)
-- Cost-driven o value-driven? (LCC vs premium)
-- Economias de escala / scope?
+- Cuales son los costos mas importantes? (fijos vs variables)
+- Optimizan por costo o por valor? (low-cost vs premium)
+- Hay economias de escala / alcance?
 
-En `STAGE=mature` o `growth`, exigir numeros gruesos (% del total).
+En `ETAPA=maduro` o `en crecimiento`, exigir numeros gruesos (% del total).
 
 ## Fase 2 — Sanity check de coherencia
 
@@ -109,25 +105,25 @@ Si detectas inconsistencia, mostrar al usuario:
 ```
 Detecte una posible inconsistencia entre bloque <X> y bloque <Y>:
 - Bloque <X>: <bullet>
-- Bloque <Y>: <bullet conflicting>
+- Bloque <Y>: <bullet conflictivo>
 
 Querés (1) ajustar bloque X, (2) ajustar bloque Y, (3) dejarlo asi y notar como riesgo?
 ```
 
-## Fase 3 — Review opcional
+## Fase 3 — Revision opcional
 
 ```
 Querés que `pm-reviewer` audite el canvas? (si/no, default: no — el sanity check de fase 2 cubre lo mas obvio)
 ```
 
-Si si: invocar con `artefact_type: bmc`, `artefact_text: <body>`, `context: stage=<STAGE>`. El reviewer busca bloques con bullets genericos copy-paste de cualquier startup.
+Si si: invocar con `artefact_type: bmc`, `artefact_text: <contenido>`, `context: etapa=<ETAPA>`. El reviewer busca bloques con bullets genericos copy-paste de cualquier startup.
 
-## Fase 4 — Estructura del body
+## Fase 4 — Estructura del contenido
 
 ```markdown
 ## Business Model Canvas
 
-**Stage**: <STAGE>
+**Etapa**: <ETAPA>
 
 ### 1. Segmentos de clientes
 - <bullet 1>
@@ -163,54 +159,52 @@ Si si: invocar con `artefact_type: bmc`, `artefact_text: <body>`, `context: stag
 
 ## Riesgos del modelo
 
-<riesgos no explicitos en bloques — ej. single supplier, regulacion futura, dependencia de plataforma>
+<riesgos no explicitos en bloques — ej. proveedor unico, regulacion futura, dependencia de plataforma>
 
 ---
 
 _BMC generado por `/pm-bmc`._
 ```
 
-## Fase 5 — Confirmar y persistir
+## Fase 5 — Confirmar y guardar
 
-Default persistencia: **si**.
+Default guardado: **si**.
+
+Slug: kebab-case del titulo, max 40 chars. Path: `.pm/pm-bmc/<slug>.md`.
 
 ```
-Confirmás que creo el issue con label `pm:bmc`? (si/no, default: si)
+Confirmás que guardo el BMC en `.pm/pm-bmc/<slug>.md`? (si/no, default: si)
 ```
 
-```bash
-gh label create "pm:bmc" --color "5319E7" --description "Business Model Canvas" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t pm-bmc-body.XXXXXX).md"
-gh issue create --title "<titulo>" --body-file "$BODY_FILE" --label "pm:bmc"
-```
-
-Titulo: "BMC: <producto> <fecha>".
+Si si: usar el `Write` tool (NUNCA via echo/heredoc) para crear el archivo. Titulo: "BMC: <producto> <fecha>".
 
 ## Fase 6 — Reportar
 
 ```
 ## Result
 - skill: /pm-bmc
-- persisted: true
-- url: <URL>
+- saved: true
+- file: .pm/pm-bmc/<slug>.md
 - title: <titulo>
-- stage: <STAGE>
+- etapa: <ETAPA>
 - inconsistencies_flagged: <N>
 - reviewer_used: <true | false>
 ```
+
+Y debajo: `BMC guardado: .pm/pm-bmc/<slug>.md`.
 
 ## MUST DO
 
 - Pasar por los 9 bloques en orden, con preguntas guia.
 - Sintetizar 2-3 bullets por bloque (no parrafos).
-- Validar coherencia cross-block en fase 2.
-- En `STAGE=mature/growth`, exigir numeros en ingresos y costos.
+- Validar coherencia entre bloques en fase 2.
+- En `ETAPA=maduro/en crecimiento`, exigir numeros en ingresos y costos.
+- Guardar en `.pm/pm-bmc/<slug>.md` con `Write` tool.
 
 ## MUST NOT DO
 
 - No saltarse bloques (es el principal valor del BMC: cubrir los 9).
 - No aceptar "todos los clientes" como segmento.
 - No aceptar bullets genericos copy-paste (ej. "diferenciacion por calidad", "atencion personalizada").
-- No interpolar contenido en double-quoted shell commands.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.

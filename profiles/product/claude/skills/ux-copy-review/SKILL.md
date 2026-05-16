@@ -1,53 +1,51 @@
-Review de **microcopy y linguistic clarity**: button labels, error messages, empty states, helper text, tone consistency. Audita HTML, imagen, o paste directo. Devuelve hallazgos + rewrites sugeridos. `$ARGUMENTS` es el target (puede venir vacio).
+Review de **microcopy y claridad linguistica**: button labels, mensajes de error, empty states, helper text, consistencia de tono. Audita HTML, imagen, o paste directo. Devuelve hallazgos + reescrituras sugeridas. `$ARGUMENTS` es el target (puede venir vacio).
 
 Skill **interactivo**.
 
 ## Pre-flight
 
-### 1. Validar repo GitHub
-```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
-```
-Si falla, abortar.
-
-### 2. Detectar tipo de target
+### 1. Detectar tipo de target
 Mismo flujo que `/ux-critique` / `/ux-a11y-audit`:
 - Path HTML o directorio
 - Path imagen (vision-only)
 - URL (WebFetch + screenshot)
 - Paste directo de copy (lista de strings)
 
-### 3. Preguntar contexto
+### 2. Preguntar contexto
 ```
 Que pantalla / producto es? (1 linea — afecta el tono esperado)
 ```
 Guardar `CONTEXT`.
 
-### 4. Preguntar tono target
+### 3. Preguntar tono target
 ```
-Tono de voz deseado:
-1) Sobrio / profesional (B2B SaaS)
-2) Amigable / cercano (B2C, productivity)
+Tono deseado:
+1) Sobrio / profesional (para empresas)
+2) Amigable / cercano (consumidor final, productividad)
 3) Tecnico / preciso (devtools, infraestructura)
-4) Juguetón / informal (consumer, comunidad)
+4) Juguetón / informal (consumidor final, comunidad)
 5) Otra
 ```
 Guardar `TONE`.
 
-### 5. Preguntar idioma
+### 4. Preguntar idioma
 ```
 Idioma del copy a revisar:
 1) Español (default)
 2) Ingles
-3) Mixto (auditar consistencia idiomatica como issue propio)
+3) Mixto (auditar consistencia idiomatica como hallazgo aparte)
 ```
 Guardar `LANG`.
+
+### 5. Derivar slug
+
+Derivar `<slug>` desde `CONTEXT` (kebab-case, max 40 chars). Se usa para guardar en `.ux/copy/<slug>.md`.
 
 ## Fase 1 — Extraer strings del target
 
 Segun tipo:
 - HTML: parsear y extraer texto de `<button>`, `<a>`, `<label>`, `<input placeholder>`, `<h*>`, `<p>` en areas interactivas, `aria-label`, `title`, mensajes de error inline, empty states (texto en areas vacias).
-- Imagen: OCR mental de los textos visibles. Listarlos en orden de jerarquia visual.
+- Imagen: leer los textos visibles. Listarlos en orden de jerarquia visual.
 - Paste: el usuario ya proveyo las strings.
 
 Mostrar al usuario:
@@ -59,25 +57,25 @@ Encontre <N> strings a revisar. Procedo con la auditoria? (si/no)
 
 Para cada string, evaluar:
 
-### Clarity
+### Claridad
 - El significado es inmediato (5 segundos)?
 - Tiene jerga interna o tecnicismos innecesarios?
 - Ambiguedad (puede interpretarse de 2 maneras)?
 - Negacion doble o lenguaje pasivo cuando activo sirve mejor?
 
-### Brevity
+### Brevedad
 - Numero de palabras razonable para el tipo de string (button label: 1-3, error: 1 oracion, empty state: 1-2 oraciones, tooltip: 1 frase)?
 - Hay palabras decorativas removibles ("simplemente", "facilmente", "por favor" en exceso)?
 
-### Tone consistency
+### Consistencia de tono
 - Encaja con `TONE` declarado?
 - Hay strings que rompen el tono (ej. tono sobrio con un "¡Ups!" jocoso)?
 
-### Action orientation (especialmente CTAs)
+### Orientacion a la accion (especialmente botones principales / CTAs)
 - Verbos en imperativo + objeto claro? (ej. "Crear cuenta" > "Cuenta nueva")
 - Evitar "OK" / "Submit" / "Continue" cuando hay verbo especifico (mejor "Crear cuenta", "Guardar cambios").
 
-### Error messages especificamente
+### Mensajes de error especificamente
 - Le dice al usuario QUE fallo (no solo "Error")?
 - Le dice CÓMO arreglarlo?
 - No culpa al usuario ("Has hecho X mal" → "Esto necesita Y").
@@ -85,22 +83,22 @@ Para cada string, evaluar:
 
 ### Empty states especificamente
 - Explica POR QUE esta vacio?
-- Sugiere COMO llenarlo (CTA explicito)?
+- Sugiere COMO llenarlo (boton principal explicito)?
 - Tiene tono apropiado (no jocoso si el tono es sobrio).
 
-### Accessibility / labels
+### Accesibilidad / labels
 - `aria-label` redundante con texto visible? (debe coincidir o el visible debe estar incluido en el label).
 - Placeholders usados como label (anti-pattern)?
 
-## Fase 3 — Generar rewrites
+## Fase 3 — Generar reescrituras
 
-Por cada string con findings, proponer **1-3 rewrites** alternativos. No solo 1 — dar opciones al usuario para elegir.
+Por cada string con hallazgos, proponer **1-3 reescrituras** alternativas. No solo 1 — dar opciones al usuario para elegir.
 
 Ej:
 ```
 Original: "Submit"
-Issues: [minor] generico, no dice que hace, viola action-orientation
-Rewrites:
+Hallazgos: [menor] generico, no dice que hace, viola orientacion a la accion
+Reescrituras:
   a) "Crear cuenta"
   b) "Continuar al checkout"
   c) "Enviar mensaje"
@@ -112,7 +110,7 @@ Rewrites:
 ## Copy review: <CONTEXT>
 
 **Target**: <descripcion>
-**Tone deseado**: <TONE>
+**Tono deseado**: <TONE>
 **Idioma**: <LANG>
 **Strings auditados**: <N>
 
@@ -120,43 +118,43 @@ Rewrites:
 
 | Categoria | Count |
 |-----------|-------|
-| Clarity issues | <N> |
-| Brevity issues | <N> |
-| Tone breaks | <N> |
-| Action-orientation | <N> |
-| Error message issues | <N> |
-| Empty state issues | <N> |
-| A11y label issues | <N> |
+| Problemas de claridad | <N> |
+| Problemas de brevedad | <N> |
+| Quiebres de tono | <N> |
+| Orientacion a la accion | <N> |
+| Problemas en mensajes de error | <N> |
+| Problemas en empty states | <N> |
+| Problemas de labels accesibles | <N> |
 | Strings ok | <N> |
 
-## Findings por string
+## Hallazgos por string
 
 ### "<string original>"
-- **Where**: <ubicacion>
-- **Issues**: 
-  - [<sev>] <issue 1>
-  - [<sev>] <issue 2>
-- **Rewrites**:
-  - a) "<rewrite 1>"
-  - b) "<rewrite 2>"
-  - c) "<rewrite 3>" (opcional)
+- **Donde**: <ubicacion>
+- **Hallazgos**:
+  - [<sev>] <problema 1>
+  - [<sev>] <problema 2>
+- **Reescrituras**:
+  - a) "<reescritura 1>"
+  - b) "<reescritura 2>"
+  - c) "<reescritura 3>" (opcional)
 - **Recomendado**: <a | b | c>
 
-(repetir por cada string con findings)
+(repetir por cada string con hallazgos)
 
 ## Strings ok (no requieren cambios)
 
 - "<string 1>"
 - "<string 2>"
 
-## Patterns detectados
+## Patrones detectados
 
-- <patron 1, ej. "tendencia a usar 'por favor' en CTAs" — minor>
-- <patron 2, ej. "errores expone codigos internos consistentemente" — major>
+- <patron 1, ej. "tendencia a usar 'por favor' en botones principales" — menor>
+- <patron 2, ej. "errores expone codigos internos consistentemente" — importante>
 
 ## Top 5 cambios prioritarios
 
-1. <change resumido>
+1. <cambio resumido>
 2. ...
 
 ---
@@ -164,20 +162,13 @@ Rewrites:
 _Copy review generado por `/ux-copy-review`._
 ```
 
-## Fase 5 — Confirmar y persistir
-
-Default: **si**.
+## Fase 5 — Confirmar y guardar
 
 ```
-Confirmás que creo el issue con label `ux:copy`? (si/no, default: si)
+Confirmás que guardo el output en .ux/copy/<slug>.md? (si/no, default: si)
 ```
 
-```bash
-gh label create "ux:copy" --color "FBCA04" --description "Copy / microcopy review" 2>/dev/null || true
-
-BODY_FILE="$(mktemp -t ux-copy-body.XXXXXX).md"
-gh issue create --title "Copy review: <CONTEXT>" --body-file "$BODY_FILE" --label "ux:copy"
-```
+Si si: si la carpeta `.ux/copy/` no existe, crearla con `mkdir -p .ux/copy/` antes de escribir. Luego usar `Write` tool para crear `.ux/copy/<slug>.md` con el reporte.
 
 ## Fase 6 — Reportar
 
@@ -190,23 +181,24 @@ gh issue create --title "Copy review: <CONTEXT>" --body-file "$BODY_FILE" --labe
 - strings_audited: <N>
 - findings_total: <N>
 - strings_with_rewrites: <N>
-- persisted: <true | false>
-- url: <URL si persisted>
+- file: .ux/copy/<slug>.md
+- saved: <true | false>
 ```
 
 ## MUST DO
 
 - Extraer strings del target antes de auditar.
-- Proponer 1-3 rewrites por string con findings (no 1 solo).
-- Marcar pattern detectados (issues repetidos entre strings).
-- Validar tone consistency en el conjunto.
+- Proponer 1-3 reescrituras por string con hallazgos (no 1 sola).
+- Marcar patrones detectados (problemas repetidos entre strings).
+- Validar consistencia de tono en el conjunto.
 - Para errores y empty states: aplicar checks especificos.
+- Guardar en `.ux/copy/<slug>.md` con `Write` tool.
 
 ## MUST NOT DO
 
-- No reescribir strings que no tienen issues (no introducir cambios cosmeticos).
-- No proponer rewrites que rompan el `TONE` declarado.
+- No reescribir strings que no tienen problemas (no introducir cambios cosmeticos).
+- No proponer reescrituras que rompan el `TONE` declarado.
 - No omitir strings ok (mostrarlos como confirmacion).
-- No mezclar `ux:copy` con `ux:critique` — el copy review es enfoque linguistico, mas profundo.
-- No interpolar contenido en double-quoted shell commands.
+- No mezclar copy review con `/ux-critique` — el copy review es enfoque linguistico, mas profundo.
+- No usar `gh` ni depender de GitHub.
 - No persistir nada en auto-memory.
