@@ -1,0 +1,5 @@
+name = "product"
+harnesses = ["claude"]
+
+[assets]
+claude = "claude"
