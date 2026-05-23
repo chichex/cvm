@@ -26,8 +26,3 @@ Listados en el auto-listing del system prompt al iniciar sesion (`ls profiles/ha
 |-------|-------------|--------------|
 | `entity:spec` | Issue es spec | `/hs-spec` |
 | `entity:plan` | PR es plan | `/hs-plan` |
-| `code:exec` | Pendiente validar | `/hs-code-loop`, `/hs-code-exec` |
-| `code:passed` | Validate PASS | `/hs-code-loop`, `/hs-code-validate` |
-| `code:failed` | Validate FAIL — feedback en PR comment con marker `<!-- hs-code-validate:feedback ... -->` | `/hs-code-loop`, `/hs-code-validate` |
-
-Los tres `code:*` son **mutuamente exclusivos** — sirven como fallback de auto-detect del loop.
