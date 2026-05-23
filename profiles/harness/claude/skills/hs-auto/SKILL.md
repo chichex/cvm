@@ -328,7 +328,7 @@ PR: <PR_URL>
 
 ## MUST DO
 
-- Operar totalmente inline: spec, plan y loop se redactan dentro de `/hs-auto`; no invocar `/hs-spec`, `/hs-plan`, `/hs-code-loop`, `/hs-code-exec` ni `/hs-code-validate`.
+- Operar totalmente inline: spec, plan y loop se redactan dentro de `/hs-auto`; no invocar `/hs-spec`, `/hs-code-loop`, `/hs-code-exec` ni `/hs-code-validate`.
 - Delegar exec y validate exclusivamente a los subagents `hs-code-executor` y `hs-code-validator`.
 - Detectar modo (prompt|issue|pr) por patron del input y `gh api` cuando corresponda; NUNCA por labels.
 - En Modo PR, arrancar siempre por validate.

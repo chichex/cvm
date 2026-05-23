@@ -25,4 +25,4 @@ Listados en el auto-listing del system prompt al iniciar sesion (`ls profiles/ha
 | Label | Significado | Aplicado por |
 |-------|-------------|--------------|
 | `entity:spec` | Issue es spec | `/hs-spec` |
-| `entity:plan` | PR es plan | `/hs-plan` |
+| `entity:plan` | PR es plan | `/hs-spec` |

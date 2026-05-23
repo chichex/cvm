@@ -7,8 +7,7 @@ Profile orientado a harness engineering: define specs y planes reutilizables a p
 | Skill | Que hace |
 |-------|----------|
 | `/clarify` | Refina iterativamente asunciones sobre un issue de GitHub o un prompt libre. Lista asunciones tagueadas por temperatura (`[directa]/[media]/[especulativa]`), deja al usuario marcar cuales clarificar, pregunta una por una con multiple-choice (4 + "otra") y barra de progreso. **No depende de GitHub**: si hay repo gh, ofrece persistir al final (default: no) appendeando "Clarificaciones" al issue o creando uno nuevo; si no, muestra el resultado inline. En modo issue sin repo, pide pegar el body manualmente. Sin label propio. |
-| `/hs-spec` | Wrapper sobre `/clarify` para definir specs desde una historia de usuario: fuerza modo prompt, filtra asunciones a no-tecnicas/funcionales, usa estructura de body Historia/Asunciones/Criterios/Notas, y aplica label `entity:spec`. Para refinar un issue ya existente, usar `/clarify` directo. |
-| `/hs-plan` | A partir de un issue de spec (`entity:spec`), redacta un plan de implementacion, lista las asunciones tecnicas/de implementacion, refina las que el usuario marca como incorrectas, y crea un PR en GitHub con un `.md` en `.harness/plans/<N>-<slug>.md` y label `entity:plan`. |
+| `/hs-spec` | Wrapper sobre `/clarify` ejecutado dos veces (funcional + tecnica) para definir spec y plan desde una historia de usuario. Fase A: refina asunciones no-tecnicas y crea issue con label `entity:spec`. Tras un opt-out (default: seguir), Fase B refina asunciones tecnicas y Fase C crea branch `hs-plan/<N>`, archivo `.harness/plans/<N>-<slug>.md`, commit + push + PR con `Closes #<N>` y label `entity:plan`. Para refinar un issue ya existente, usar `/clarify` directo. |
 | `/hs-auto` | Pipeline end-to-end autonomo desde prompt, issue o PR hasta PR validado. No depende de otros skills `/hs-*` ni de labels: redacta spec, plan y orquesta el loop exec/validate inline, delegando solo en los agents `hs-code-executor` y `hs-code-validator`. En modo PR arranca siempre por validate y sintetiza `plan_text` in-memory si el branch no tiene `.harness/plans/*.md`. Aborta solo ante errores duros o prompts demasiado vagos para una spec minima. `--max N` (default 5). |
 | `/che-run` | Wrapper sobre `che run <slug> [prompt]` del CLI `che`. Hace preflight con `che doctor`, lista pipelines disponibles (`~/.che/pipelines/` + builtin `che-funnel`) si falta slug, corre el pipeline en foreground con timeout amplio, y reporta status leyendo el `manifest.yaml` del run mas reciente en `~/.che/runs/<slug>/`. Si el run fallo, vuelca las ultimas 30 lineas del stderr del primer step que fallo. Solo cubre `che run`; no toca `dash`, `upgrade` ni otros subcomandos. |
 | `/new-skill` | Scaffolder de skills nuevos para el repo `cvm`. Pide descripcion en lenguaje natural, pregunta profile + harness(es) destino, redacta el `SKILL.md` siguiendo las convenciones de cada harness (frontmatter solo en opencode, `$ARGUMENTS` solo en claude), agrega la fila correspondiente en la tabla de skills del doc del profile (`CLAUDE.md` / `AGENTS.md`), y commitea + pushea a `main` sin preguntar. Aborta si no estas en la raiz del repo cvm o si hay cambios sin commitear. |
@@ -39,11 +38,10 @@ Los workflows se ejecutan como **skills primarios**. Solo las partes autonomas d
 | Workflow | Entry point primario | Delegacion a subagent |
 |----------|----------------------|------------------------|
 | Clarify | `/clarify` | No. Interactivo multi-turno en el orquestador principal. |
-| Spec | `/hs-spec` | No. Interactivo multi-turno en el orquestador principal (wrapper sobre `/clarify`). |
-| Plan | `/hs-plan` | No. Interactivo multi-turno en el orquestador principal. |
-| Auto | `/hs-auto` | Si, solo para exec y validate; spec, plan y el loop se redactan/orquestan inline en el orquestador principal. No invoca a `/hs-spec` ni a `/hs-plan`. |
+| Spec + Plan | `/hs-spec` | No. Interactivo multi-turno en el orquestador principal (wrapper sobre `/clarify` ejecutado dos veces: funcional + tecnica). |
+| Auto | `/hs-auto` | Si, solo para exec y validate; spec, plan y el loop se redactan/orquestan inline en el orquestador principal. No invoca a `/hs-spec`. |
 
-No crear subagents separados para `/hs-spec` o `/hs-plan` salvo que el flujo deje de ser interactivo. Esos skills necesitan refinar asunciones con el usuario antes de persistir issue/PR.
+No crear subagents separados para `/hs-spec` salvo que el flujo deje de ser interactivo. El skill necesita refinar asunciones con el usuario antes de persistir issue y PR.
 `/hs-auto` es la excepcion no interactiva: acepta defaults seguros de spec/plan, no aplica labels harness y solo frena ante errores duros o un prompt demasiado vago para redactar una spec minima.
 
 ## Labels de estado
@@ -51,7 +49,7 @@ No crear subagents separados para `/hs-spec` o `/hs-plan` salvo que el flujo dej
 | Label | Significado | Aplicado por |
 |-------|-------------|--------------|
 | `entity:spec` | Issue es una spec del workflow harness | `/hs-spec` |
-| `entity:plan` | PR es un plan de implementacion | `/hs-plan` |
+| `entity:plan` | PR es un plan de implementacion | `/hs-spec` |
 
 ## Reglas
 
