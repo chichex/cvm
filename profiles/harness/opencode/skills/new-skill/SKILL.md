@@ -127,6 +127,23 @@ Tomar como gold reference:
 - claude: `profiles/harness/claude/skills/che-run/SKILL.md`, `profiles/harness/claude/skills/detach/SKILL.md`.
 - opencode: `profiles/harness/opencode/skills/che-run/SKILL.md`, `profiles/harness/opencode/skills/clarify/SKILL.md`.
 
+### Calidad de la descripcion
+
+La descripcion del skill es el unico hook que el orquestador lee del system prompt para decidir si invocarlo. Tratarla como interfaz, no como adorno.
+
+- En **claude**: primera linea/parrafo del `SKILL.md` (no hay frontmatter).
+- En **opencode**: campo `description:` del frontmatter YAML.
+
+Reglas:
+
+- Una frase que diga **que hace** el skill (verbo + objeto, en tercera persona).
+- Una segunda frase con **cuando usarlo** ("Usar cuando ...", "Disparalo cuando ...", o equivalente con triggers concretos).
+- Sin info time-sensitive (fechas hardcoded, "actualmente X", versiones puntuales que cambian).
+- Sin features que no esten en `DESCRIPCION` del usuario.
+
+Bien: `Refina iterativamente las asunciones sobre un issue de GitHub o un prompt libre. Usar cuando hay un issue ambiguo o un brief sin clarificar.`
+Mal: `Ayuda con issues.`
+
 ### Contenido
 
 El cuerpo del skill se redacta a partir de `DESCRIPCION`. El orquestador debe:
@@ -140,7 +157,20 @@ Si `DESCRIPCION` no alcanza para redactar algo coherente, pedir clarificacion al
 
 Escribir el archivo al path `${ASSET_DIR[h]}/skills/${SLUG}/SKILL.md`.
 
-## Fase 5 - Actualizar tabla de skills
+## Fase 5 - Review checklist
+
+Antes de avanzar a Fase 6, releer el `SKILL.md` recien escrito y verificar:
+
+- [ ] La descripcion arranca con una frase de "que hace" y sigue con una de "cuando usar".
+- [ ] No hay info time-sensitive (fechas hardcoded, versiones puntuales, "actualmente X").
+- [ ] Terminologia consistente con otros skills del profile (mismas convenciones de nombres, mismo vocabulario para conceptos repetidos).
+- [ ] Convenciones del harness respetadas: frontmatter (presente en opencode, ausente en claude), `$ARGUMENTS` vs prosa, tools mencionadas (claude) vs no mencionadas (opencode).
+- [ ] Cierra con `## MUST DO` y `## MUST NOT DO` bien afilados.
+- [ ] No introduce features que el usuario no pidio en `DESCRIPCION`.
+
+Si algo falla, corregir el archivo antes de avanzar a Fase 6. Repetir el checklist hasta que pase todo.
+
+## Fase 6 - Actualizar tabla de skills
 
 Localizar el doc principal del profile-harness:
 
@@ -159,7 +189,7 @@ Si el doc no existe, no fallar; solo crear el SKILL.md y avisar al usuario que n
 
 Hacer la edicion con un `old_string` que matchee la ultima fila actual de la tabla mas un trailing newline, y `new_string` que sea esa fila mas la nueva. Si no hay match exacto unico, abortar; no editar a ciegas.
 
-## Fase 6 - Commit + push
+## Fase 7 - Commit + push
 
 ```bash
 git add <archivos creados o modificados>
@@ -169,7 +199,7 @@ git push origin main
 
 Si `git push` falla (rama protegida, conflicto, lo que sea), reportar el error y dejar el commit local hecho; no hacer reset.
 
-## Fase 7 - Reporte
+## Fase 8 - Reporte
 
 ```text
 ## /new-skill report
@@ -193,6 +223,8 @@ Si `git push` falla (rama protegida, conflicto, lo que sea), reportar el error y
 - Preguntar profile y harness(es) siempre, sin defaults silenciosos (salvo profiles/harnesses con una sola opcion).
 - Leer skills existentes del mismo harness como referencia de estilo antes de redactar.
 - Respetar las diferencias claude vs opencode (frontmatter, `$ARGUMENTS` vs prosa, tools mencionadas).
+- Cuidar la descripcion del skill como interfaz: frase de "que hace" + frase de "cuando usar". Sin info time-sensitive.
+- Pasar el review checklist de Fase 5 antes de commitear; si algo falla, corregir y repetir.
 - Validar slug `[a-z0-9-]` y abortar si ya existe en alguno de los harness elegidos.
 - Insertar la fila en la tabla de skills del doc del profile-harness con un match exacto.
 - Commit + push automatico a `main` al final, sin preguntar.

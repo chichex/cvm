@@ -74,6 +74,20 @@ Tagear cada una segun temperatura:
 - `[media]`: probable pero no obvia. Es donde mas valor da clarificar.
 - `[especulativa]`: el orquestador proyecto algo que no tiene base solida en el material. Bandera roja util.
 
+### 2.1 - Resolver con codebase lo que se pueda
+
+Antes de presentarle la lista al usuario, recorrer las asunciones `[especulativa]` y `[media]` y para cada una preguntarse: "¿esto lo puedo confirmar leyendo el repo?". Si si, ejecutar lecturas dirigidas (`grep`, lectura puntual de archivos) y actuar:
+
+- Confirma: bajar a `[directa]` (o quitarla si queda trivial).
+- Contradice: reescribir la asuncion con lo que dice el codigo y bajar a `[directa]`.
+- Inconclusa: dejarla como esta.
+
+Solo lecturas dirigidas, no exploracion general del repo. Si la asuncion no toca codigo (UX, scope, decision de producto), saltarla. Tope global: 5 lecturas. Si una sola asuncion requiere mas, dejala `[media]` y que decida el usuario.
+
+Skip total este paso si `HAS_REPO=false` o si el material no menciona codigo del repo.
+
+### 2.2 - Mostrar lista
+
 Mostrar al usuario en una sola lista numerada (no agrupar por tag; el tag va inline):
 
 ```markdown
@@ -107,7 +121,7 @@ Para cada numero `i` reportado, en orden de aparicion (indice `k = 1..M`), pregu
 Asuncion #i original: <tag> <texto original>
 
 Alternativas:
-1. <alternativa 1>
+1. <alternativa recomendada> (recomendada)
 2. <alternativa 2>
 3. <alternativa 3>
 4. <alternativa 4>
@@ -122,6 +136,7 @@ Reglas para construir las 4 alternativas:
 - Cubrir el espectro de decisiones razonables sobre ese punto.
 - No incluir la asuncion original entre las 4 (el usuario ya la rechazo).
 - Tono coherente con el dominio del material.
+- Marcar la que el orquestador considere mejor para este caso con `(recomendada)` y ponerla primera. Si no hay un favorito claro, no marcar nada y dejar las 4 sin tag.
 
 Barra de progreso: 10 segmentos, `▰` para completados (incluyendo el actual), `▱` para pendientes. Formula: `filled = round(k * 10 / M)`. Ejemplo `k=3, M=5`: `▰▰▰▰▰▰▱▱▱▱` (6/10).
 
@@ -296,8 +311,9 @@ Sin URL, sin tocar GitHub.
 - Detectar el modo (issue vs prompt) desde el formato de los argumentos; no preguntarle al usuario.
 - En modo issue sin repo, pedirle al usuario que pegue el body manualmente en chat.
 - Listar **todas** las asunciones detectadas, cada una con su tag inline.
+- Antes de mostrar la lista, intentar resolver las asunciones `[especulativa]` y `[media]` con lecturas dirigidas al codigo (tope 5 lecturas, skip si `HAS_REPO=false` o el material no toca codigo).
 - Mostrar barra de progreso en cada pregunta de refinamiento.
-- Presentar exactamente 4 alternativas + 5ta "otra" en cada pregunta.
+- Presentar exactamente 4 alternativas + 5ta "otra" en cada pregunta. Si hay un favorito claro, marcarlo con `(recomendada)` y ponerlo primero.
 - Pasar el body via `--body-file` cuando se persiste.
 - Por default **no** persistir: solo persistir con afirmacion explicita del usuario y con repo gh disponible.
 
