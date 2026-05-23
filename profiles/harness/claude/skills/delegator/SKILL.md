@@ -101,8 +101,8 @@ Volver al modo delegator apenas pase la parte critica. No avisarlo, solo retomar
 
 ## Coexistencia con otros modos
 
-- **`/caveman`**: ortogonales. Delegator decide **que** sale del thread; caveman decide **como** se escribe lo que queda inline. Pueden estar activos a la vez.
 - **`/detach`**: redundante mientras delegator esta activo (el modo ya delega por default). Si el usuario invoca `/detach` explicitamente, respetarlo igual.
+- **`/explain`**: ortogonales. `/explain` es one-shot y produce los 3 niveles inline en el thread principal (no se delega), independientemente de si delegator esta activo.
 
 ## MUST DO
 
