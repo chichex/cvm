@@ -19,13 +19,15 @@ Tres bloques en este orden exacto:
 - 1 a 2 oraciones max.
 - Cero terminos tecnicos (o explicados al toque).
 - Foco en "que es" y "para que sirve", no en "como funciona".
+- **Ejemplo obligatorio**: la analogia tiene que tener un escenario concreto, no abstracto (ej: "pizzeria con motos prendidas", no "un grupo de recursos compartidos").
 
 ### Nivel 2 — Dev junior
 
 - Vocabulario tecnico estandar, sin asumir internals.
 - 3 a 5 oraciones o lista corta.
-- Mecanismo a alto nivel: que partes interactuan, que problema resuelve, ejemplo simple si suma.
+- Mecanismo a alto nivel: que partes interactuan, que problema resuelve.
 - Asume que el lector programa pero no conoce este tema especifico.
+- **Ejemplo obligatorio**: snippet de codigo corto, comando shell, o pseudocodigo (3-6 lineas max). Si no entra inline, mencionar la API/funcion concreta (ej: `pool.acquire()`, `lsof -i :3000`).
 
 ### Nivel 3 — Experto
 
@@ -33,6 +35,7 @@ Tres bloques en este orden exacto:
 - Sin tope rigido pero sin pajarear: lo que un senior necesita para tomar decisiones.
 - Referencias concretas (`archivo:linea`, RFC, paper, seccion de docs) cuando apliquen.
 - Mencionar simplificaciones que el Nivel 2 dejo afuera.
+- **Ejemplo obligatorio**: al menos un caso aplicado con numeros/settings reales, edge case concreto, o decision arquitectonica con nombre (ej: formula de sizing, `SO_REUSEPORT` en Linux 3.9+, PgBouncer en modo transaction).
 
 ## Reglas
 
@@ -75,6 +78,7 @@ Tres bloques en este orden exacto:
 - Mantener terminos tecnicos exactos en Niveles 2 y 3 (nombres de funciones, archivos, errores).
 - Citar el pedazo del thread que se esta explicando cuando opera sin argumento.
 - Si el tema es muy especifico al repo actual, leer el codigo antes de escribir el Nivel 3.
+- Cada nivel incluye al menos un ejemplo concreto del tipo que pide su definicion (analogia con escenario / snippet o comando / caso aplicado con numero o setting).
 
 ## MUST NOT DO
 
@@ -83,3 +87,4 @@ Tres bloques en este orden exacto:
 - No persistir el modo — `/explain` es one-shot por diseño. La siguiente respuesta vuelve al estilo normal del thread.
 - No traducir terminos tecnicos al español si rompe el sentido (`deadlock` no es "bloqueo mutuo").
 - No producir 3 parrafos genericos — cada nivel debe sumar info que el anterior no tenia.
+- No usar ejemplos abstractos ("un sistema X que hace Y") cuando se puede dar uno concreto (numero real, nombre de funcion, comando ejecutable).
