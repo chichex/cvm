@@ -107,6 +107,28 @@ Estructura del doc:
 
 Escribir con `Write` al `$HANDOFF_FILE`.
 
+### 4. Copiar prompt de continuacion al clipboard
+
+Despues de escribir el handoff, copiar al clipboard del sistema el prompt que la proxima sesion va a recibir, para que el usuario solo tenga que pegar:
+
+```bash
+PROMPT="Lee $HANDOFF_FILE y continua desde donde quedo la sesion anterior."
+if command -v wl-copy >/dev/null 2>&1; then
+  printf '%s' "$PROMPT" | wl-copy
+  CLIPBOARD_OK=1
+elif command -v xclip >/dev/null 2>&1; then
+  printf '%s' "$PROMPT" | xclip -selection clipboard
+  CLIPBOARD_OK=1
+elif command -v pbcopy >/dev/null 2>&1; then
+  printf '%s' "$PROMPT" | pbcopy
+  CLIPBOARD_OK=1
+else
+  CLIPBOARD_OK=0
+fi
+```
+
+Si ninguna herramienta esta disponible, no fallar — solo omitir el copy y reportarlo abajo.
+
 ## Reporte
 
 ```text
@@ -120,11 +142,24 @@ Escribir con `Write` al `$HANDOFF_FILE`.
   - paths: <N>
 - skills sugeridos: <lista corta>
 
-Pasale este path al proximo agente:
-<HANDOFF_FILE>
+### Para continuar
+
+<si CLIPBOARD_OK=1:>
+Prompt copiado al clipboard. Hace `/clear` y pega (Ctrl+Shift+V).
+
+<si CLIPBOARD_OK=0:>
+Clipboard no disponible (instalar `wl-copy` / `xclip` / `pbcopy`). Copiar a mano una de las dos opciones:
+
+- Opcion A — mismo terminal: hacer `/clear` y pegar:
+
+      Lee <HANDOFF_FILE> y continua desde donde quedo la sesion anterior.
+
+- Opcion B — nueva terminal:
+
+      claude "Lee <HANDOFF_FILE> y continua desde donde quedo la sesion anterior."
 ```
 
-No imprimir el contenido completo del handoff en el chat — solo el path y el resumen del reporte.
+Sustituir `<HANDOFF_FILE>` por el path real en el reporte. No imprimir el contenido completo del handoff en el chat — solo el path y el resumen del reporte.
 
 ## MUST DO
 
