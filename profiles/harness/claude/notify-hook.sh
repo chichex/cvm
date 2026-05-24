@@ -38,7 +38,7 @@ if [ -n "$address" ] || [ "$workspace" != "?" ]; then
   # notify-send -A implica --wait: queda vivo hasta el click o expiracion.
   # Lo corremos en background + disown para no bloquear el hook de Claude.
   (
-    action="$(notify-send -a 'Claude Code' -u "$urgency" \
+    action="$(notify-send -a 'Claude Code' -u "$urgency" -t 60000 \
       -A 'default=Ir' "$title" "$body" 2>/dev/null)"
     if [ "$action" = "default" ]; then
       if [ -n "$address" ] \
@@ -51,5 +51,5 @@ if [ -n "$address" ] || [ "$workspace" != "?" ]; then
   ) >/dev/null 2>&1 &
   disown 2>/dev/null || true
 else
-  notify-send -a 'Claude Code' -u "$urgency" "$title" "$body"
+  notify-send -a 'Claude Code' -u "$urgency" -t 60000 "$title" "$body"
 fi
