@@ -14,17 +14,5 @@
       "Bash(mkdir *)"
     ],
     "defaultMode": "default"
-  },
-  "hooks": {
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/notify-hook.sh 'Necesita atencion' critical"
-          }
-        ]
-      }
-    ]
   }
 }
