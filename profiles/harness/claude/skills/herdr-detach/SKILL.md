@@ -97,68 +97,94 @@ Para `--new`:
 herdr workspace create --cwd <CWD_ACTUAL> --label "detach-<AGENT>" --no-focus 2>&1
 ```
 
-Capturar `WORKSPACE_ID` y `PANE_ID_BASE` del root_pane del workspace nuevo. Para `<CWD_ACTUAL>` usar el `cwd` del pane origen (resuelto desde `HERDR_PANE_ID` como arriba), no el `pwd` del shell — son lo mismo en el caso comun, pero anclar al pane origen es la fuente de verdad si el shell hubiera cambiado de directorio.
+Capturar `WORKSPACE_ID`, `TAB_ID` y `ROOT_PANE_ID` (= `pane_id` del `root_pane` del response). `ROOT_PANE_ID` es un shell pelado que herdr crea por default con cada workspace nuevo — empiricamente, `agent start` *no* lo reusa aunque parezca el flujo natural, asi que el skill tiene que cerrarlo a mano despues de levantar el agente (ver Ejecutar §1). Para `<CWD_ACTUAL>` usar el `cwd` del pane origen (resuelto desde `HERDR_PANE_ID` como arriba), no el `pwd` del shell — son lo mismo en el caso comun, pero anclar al pane origen es la fuente de verdad si el shell hubiera cambiado de directorio.
 
 ## Ejecutar
 
 ### 1. Lanzar el agente
 
-**Un solo comando** para ambos modos — `agent start` ya acepta `--split right` y crea pane + arranca el agente atomicamente. NO hacer `pane split` antes; eso crea un pane vacio extra que queda como shell pelado al costado.
+`<TS>` = timestamp corto (`date +%s`) para no chocar con nombres existentes. Definir `AGENT_NAME = "detach-<AGENT>-<TS>"` y usarlo como **handle estable** en todo lo que sigue.
 
-Para `--here`:
+Para `--here` — un solo comando. `agent start --split right` crea pane + arranca el agente atomicamente; NO hacer `pane split` antes (deja un shell pelado extra al costado):
 
 ```bash
-herdr agent start "detach-<AGENT>-<TS>" \
+herdr agent start "$AGENT_NAME" \
   --workspace <WORKSPACE_ID> --tab <TAB_ID> \
   --cwd <CWD_BASE> --split right --no-focus \
   -- <AGENT>
 ```
 
-Para `--new` (el workspace recien creado ya tiene un root_pane; arrancar el agente ahi sin `--split`):
+Para `--new` — empiricamente, `agent start` *no* reusa el `root_pane` del workspace recien creado; crea un pane nuevo y deja el `root_pane` como shell pelado al costado. Hay que cerrarlo a mano despues:
 
 ```bash
-herdr agent start "detach-<AGENT>-<TS>" \
+herdr agent start "$AGENT_NAME" \
   --workspace <WORKSPACE_ID> --tab <TAB_ID> \
   --cwd <CWD_BASE> --no-focus \
   -- <AGENT>
+herdr pane close <ROOT_PANE_ID>
 ```
 
-`<TS>` es un timestamp corto (`date +%s`) para no chocar con nombres existentes. Capturar el `pane_id` devuelto del response como `TARGET_PANE` — ese es el pane real donde corre el agente, y es el que se usa en todos los pasos siguientes (`agent send`, `agent read`, `agent wait`, `pane send-keys`, etc).
+### Tracking del pane
+
+herdr **renumera `pane_id`s al cerrar panes** (ej. cerras `-3`, lo que era `-4` pasa a ser `-3`). Eso significa que el `pane_id` devuelto por `agent start` *no es estable*:
+
+- En `--new` se invalida en el `pane close <ROOT_PANE_ID>` del paso anterior.
+- En `--here` con multiples detaches concurrentes se puede invalidar si el usuario u otro skill cierra un pane intermedio.
+
+Solucion: usar `AGENT_NAME` como source of truth. Los comandos `agent send`/`agent read`/`agent wait` aceptan `AGENT_NAME` directamente y no necesitan re-resolucion. Para los comandos `pane *` (`pane send-keys`, `pane close`, `pane read`), **re-resolver** el `pane_id` actual justo antes de la llamada:
+
+```bash
+PANE_ID=$(herdr agent get "$AGENT_NAME" | jq -r .result.agent.pane_id)
+```
 
 ### 2. Handle de dialogos de pre-arranque
 
-`claude` y `codex` pueden mostrar dialogos antes de aceptar input. Pueden aparecer en secuencia (ej. trust folder seguido de bypass permissions), asi que hay que loop-checkar hasta que no quede ninguno. Dialogos conocidos:
+`claude` y `codex` pueden mostrar dialogos antes de aceptar input. Pueden aparecer en secuencia (ej. update → trust → bypass), asi que hay que loop-checkar hasta que no quede ninguno. Dialogos conocidos:
 
 | Dialogo | Trigger | Default seleccionada | Como llegar a la opcion correcta |
 |---|---|---|---|
 | Trust this directory | Primera vez que `claude`/`codex` abre un cwd | "Yes, I trust" / "Yes, continue" (opcion 1, **correcta**) | `Enter` |
 | Bypass Permissions warning | `claude` con `permissions.defaultMode=bypassPermissions` en settings.json | "No, exit" (opcion 1, **incorrecta**) | `Down` + `Enter` |
+| Codex update available | `codex` cuando hay version nueva publicada | "Update now" (opcion 1, **peligrosa** — corre `npm install -g`) | `Down` + `Enter` (= "Skip") |
 
-Flujo (hasta N=3 iteraciones):
+Flujo (hasta N=4 iteraciones — varios dialogs pueden encadenarse, ademas update puede tardar en renderizar):
 
 ```bash
 sleep 3
-herdr agent read <TARGET_PANE> --source visible --lines 30 --format text
+PANE_ID=$(herdr agent get "$AGENT_NAME" | jq -r .result.agent.pane_id)
+herdr agent read "$AGENT_NAME" --source visible --lines 40 --format text
 ```
 
 Sobre el texto leido (case-insensitive):
 
+- Si contiene `Update available` junto con opciones tipo `1. Update now` y `2. Skip` (codex), mandar `Down` + `Enter` para elegir "Skip" — **NUNCA** mandar Enter solo (la default lanza un `npm install -g` no pedido):
+
+  ```bash
+  herdr pane send-keys "$PANE_ID" Down
+  herdr pane send-keys "$PANE_ID" Enter
+  ```
+
 - Si contiene `Bypass Permissions mode` (o equivalente), mandar `Down` + `Enter` para saltar de "No, exit" a "Yes, I accept" antes de confirmar:
 
   ```bash
-  herdr pane send-keys <TARGET_PANE> Down
-  herdr pane send-keys <TARGET_PANE> Enter
+  herdr pane send-keys "$PANE_ID" Down
+  herdr pane send-keys "$PANE_ID" Enter
   ```
 
 - Si contiene `trust this folder`, `trust the contents`, `Yes, I trust` o `Yes, continue`, mandar `Enter` directo (la default ya es la correcta):
 
   ```bash
-  herdr pane send-keys <TARGET_PANE> Enter
+  herdr pane send-keys "$PANE_ID" Enter
   ```
 
-- Si no matchea ningun dialogo conocido y el status es `idle` con un input prompt visible (`❯` para claude, `›` para codex), el agente esta listo — salir del loop.
+- Si **no** matchea ningun dialogo conocido, verificar que el agente este realmente listo (no parado en un menu desconocido) con **todas** estas condiciones a la vez:
+  1. Status del agente es `idle` (`herdr agent get "$AGENT_NAME"` → `.result.agent.agent_status == "idle"`).
+  2. El char de prompt (`❯` para claude, `›` para codex, `┃` para opencode) aparece **al inicio (con whitespace permitido) de la ultima linea no vacia** del buffer visible — no en el medio, no en un menu.
+  3. El buffer **no** contiene patrones de menu: `^\s*[0-9]+\.\s` (opcion numerada), `Press enter to continue`, `select an option`, ni `Update available`.
 
-Entre iteraciones, dormir 2 segundos. Si despues de 3 iteraciones sigue habiendo un dialogo no resuelto, abortar y avisar al usuario que confirme manualmente en el pane (no adivinar opciones desconocidas — el costo de equivocarse es cerrar la sesion).
+  Si las tres se cumplen, salir del loop. Si alguna falla, seguir iterando.
+
+Entre iteraciones, dormir 2 segundos. Si despues de 4 iteraciones sigue habiendo un estado no resuelto, abortar y avisar al usuario que confirme manualmente en el pane (no adivinar opciones desconocidas — el costo de equivocarse es cerrar la sesion o lanzar un `npm install -g` indeseado).
 
 ### 3. Enviar el prompt
 
@@ -169,22 +195,35 @@ PROMPT_FILE=$(mktemp)
 # Escribir $PROMPT al archivo via Write (no via heredoc en shell).
 ```
 
-Mandar el texto al input del agente y luego Enter:
+Mandar el texto al input del agente, **dormir 0.5s** para dar tiempo al TTY de procesar, re-resolver `PANE_ID`, y mandar Enter:
 
 ```bash
-herdr agent send <TARGET_PANE> "$(cat "$PROMPT_FILE")"
-herdr pane send-keys <TARGET_PANE> Enter
+herdr agent send "$AGENT_NAME" "$(cat "$PROMPT_FILE")"
+sleep 0.5
+PANE_ID=$(herdr agent get "$AGENT_NAME" | jq -r .result.agent.pane_id)
+herdr pane send-keys "$PANE_ID" Enter
 ```
 
-`agent send` escribe texto literal sin ejecutar; el Enter posterior es lo que envia el prompt al agente (en los TUIs de claude/opencode/codex, Enter es el binding para "send").
+`agent send` escribe texto literal sin ejecutar; el Enter posterior es lo que envia el prompt al agente (en los TUIs de claude/opencode/codex, Enter es el binding para "send"). El `sleep 0.5` evita un race observado en codex donde el primer Enter llega antes de que el TTY haya terminado de procesar el `agent send` y se pierde silenciosamente (el prompt queda escrito en el input sin haberse enviado).
+
+**Confirmar que el envio surtio efecto**: esperar hasta 5s a que el agente transicione a `working`. Si no transiciona, reintentar Enter (idempotente en los TUIs cuando el input box ya tiene el prompt encolado):
+
+```bash
+herdr agent wait "$AGENT_NAME" --status working --timeout 5000 \
+  || herdr pane send-keys "$(herdr agent get "$AGENT_NAME" | jq -r .result.agent.pane_id)" Enter
+```
+
+Este check es ademas necesario para que el `agent wait --status idle` del paso §4 no resuelva con un false-positive: codex puede estar en `idle` *antes* de procesar el prompt, y `wait --status idle` resolveria inmediatamente sin haber esperado nada.
 
 ### 4. Esperar (solo si `--wait`)
 
 ```bash
-herdr agent wait <TARGET_PANE> --status idle --timeout 600000
+herdr agent wait "$AGENT_NAME" --status idle --timeout 600000
 ```
 
 Timeout de 10 minutos por default. Si el agente entra primero a `done` herdr resuelve igual (esos status estan en el mismo bucket).
+
+**Precondicion**: este `wait` confia en que §3 ya confirmo transicion a `working`. Sin ese check, `wait --status idle` puede resolver inmediatamente con el `idle` previo al envio del prompt (visto en codex que reporta `idle`/`done` en estados intermedios). El check del §3 es la guarda contra eso.
 
 Si el wait falla con timeout, no abortar el pane — solo reportar timeout y devolver `pane_id` para inspeccion manual.
 
@@ -193,7 +232,7 @@ Despues de resolver, dormir 1-2 segundos extra para que el TUI termine de render
 ### 5. Leer respuesta (solo si `--wait`)
 
 ```bash
-herdr agent read <TARGET_PANE> --source visible --lines 80 --format text
+herdr agent read "$AGENT_NAME" --source visible --lines 80 --format text
 ```
 
 El output viene con UI noise (banners, frames, status bar). No tratar de parsear quirurgicamente — entregar el bloque visible tal cual, y dejar que el usuario localice la respuesta. Como referencia, el patron tipico es:
@@ -208,6 +247,8 @@ Si el agente respondio con texto corto, basta con incluirlo entero. Si es largo 
 
 ### Modo fire-and-forget (sin `--wait`)
 
+Re-resolver `PANE_ID` fresh antes de armar el reporte (`herdr agent get "$AGENT_NAME" | jq -r .result.agent.pane_id`):
+
 ```text
 ## /herdr-detach report
 
@@ -215,15 +256,18 @@ Si el agente respondio con texto corto, basta con incluirlo entero. Si es largo 
 - agente: <AGENT>
 - ubicacion: <here | new>
 - workspace_id: <WORKSPACE_ID>
-- pane_id: <TARGET_PANE>
+- agent_name: <AGENT_NAME>
+- pane_id: <PANE_ID>
 - prompt enviado (primeras 80 chars): <PROMPT[:80]>...
 
-Para inspeccionar: `herdr agent read <TARGET_PANE> --source visible`
-Para volver focused: `herdr agent focus <TARGET_PANE>`
-Para cerrar: `herdr pane close <TARGET_PANE>`
+Para inspeccionar: `herdr agent read <AGENT_NAME> --source visible`
+Para volver focused: `herdr agent focus <AGENT_NAME>`
+Para cerrar: `herdr pane close <PANE_ID>` (re-resolver el pane_id si pasaron cierres de panes en el medio)
 ```
 
 ### Modo blocking (con `--wait`)
+
+Re-resolver `PANE_ID` fresh antes del reporte:
 
 ```text
 ## /herdr-detach report
@@ -231,7 +275,8 @@ Para cerrar: `herdr pane close <TARGET_PANE>`
 - modo: wait
 - agente: <AGENT>
 - ubicacion: <here | new>
-- pane_id: <TARGET_PANE>
+- agent_name: <AGENT_NAME>
+- pane_id: <PANE_ID>
 - status final: <idle | done | timeout>
 
 ### Respuesta de <AGENT>
@@ -240,7 +285,7 @@ Para cerrar: `herdr pane close <TARGET_PANE>`
 <bloque visible del pane, sin trim agresivo>
 ```
 
-Pane sigue abierto en `<TARGET_PANE>`. Cerrar con `herdr pane close <TARGET_PANE>`.
+Pane sigue abierto. Cerrar con `herdr pane close <PANE_ID>` (re-resolver si pasaron cierres en el medio).
 ```
 
 ## MUST DO
@@ -249,19 +294,26 @@ Pane sigue abierto en `<TARGET_PANE>`. Cerrar con `herdr pane close <TARGET_PANE
 - Validar `<AGENT>` contra `{claude, opencode, codex}` — abortar si no matchea, no asumir default.
 - Auto-instalar la integracion de `herdr` del agente si esta `not installed` o `outdated`, sin preguntar.
 - Anclar el modo `--here` al pane origen via `HERDR_PANE_ID` (env var inyectada por herdr), **nunca** al focused state. Si `HERDR_ENV` no es `1` o `HERDR_PANE_ID` esta vacio, abortar — la sesion no esta managed por herdr.
-- Lanzar el agente con `herdr agent start --split right` (modo `--here`) o sin `--split` (modo `--new`) — un solo comando atomico. **No** correr `pane split` antes: deja un shell pelado extra al costado. Capturar el `pane_id` del response del `agent start` y usar ese para todos los pasos siguientes.
-- Manejar los dialogos de pre-arranque automaticamente: trust-folder con `Enter` (default correcta), Bypass Permissions con `Down`+`Enter` (default incorrecta). Loop-checkar porque pueden aparecer en secuencia.
+- En `--here`: lanzar con `herdr agent start --split right`. **No** correr `pane split` antes (deja shell pelado extra).
+- En `--new`: lanzar con `herdr agent start` (sin `--split`) y *despues* `herdr pane close <ROOT_PANE_ID>`. `agent start` siempre crea un pane nuevo; sin el close el workspace queda con un shell pelado al lado del agente.
+- Usar `AGENT_NAME` (= `detach-<AGENT>-<TS>`) como handle estable. herdr renumera `pane_id`s al cerrar panes, asi que el `pane_id` devuelto por `agent start` puede invalidarse. Para `agent send`/`read`/`wait`/`focus`, pasar `AGENT_NAME` directamente. Para `pane send-keys`/`pane close`/`pane read`, **re-resolver** el pane_id justo antes de cada llamada via `herdr agent get "$AGENT_NAME" | jq -r .result.agent.pane_id`.
+- Manejar los dialogos de pre-arranque automaticamente: trust-folder con `Enter` (default correcta), Bypass Permissions con `Down`+`Enter` (default incorrecta), Codex update con `Down`+`Enter` (= "Skip"; la default "Update now" lanza un `npm install -g` no pedido). Loop-checkar hasta 4 iteraciones porque pueden encadenarse.
+- Para detectar "agente listo" sin dialog visible: exigir las tres condiciones a la vez — `agent_status: idle` **+** prompt char (`❯`/`›`/`┃`) al inicio de la ultima linea no vacia **+** ausencia de patrones de menu (`^\s*[0-9]+\.\s`, `Press enter to continue`, `select an option`, `Update available`). El status `idle` solo no alcanza: codex reporta idle en menus de opciones.
 - Pasar `PROMPT` via temp file + `"$(cat <tmp>)"` para evitar shell-injection y problemas con comillas/multilinea.
-- Mandar Enter despues de `agent send` — `agent send` solo escribe el texto, no lo envia.
-- En modo `--wait`, esperar idle/done con timeout generoso (~10 min) y leer el visible buffer; dejar el pane abierto siempre.
-- Devolver `pane_id` en todos los modos para que el usuario pueda inspeccionar o cerrar a mano.
+- Mandar `agent send` → `sleep 0.5` → `pane send-keys Enter`. El sleep evita race observado en codex donde el primer Enter llega antes del flush del TTY y se pierde silenciosamente. Si el agente no transiciona a `working` en 5s post-envio, reintentar Enter.
+- En modo `--wait`, primero confirmar transicion a `working` (paso §3), despues `wait --status idle` con timeout ~10min. Sin la guarda de `working`, `wait --status idle` puede resolver con falso-positivo del idle previo al envio del prompt.
+- Devolver `pane_id` (resuelto en el momento del reporte) en todos los modos para que el usuario pueda inspeccionar o cerrar a mano.
 
 ## MUST NOT DO
 
 - No correr `/herdr-detach` si `herdr status` reporta server no-running — abortar, no intentar arrancarlo desde aca.
 - No remediar la ausencia del binario del agente (`claude`/`opencode`/`codex`) — abortar y pedir al usuario que lo instale.
 - No focus al pane derivado por default (`--no-focus` siempre) — el usuario sigue trabajando en el actual.
-- No cerrar el pane derivado al terminar, ni en modo `--wait` — la inspeccion manual queda como side-channel valido.
+- No cerrar el pane derivado al terminar, ni en modo `--wait` — la inspeccion manual queda como side-channel valido. (Excepcion: el `pane close <ROOT_PANE_ID>` del paso `--new` es sobre el shell pelado, no sobre el pane del agente.)
+- No guardar el `pane_id` devuelto por `agent start` y usarlo en pasos posteriores sin re-resolver — herdr renumera `pane_id`s al cerrar panes (sea el cierre del root_pane en `--new`, sea un cierre concurrente del usuario o de otro skill).
+- No declarar "agente listo" solo porque ves `❯`/`›`/`┃` en el buffer ni solo porque `agent_status == idle`. Exigir las tres condiciones combinadas (ver MUST DO).
+- No mandar Enter inmediatamente despues de `agent send` sin el `sleep 0.5` previo — race observado en codex.
+- No mandar Enter solo en el dialog de update de codex — la default es "Update now" y dispara `npm install -g`. Mandar `Down` + `Enter` para "Skip".
 - No interpolar `PROMPT` crudo en la linea de shell de `agent send` — usar temp file.
 - No parsear/limpiar la respuesta del agente derivado mas alla de truncar a las ultimas 60 lineas si es muy larga.
 - No persistir nada en auto-memory.

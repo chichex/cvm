@@ -244,7 +244,7 @@ Deriva un prompt a otro agente CLI (`claude`, `opencode`, `codex`) corriendo en 
 
 - `<agente>`: `claude` | `opencode` | `codex`.
 - `--wait`: bloquea hasta que el agente derivado termine (status `idle` o `done`) y devuelve la respuesta. Default: fire-and-forget — devuelve `pane_id` y sigue.
-- `--here`: split del pane focused actual (default). `--new` crea un workspace nuevo dedicado.
+- `--here`: split del pane que origino la invocacion (anclado via `HERDR_PANE_ID`, no via focus state). Default. `--new`: crea un workspace nuevo dedicado.
 
 Asume que la sesion actual ya corre dentro de `herdr` y que el binario del agente derivado esta en PATH. La integracion de `herdr` con el agente (`herdr integration install <agente>`) se auto-instala si falta.
 
