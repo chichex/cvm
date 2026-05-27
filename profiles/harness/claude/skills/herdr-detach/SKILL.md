@@ -1,6 +1,6 @@
 Deriva un prompt a otro agente CLI (`claude`, `opencode`, `codex`) corriendo en un pane de `herdr`, opcionalmente bloqueando hasta que el agente termine y devuelve la respuesta. Usar cuando queres delegar trabajo a una sesion paralela visible en otro pane y, segun el caso, seguir trabajando vos o esperar la respuesta antes de continuar.
 
-Skill **exclusivo para Claude Code** (depende del tool `Bash` para hablar con la CLI `herdr` por su socket API). Asume que la sesion actual ya esta corriendo dentro de `herdr` — el skill detecta el workspace/pane focused automaticamente para el modo `--here`.
+Skill **exclusivo para Claude Code** (depende del tool `Bash` para hablar con la CLI `herdr` por su socket API). Asume que la sesion actual ya esta corriendo dentro de `herdr` — el skill se ancla al pane que originó la invocacion via la env var `HERDR_PANE_ID` (invariante al focus state, asi que el usuario puede moverse a otro pane mientras el skill se resuelve sin desviar el origen).
 
 ## Argumentos
 
@@ -11,7 +11,7 @@ Skill **exclusivo para Claude Code** (depende del tool `Bash` para hablar con la
 - `<agente>`: `claude` | `opencode` | `codex`. Otros valores cortan el flujo.
 - `<prompt>`: texto libre que se le envia al agente derivado. Todo lo que sigue al `<agente>` se concatena en un solo string.
 - `--wait`: bloquea hasta que el agente derivado termine de responder (status `idle` o `done`) y devuelve la respuesta inline. Default: fire-and-forget — devuelve `pane_id` y sigue.
-- `--here`: split del pane focused actual (split a la derecha). **Default**.
+- `--here`: split del pane que **originó** la invocacion (no del pane actualmente focused — se ancla via `HERDR_PANE_ID`). Split a la derecha. **Default**.
 - `--new`: crea un workspace nuevo dedicado.
 
 El pane derivado siempre se deja abierto, aun en modo `--wait`, para que puedas inspeccionarlo o seguir la conversacion a mano.
@@ -76,13 +76,20 @@ La integracion hookea el reporting de estado (`idle|working|blocked|done`) para 
 
 ### 6. Resolver workspace / pane base
 
-Para `--here`:
+Para `--here`, **anclar al pane que originó la invocacion** — no al focused state, porque el usuario puede moverse de pane mientras el skill se resuelve. Herdr inyecta una env var en cada pane que maneja, que identifica de forma estable a ese pane:
 
 ```bash
-herdr agent list 2>&1
+[ "${HERDR_ENV:-}" = "1" ] || abort "no estoy corriendo dentro de un pane herdr (HERDR_ENV no es 1)"
+[ -n "${HERDR_PANE_ID:-}" ] || abort "HERDR_PANE_ID vacio — la sesion no esta managed por herdr"
 ```
 
-Parsear JSON, encontrar el agente con `focused: true`. Capturar `WORKSPACE_ID`, `PANE_ID_BASE` (sera el pane a splittear), `CWD_BASE`. Si no hay ninguno focused (raro), abortar pidiendo focus manual.
+La API acepta `HERDR_PANE_ID` (formato `p_N`) como identifier de pane. Resolver `cwd`, `workspace_id` y `tab_id` con un solo call:
+
+```bash
+herdr pane get "$HERDR_PANE_ID" 2>&1
+```
+
+Parsear el JSON. Capturar `PANE_ID_BASE` (= `pane_id` real del response, ej `w652897bef8d7d2-1`), `WORKSPACE_ID`, `TAB_ID`, `CWD_BASE`. **No usar `focused: true`** — el campo viene en el response pero no es lo que nos interesa: lo que importa es el pane del shell que invoca, no el que tenga focus en el momento.
 
 Para `--new`:
 
@@ -90,7 +97,7 @@ Para `--new`:
 herdr workspace create --cwd <CWD_ACTUAL> --label "detach-<AGENT>" --no-focus 2>&1
 ```
 
-Capturar `WORKSPACE_ID` y `PANE_ID_BASE` del root_pane del workspace nuevo. Usar el `pwd` del shell actual como `CWD_ACTUAL`.
+Capturar `WORKSPACE_ID` y `PANE_ID_BASE` del root_pane del workspace nuevo. Para `<CWD_ACTUAL>` usar el `cwd` del pane origen (resuelto desde `HERDR_PANE_ID` como arriba), no el `pwd` del shell — son lo mismo en el caso comun, pero anclar al pane origen es la fuente de verdad si el shell hubiera cambiado de directorio.
 
 ## Ejecutar
 
@@ -239,7 +246,7 @@ Pane sigue abierto en `<TARGET_PANE>`. Cerrar con `herdr pane close <TARGET_PANE
 - Validar que `herdr` esta en PATH y que su server esta `running` antes de cualquier accion.
 - Validar `<AGENT>` contra `{claude, opencode, codex}` — abortar si no matchea, no asumir default.
 - Auto-instalar la integracion de `herdr` del agente si esta `not installed` o `outdated`, sin preguntar.
-- Detectar el pane focused para `--here`; crear workspace nuevo solo si `--new`.
+- Anclar el modo `--here` al pane origen via `HERDR_PANE_ID` (env var inyectada por herdr), **nunca** al focused state. Si `HERDR_ENV` no es `1` o `HERDR_PANE_ID` esta vacio, abortar — la sesion no esta managed por herdr.
 - Capturar el `pane_id` siempre del response de `agent start` (no del split, porque pueden diferir).
 - Manejar los dialogos de pre-arranque automaticamente: trust-folder con `Enter` (default correcta), Bypass Permissions con `Down`+`Enter` (default incorrecta). Loop-checkar porque pueden aparecer en secuencia.
 - Pasar `PROMPT` via temp file + `"$(cat <tmp>)"` para evitar shell-injection y problemas con comillas/multilinea.
