@@ -103,25 +103,27 @@ Capturar `WORKSPACE_ID` y `PANE_ID_BASE` del root_pane del workspace nuevo. Para
 
 ### 1. Lanzar el agente
 
-Para `--here`, splittear primero a la derecha y luego arrancar el agente en el pane nuevo:
+**Un solo comando** para ambos modos — `agent start` ya acepta `--split right` y crea pane + arranca el agente atomicamente. NO hacer `pane split` antes; eso crea un pane vacio extra que queda como shell pelado al costado.
+
+Para `--here`:
 
 ```bash
-herdr pane split <PANE_ID_BASE> --direction right --cwd <CWD_BASE> --no-focus
+herdr agent start "detach-<AGENT>-<TS>" \
+  --workspace <WORKSPACE_ID> --tab <TAB_ID> \
+  --cwd <CWD_BASE> --split right --no-focus \
+  -- <AGENT>
 ```
 
-Capturar el `pane_id` del split como `TARGET_PANE`.
-
-Para `--new`, el `TARGET_PANE` es el root pane del workspace recien creado (no splittear).
-
-En ambos modos, arrancar el agente nombrado en ese pane:
+Para `--new` (el workspace recien creado ya tiene un root_pane; arrancar el agente ahi sin `--split`):
 
 ```bash
-herdr agent start "detach-<AGENT>-<TS>" --workspace <WORKSPACE_ID> --tab <TAB_ID> --cwd <CWD_BASE> --no-focus -- <AGENT>
+herdr agent start "detach-<AGENT>-<TS>" \
+  --workspace <WORKSPACE_ID> --tab <TAB_ID> \
+  --cwd <CWD_BASE> --no-focus \
+  -- <AGENT>
 ```
 
-`<TS>` es un timestamp corto (`date +%s` o equivalente) para no chocar con nombres existentes. Capturar el `pane_id` devuelto como `TARGET_PANE` (sobreescribe el del split — herdr a veces reusa el slot o crea uno nuevo segun el caso).
-
-> Nota: si `agent start` se invoca con `--workspace` pero sin `--tab`, herdr puede abrir el agente en un tab/pane distinto al del split. Capturar el `pane_id` del response del `agent start` y usar ese siempre como `TARGET_PANE`.
+`<TS>` es un timestamp corto (`date +%s`) para no chocar con nombres existentes. Capturar el `pane_id` devuelto del response como `TARGET_PANE` — ese es el pane real donde corre el agente, y es el que se usa en todos los pasos siguientes (`agent send`, `agent read`, `agent wait`, `pane send-keys`, etc).
 
 ### 2. Handle de dialogos de pre-arranque
 
@@ -247,7 +249,7 @@ Pane sigue abierto en `<TARGET_PANE>`. Cerrar con `herdr pane close <TARGET_PANE
 - Validar `<AGENT>` contra `{claude, opencode, codex}` — abortar si no matchea, no asumir default.
 - Auto-instalar la integracion de `herdr` del agente si esta `not installed` o `outdated`, sin preguntar.
 - Anclar el modo `--here` al pane origen via `HERDR_PANE_ID` (env var inyectada por herdr), **nunca** al focused state. Si `HERDR_ENV` no es `1` o `HERDR_PANE_ID` esta vacio, abortar — la sesion no esta managed por herdr.
-- Capturar el `pane_id` siempre del response de `agent start` (no del split, porque pueden diferir).
+- Lanzar el agente con `herdr agent start --split right` (modo `--here`) o sin `--split` (modo `--new`) — un solo comando atomico. **No** correr `pane split` antes: deja un shell pelado extra al costado. Capturar el `pane_id` del response del `agent start` y usar ese para todos los pasos siguientes.
 - Manejar los dialogos de pre-arranque automaticamente: trust-folder con `Enter` (default correcta), Bypass Permissions con `Down`+`Enter` (default incorrecta). Loop-checkar porque pueden aparecer en secuencia.
 - Pasar `PROMPT` via temp file + `"$(cat <tmp>)"` para evitar shell-injection y problemas con comillas/multilinea.
 - Mandar Enter despues de `agent send` — `agent send` solo escribe el texto, no lo envia.
