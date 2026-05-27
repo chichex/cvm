@@ -116,23 +116,40 @@ herdr agent start "detach-<AGENT>-<TS>" --workspace <WORKSPACE_ID> --tab <TAB_ID
 
 > Nota: si `agent start` se invoca con `--workspace` pero sin `--tab`, herdr puede abrir el agente en un tab/pane distinto al del split. Capturar el `pane_id` del response del `agent start` y usar ese siempre como `TARGET_PANE`.
 
-### 2. Handle del trust-folder prompt
+### 2. Handle de dialogos de pre-arranque
 
-`claude` y `codex` muestran un prompt de "trust this directory" la primera vez que se abren en un cwd. Esto se ve como status `blocked` (claude) o `idle` con un dialogo (codex).
+`claude` y `codex` pueden mostrar dialogos antes de aceptar input. Pueden aparecer en secuencia (ej. trust folder seguido de bypass permissions), asi que hay que loop-checkar hasta que no quede ninguno. Dialogos conocidos:
 
-Esperar 3 segundos a que el TUI cargue, leer el pane:
+| Dialogo | Trigger | Default seleccionada | Como llegar a la opcion correcta |
+|---|---|---|---|
+| Trust this directory | Primera vez que `claude`/`codex` abre un cwd | "Yes, I trust" / "Yes, continue" (opcion 1, **correcta**) | `Enter` |
+| Bypass Permissions warning | `claude` con `permissions.defaultMode=bypassPermissions` en settings.json | "No, exit" (opcion 1, **incorrecta**) | `Down` + `Enter` |
+
+Flujo (hasta N=3 iteraciones):
 
 ```bash
+sleep 3
 herdr agent read <TARGET_PANE> --source visible --lines 30 --format text
 ```
 
-Si el texto contiene `trust this folder`, `trust the contents`, `Yes, I trust` o `Yes, continue` (case-insensitive), mandar Enter para confirmar:
+Sobre el texto leido (case-insensitive):
 
-```bash
-herdr pane send-keys <TARGET_PANE> Enter
-```
+- Si contiene `Bypass Permissions mode` (o equivalente), mandar `Down` + `Enter` para saltar de "No, exit" a "Yes, I accept" antes de confirmar:
 
-Esperar 2 segundos y re-leer. Si sigue el dialogo, abortar y avisar al usuario que confirme manualmente en el pane.
+  ```bash
+  herdr pane send-keys <TARGET_PANE> Down
+  herdr pane send-keys <TARGET_PANE> Enter
+  ```
+
+- Si contiene `trust this folder`, `trust the contents`, `Yes, I trust` o `Yes, continue`, mandar `Enter` directo (la default ya es la correcta):
+
+  ```bash
+  herdr pane send-keys <TARGET_PANE> Enter
+  ```
+
+- Si no matchea ningun dialogo conocido y el status es `idle` con un input prompt visible (`❯` para claude, `›` para codex), el agente esta listo — salir del loop.
+
+Entre iteraciones, dormir 2 segundos. Si despues de 3 iteraciones sigue habiendo un dialogo no resuelto, abortar y avisar al usuario que confirme manualmente en el pane (no adivinar opciones desconocidas — el costo de equivocarse es cerrar la sesion).
 
 ### 3. Enviar el prompt
 
@@ -224,7 +241,7 @@ Pane sigue abierto en `<TARGET_PANE>`. Cerrar con `herdr pane close <TARGET_PANE
 - Auto-instalar la integracion de `herdr` del agente si esta `not installed` o `outdated`, sin preguntar.
 - Detectar el pane focused para `--here`; crear workspace nuevo solo si `--new`.
 - Capturar el `pane_id` siempre del response de `agent start` (no del split, porque pueden diferir).
-- Manejar el trust-folder prompt automaticamente (Enter) cuando aparece al inicio.
+- Manejar los dialogos de pre-arranque automaticamente: trust-folder con `Enter` (default correcta), Bypass Permissions con `Down`+`Enter` (default incorrecta). Loop-checkar porque pueden aparecer en secuencia.
 - Pasar `PROMPT` via temp file + `"$(cat <tmp>)"` para evitar shell-injection y problemas con comillas/multilinea.
 - Mandar Enter despues de `agent send` — `agent send` solo escribe el texto, no lo envia.
 - En modo `--wait`, esperar idle/done con timeout generoso (~10 min) y leer el visible buffer; dejar el pane abierto siempre.
