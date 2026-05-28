@@ -206,7 +206,18 @@ herdr pane send-keys "$PANE_ID" Enter
 
 `agent send` escribe texto literal sin ejecutar; el Enter posterior es lo que envia el prompt al agente (en los TUIs de claude/opencode/codex, Enter es el binding para "send"). El `sleep 0.5` evita un race observado en codex donde el primer Enter llega antes de que el TTY haya terminado de procesar el `agent send` y se pierde silenciosamente (el prompt queda escrito en el input sin haberse enviado).
 
-**Confirmar que el envio surtio efecto**: esperar hasta 5s a que el agente transicione a `working`. Si no transiciona, reintentar Enter (idempotente en los TUIs cuando el input box ya tiene el prompt encolado):
+**Caso prompt largo (pasted text)**: cuando `agent send` manda un prompt multilinea con muchas lineas (>20-30), el TUI de claude lo trata como "pasted text" y lo colapsa en el input box como `❯ [Pasted text #1 +25 lines][Pasted text #2 +19 lines]...`. En ese estado, **el primer Enter NO submitea** — solo confirma el paste / cambia el modo del input. Hace falta un segundo Enter para que el TUI mande el prompt al agente. Sintomas observados tras el primer Enter: el prompt sigue en el input box como `[Pasted text +N lines]`, el status sigue `idle` (sin spinner). Recien con el segundo Enter el input se limpia y aparece el spinner (`✢ Finagling…` o similar).
+
+**Confirmar que el envio surtio efecto** (loop hasta N=2 reintentos de Enter — no mas, para no mandar Enters de mas que confundan al TUI): despues de cada Enter, leer el input box y chequear si el prompt todavia esta ahi:
+
+```bash
+herdr pane send-keys "$PANE_ID" Enter
+sleep 0.8
+herdr agent read "$AGENT_NAME" --source visible --lines 10 --format text
+```
+
+- Si el buffer visible todavia muestra `[Pasted text +N lines]` (o contenido del prompt persistiendo en el input area, con el agente aun `idle`), mandar Enter una segunda vez y re-chequear. No pasar de 2 Enters totales.
+- Como confirmacion adicional, esperar hasta 5s a que el agente transicione a `working`. Si no transiciona ni el input se limpio, reintentar Enter (idempotente en los TUIs cuando el input box ya tiene el prompt encolado):
 
 ```bash
 herdr agent wait "$AGENT_NAME" --status working --timeout 5000 \
@@ -301,6 +312,7 @@ Pane sigue abierto. Cerrar con `herdr pane close <PANE_ID>` (re-resolver si pasa
 - Para detectar "agente listo" sin dialog visible: exigir las tres condiciones a la vez — `agent_status: idle` **+** prompt char (`❯`/`›`/`┃`) al inicio de la ultima linea no vacia **+** ausencia de patrones de menu (`^\s*[0-9]+\.\s`, `Press enter to continue`, `select an option`, `Update available`). El status `idle` solo no alcanza: codex reporta idle en menus de opciones.
 - Pasar `PROMPT` via temp file + `"$(cat <tmp>)"` para evitar shell-injection y problemas con comillas/multilinea.
 - Mandar `agent send` → `sleep 0.5` → `pane send-keys Enter`. El sleep evita race observado en codex donde el primer Enter llega antes del flush del TTY y se pierde silenciosamente. Si el agente no transiciona a `working` en 5s post-envio, reintentar Enter.
+- Verificar via `agent read` que el prompt se submiteo despues del Enter. Si quedo como `[Pasted text +N lines]` en el input (con el agente aun `idle`), mandar Enter de nuevo. Claude TUI trata input largo (>20-30 lineas) como pasted text y requiere confirmacion adicional: el primer Enter solo confirma el paste, el segundo es el que envia. Loop hasta 2 Enters totales, no mas.
 - En modo `--wait`, primero confirmar transicion a `working` (paso §3), despues `wait --status idle` con timeout ~10min. Sin la guarda de `working`, `wait --status idle` puede resolver con falso-positivo del idle previo al envio del prompt.
 - Devolver `pane_id` (resuelto en el momento del reporte) en todos los modos para que el usuario pueda inspeccionar o cerrar a mano.
 
