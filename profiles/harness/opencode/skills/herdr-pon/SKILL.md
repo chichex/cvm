@@ -33,7 +33,7 @@ pane A (caller)                         pane B (validador)
   |<-- VERDE o CAP ----------------------|
 ```
 
-El skill solo hace setup y kickoff. Despues el loop se auto-sostiene: cada ping es un turno nuevo en la sesion persistente del otro lado.
+El skill solo hace setup y kickoff. Despues el loop se auto-sostiene: cada ping es un turno nuevo en la sesion persistente del otro lado. A debe volver al usuario inmediatamente con el reporte inicial; no espera activamente el resultado de B y tampoco sigue trabajando por su cuenta. Queda idle hasta que B pinguee.
 
 ## Pre-Flight
 
@@ -128,6 +128,10 @@ LOOP:
 
 Enviar el contrato con el mismo mecanismo robusto de `/herdr-detach`: temp file, `agent send`, `sleep 0.5`, `Enter`, reintento maximo 2.
 
+Despues del envio, NO esperar activamente el resultado de B. No llamar `herdr agent wait`, no leer/pollear el pane B, no bloquear el turno del skill. Devolver el reporte inicial y terminar; B va a escribirle a A mediante `ping.sh` cuando tenga un resultado accionable.
+
+Importante: tras devolver el reporte inicial, A no debe avanzar con mas trabajo relacionado ni empezar nuevas rondas por iniciativa propia. El estado correcto es idle: esperar a que B mande el siguiente ping y recien ahi actuar. Esto evita acumular trabajo mientras el validador todavia esta corriendo.
+
 ## Comportamiento De A
 
 Cuando B pinguea:
@@ -136,6 +140,7 @@ Cuando B pinguea:
 - Ping VERDE: reportar cierre exitoso y no volver a pinguear.
 - Ping CAP: reportar corte por cap y apuntar a `OUTPUT_FILE`.
 - Si queda ambiguo, leer `STATE_FILE` antes de actuar.
+- Si no llego ping de B, no hacer nada mas en este loop.
 
 ## Reporte Inicial
 
@@ -164,11 +169,14 @@ Frenar a mano: `herdr pane close <B_PANE>`
 - Generar `state.json`, `output.md` y `ping.sh` en `.herdr-pon/run-<TS>/`.
 - Usar rutas absolutas en el contrato.
 - Respetar `max_rounds` siempre.
+- Tras disparar la ronda 1, responder el reporte inicial y quedar idle hasta el ping de B.
 
 ## MUST NOT DO
 
 - No soportar `codex`.
 - No bloquear con `--wait` ni pollear a B.
+- No quedarse esperando el resultado de B despues del kickoff; el resultado llega por callback/ping.
+- No seguir trabajando ni acumular tareas despues del kickoff; solo actuar cuando B pinguea.
 - No correr el loop sin tope.
 - No mandar el contrato en cada ronda.
 - No focusear ni cerrar B por default.
