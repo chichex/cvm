@@ -137,7 +137,7 @@ Importante: tras devolver el reporte inicial, A no debe avanzar con mas trabajo 
 Cuando B pinguea:
 
 - Ping accionable: leer `OUTPUT_FILE`, aplicar arreglos, escribir mensaje corto a temp file y revalidar con `bash <PING_SH> <B_TERM> <archivo>`.
-- Ping VERDE: reportar cierre exitoso y no volver a pinguear.
+- Ping VERDE: reportar cierre exitoso, re-resolver el pane actual de B con `herdr agent get <B_TERM> | jq -r .result.agent.pane_id`, cerrar ese pane con `herdr pane close <pane>`, y no volver a pinguear.
 - Ping CAP: reportar corte por cap y apuntar a `OUTPUT_FILE`.
 - Si queda ambiguo, leer `STATE_FILE` antes de actuar.
 - Si no llego ping de B, no hacer nada mas en este loop.
@@ -170,6 +170,7 @@ Frenar a mano: `herdr pane close <B_PANE>`
 - Usar rutas absolutas en el contrato.
 - Respetar `max_rounds` siempre.
 - Tras disparar la ronda 1, responder el reporte inicial y quedar idle hasta el ping de B.
+- Cuando B devuelve VERDE, cerrar el pane validador que dio el verde.
 
 ## MUST NOT DO
 
@@ -179,6 +180,6 @@ Frenar a mano: `herdr pane close <B_PANE>`
 - No seguir trabajando ni acumular tareas despues del kickoff; solo actuar cuando B pinguea.
 - No correr el loop sin tope.
 - No mandar el contrato en cada ronda.
-- No focusear ni cerrar B por default.
+- No focusear ni cerrar B por default; excepcion: cerrar B cuando devuelve VERDE.
 - No agregar `.herdr-pon/` a `.gitignore` salvo pedido explicito.
 - No persistir nada en memoria.
