@@ -97,23 +97,38 @@ Escribir via Write (no heredoc):
 `<B_TERM>` (terminal_id de B) se completa tras lanzar B (abajo) — escribir el archivo despues de tenerlo, o reescribir el campo.
 
 ### ping.sh (helper de envio robusto)
-Centraliza el "send + Enter" fragil (el race del TTY y el caso pasted-text que `herdr-detach` §3 documenta) en un solo lugar, asi ni A ni B lo reimplementan. Escribir via Write y `chmod +x`:
+Centraliza el "send + enter" fragil (el race del TTY y el caso pasted-text que `herdr-detach` §3 documenta) en un solo lugar, asi ni A ni B lo reimplementan. **Dos gotchas reales con validador `opencode`** (verificados — con `claude` no se notan): (1) la tecla de submit es **`enter` MINUSCULA**; `Enter` capitalizada inserta un newline en el input de opencode y NO submitea, asi que el ping queda sin disparar. (2) opencode puede quedar en **"shell mode"** (footer `esc exit shell mode`): ahi el texto pegado corre como **comando zsh** en vez de prompt de chat (`command not found: ...`). Un `esc` previo lo saca a modo chat — pero **`esc` NO se manda a claude** (ahi cancela/interrumpe el input). El helper detecta el tipo de peer (`.result.agent.agent`) y solo aplica el esc-guard a opencode. Escribir via Write y `chmod +x`:
 
 ```bash
 #!/usr/bin/env bash
 # herdr-pon: escribe <msg_file> en el input del agente <peer> y lo submitea.
-# Confirma el envio esperando la transicion a "working" (hasta 2 Enters).
+# Confirma el envio esperando la transicion a "working" (hasta 3 enters).
 # Uso: ping.sh <peer_handle> <msg_file>
 set -uo pipefail
 PEER="${1:?falta peer handle}"
 MSG_FILE="${2:?falta msg file}"
 [ -f "$MSG_FILE" ] || { echo "msg file inexistente: $MSG_FILE" >&2; exit 1; }
 
+AGENT=$(herdr agent get "$PEER" | jq -r .result.agent.agent)
+PANE=$(herdr agent get "$PEER" | jq -r .result.agent.pane_id)
+
+# opencode puede quedar en "shell mode" (footer "esc exit shell mode"): ahi el texto corre
+# como comando zsh en vez de prompt. Un esc previo garantiza modo chat. NO mandar esc a claude.
+[ "$AGENT" = "opencode" ] && { herdr pane send-keys "$PANE" esc; sleep 0.3; }
+
 herdr agent send "$PEER" "$(cat "$MSG_FILE")"
 sleep 0.5
-for try in 1 2; do
+
+# opencode: si el paste cayo igual en shell mode, salir y reenviar una vez
+if [ "$AGENT" = "opencode" ] && herdr agent read "$PEER" --source visible 2>/dev/null | grep -q "exit shell mode"; then
+  herdr pane send-keys "$PANE" esc; sleep 0.3
+  herdr agent send "$PEER" "$(cat "$MSG_FILE")"; sleep 0.5
+fi
+
+# submit con 'enter' MINUSCULA (la 'Enter' capitalizada con opencode inserta newline, no submitea)
+for try in 1 2 3; do
   PANE=$(herdr agent get "$PEER" | jq -r .result.agent.pane_id)
-  herdr pane send-keys "$PANE" Enter
+  herdr pane send-keys "$PANE" enter
   sleep 1
   ST=$(herdr agent get "$PEER" | jq -r .result.agent.agent_status)
   [ "$ST" = "working" ] && exit 0
@@ -136,7 +151,7 @@ Capturar `B_TERM=$(herdr agent get "$B_NAME" | jq -r .result.agent.terminal_id)`
 Igual que `herdr-detach` §2: loop hasta 4 iteraciones, trust-folder `Enter`, Bypass `Down`+`Enter`. (No hay rama codex porque `codex` no esta soportado.) Confirmar "agente listo" con las tres condiciones combinadas (status `idle` + prompt char al inicio de la ultima linea + ausencia de patrones de menu).
 
 ### L3. Enviar el contrato + disparar ronda 1
-Construir el prompt inicial de B = **contrato de protocolo** (template abajo, con los placeholders resueltos a valores reales/absolutos). Escribirlo a un temp file y enviarlo con el mecanismo de `herdr-detach` §3 (`agent send` via `"$(cat tmp)"` → `sleep 0.5` → re-resolver `pane_id` → `Enter`, con el manejo de pasted-text / doble-Enter capado a 2 que ese skill detalla).
+Construir el prompt inicial de B = **contrato de protocolo** (template abajo, con los placeholders resueltos a valores reales/absolutos). Escribirlo a un temp file y enviarlo con el mecanismo de `herdr-detach` §3 (`agent send` via `"$(cat tmp)"` → `sleep 0.5` → re-resolver `pane_id` → `enter` minúscula, reintento). **Con validador `opencode`** aplican los dos gotchas del helper: submit con `enter` minúscula (no `Enter`) y, si el footer muestra `esc exit shell mode`, mandar `esc` antes y reenviar (no a claude). Reusar `ping.sh` para esto en vez de rearmarlo a mano.
 
 #### Contrato (prompt inicial de B)
 
@@ -223,7 +238,7 @@ Frenar a mano: `herdr pane close <B_PANE>` (re-resolver el pane_id si hubo cierr
 - Reusar el pre-flight/launch/dialogos/cleanup de `herdr-detach` (binario, server, integracion, anclaje a `HERDR_PANE_ID`, `agent start --split right` en `--here` con snapshot `TERMS_BEFORE`, `pane run` sobre el `root_pane` en `--new`, §1b de stray panes). No reimplementar.
 - Direccionar el loop por `terminal_id` (`A_TERM`/`B_TERM`), no por nombre: los nombres de agente NO son únicos (varias sesiones comparten `claude`/`opencode`), así que `agent send claude` es ambiguo. El terminal_id es único y estable. `A_TERM` sale de `herdr pane get "$HERDR_PANE_ID" | jq -r .result.pane.terminal_id` (path `.result.pane.*`). No renombrar el pane de A.
 - Generar `state.json`, `output.md` y `ping.sh` en `$CWD_BASE/.herdr-pon/run-<TS>/`, con **rutas absolutas** en el contrato (A y B comparten cwd, pero anclar a absoluto evita sorpresas si alguno cambia de dir).
-- `ping.sh` es la unica via de envio entre panes: `agent send` + Enter con confirmacion por transicion a `working` (cap 2 Enters). Hacerlo ejecutable.
+- `ping.sh` es la unica via de envio entre panes: `agent send` + `enter` **minúscula** con confirmacion por transicion a `working` (hasta 3 intentos). Hacerlo ejecutable. **Validador `opencode`:** la `Enter` capitalizada NO submitea (inserta newline) y un paste puede caer en "shell mode" (corre como zsh) → el helper usa `enter` minúscula y un esc-guard condicionado al tipo de peer (`.result.agent.agent == opencode`); a claude NO se le manda `esc`.
 - Embeber el contrato completo y self-describing en el prompt inicial de B, con todos los placeholders resueltos a valores reales. B es persistente: el contrato se manda una vez.
 - Default `--max-rounds 5`. El cap se chequea en B (quien incrementa `round`); al superarlo, B avisa a A y corta — el loop nunca corre infinito.
 - Fire-and-forget tras el kickoff (loop push, sin `--wait`).
