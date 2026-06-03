@@ -70,7 +70,7 @@ Escribir `state.json` inicial despues de lanzar B:
 }
 ```
 
-Escribir `ping.sh` y hacerlo ejecutable:
+Escribir `ping.sh` y hacerlo ejecutable. **Dos gotchas con peer `opencode`** (con `claude` no se notan): submit es `enter` MINUSCULA (`Enter` inserta newline, no submitea); y un paste puede caer en "shell mode" (footer `esc exit shell mode`) donde el texto corre como comando zsh → un `esc` previo lo saca a modo chat, pero `esc` NO se manda a claude (lo interrumpe). El helper detecta el tipo de peer y solo aplica el esc-guard a opencode:
 
 ```bash
 #!/usr/bin/env bash
@@ -79,11 +79,24 @@ PEER="${1:?falta peer handle}"
 MSG_FILE="${2:?falta msg file}"
 [ -f "$MSG_FILE" ] || { echo "msg file inexistente: $MSG_FILE" >&2; exit 1; }
 
+AGENT=$(herdr agent get "$PEER" | jq -r .result.agent.agent)
+PANE=$(herdr agent get "$PEER" | jq -r .result.agent.pane_id)
+
+# opencode puede quedar en "shell mode" (corre el texto como zsh): un esc previo lo saca a chat. NO a claude.
+[ "$AGENT" = "opencode" ] && { herdr pane send-keys "$PANE" esc; sleep 0.3; }
+
 herdr agent send "$PEER" "$(cat "$MSG_FILE")"
 sleep 0.5
-for try in 1 2; do
+
+# opencode: si el paste cayo igual en shell mode, salir y reenviar una vez
+if [ "$AGENT" = "opencode" ] && herdr agent read "$PEER" --source visible 2>/dev/null | grep -q "exit shell mode"; then
+  herdr pane send-keys "$PANE" esc; sleep 0.3
+  herdr agent send "$PEER" "$(cat "$MSG_FILE")"; sleep 0.5
+fi
+
+for try in 1 2 3; do
   PANE=$(herdr agent get "$PEER" | jq -r .result.agent.pane_id)
-  herdr pane send-keys "$PANE" Enter
+  herdr pane send-keys "$PANE" enter   # MINUSCULA: 'Enter' con opencode no submitea
   sleep 1
   ST=$(herdr agent get "$PEER" | jq -r .result.agent.agent_status)
   [ "$ST" = "working" ] && exit 0
@@ -126,7 +139,7 @@ LOOP:
 4. Si falla: incrementa round. Si round > max_rounds: status="capped", ping a A con CAP, termina. Si no, ping accionable a A con resumen y ruta de output. Queda idle esperando revalidacion.
 ```
 
-Enviar el contrato con el mismo mecanismo robusto de `/herdr-detach`: temp file, `agent send`, `sleep 0.5`, `Enter`, reintento maximo 2.
+Enviar el contrato con el mismo mecanismo robusto de `/herdr-detach`: temp file, `agent send`, `sleep 0.5`, `enter` minúscula, reintento. Si el peer es `opencode`, aplican los gotchas del helper (enter minúscula + esc-guard ante "shell mode"); usar `ping.sh`, no rearmarlo a mano.
 
 Despues del envio, NO esperar activamente el resultado de B. No llamar `herdr agent wait`, no leer/pollear el pane B, no bloquear el turno del skill. Devolver el reporte inicial y terminar; B va a escribirle a A mediante `ping.sh` cuando tenga un resultado accionable.
 
