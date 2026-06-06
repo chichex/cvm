@@ -76,7 +76,6 @@ func BypassConfig() map[string]any {
 				"Bash(*)", "Edit(*)", "Write(*)", "Read(*)",
 				"Glob(*)", "Grep(*)", "Agent(*)",
 				"WebFetch(*)", "WebSearch(*)", "NotebookEdit(*)",
-				"mcp__*",
 			},
 		},
 	}
