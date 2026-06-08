@@ -140,6 +140,54 @@ func TestPullFastForwardsCleanRepo(t *testing.T) {
 	assertFileContent(t, filepath.Join(clone, "claude", "CLAUDE.md"), "v2")
 }
 
+func TestPushCommitsPendingChangesThenPushes(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+
+	// A bare remote the clone can push to.
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	runGit(t, "", "init", "-q", "--bare", bare)
+
+	// Seed the remote with an initial commit via a scratch clone.
+	seed := filepath.Join(t.TempDir(), "seed")
+	runGit(t, "", "clone", "-q", bare, seed)
+	writeFile(t, filepath.Join(seed, "cvm.profile.toml"), claudeManifest)
+	writeFile(t, filepath.Join(seed, "claude", "CLAUDE.md"), "v1")
+	runGit(t, seed, "add", "-A")
+	runGit(t, seed, "commit", "-q", "-m", "init")
+	runGit(t, seed, "push", "-q", "origin", "HEAD")
+
+	// The profile's working clone, with an uncommitted edit.
+	clone := profile.ProfileDir("work")
+	if err := os.MkdirAll(filepath.Dir(clone), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	runGit(t, "", "clone", "-q", bare, clone)
+	writeFile(t, filepath.Join(clone, "claude", "CLAUDE.md"), "v2 edited")
+
+	st, _ := state.Load()
+	st.SetSource("work", clone)
+	if err := st.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	if err := Push("work", "tweak claude"); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	// The edit must be committed (clean tree) and present on the remote.
+	if dirty, err := worktreeDirty(clone); err != nil || dirty {
+		t.Fatalf("expected clean worktree after push (dirty=%v, err=%v)", dirty, err)
+	}
+	verify := filepath.Join(t.TempDir(), "verify")
+	runGit(t, "", "clone", "-q", bare, verify)
+	assertFileContent(t, filepath.Join(verify, "claude", "CLAUDE.md"), "v2 edited")
+}
+
 func TestLooksLikeProfileWithManifestBackedClaudeAssets(t *testing.T) {
 	root := t.TempDir()
 

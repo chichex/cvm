@@ -302,9 +302,12 @@ func Pull(profileName string) ([]string, error) {
 	return updated, nil
 }
 
-// Push pushes the active/given profile's git repo, surfacing git's own output
-// (including non-fast-forward rejections) verbatim. No merge smarts.
-func Push(profileName string) error {
+// Push commits any pending changes in the profile's git repo and pushes them to
+// its remote in one step. If the working tree is dirty, cvm stages everything
+// (git add -A) and commits with the given message (or a default one) before
+// pushing. git's own output — including non-fast-forward rejections — is
+// surfaced verbatim. No merge smarts.
+func Push(profileName, message string) error {
 	repoDir, err := SourceRepoDir(profileName)
 	if err != nil {
 		return err
@@ -312,8 +315,35 @@ func Push(profileName string) error {
 	if _, err := os.Stat(filepath.Join(repoDir, ".git")); err != nil {
 		return fmt.Errorf("profile %q is not a git repo (%s)", profileName, repoDir)
 	}
+
+	dirty, err := worktreeDirty(repoDir)
+	if err != nil {
+		return err
+	}
+	if dirty {
+		if message == "" {
+			message = fmt.Sprintf("cvm: update %s profile", profileName)
+		}
+		fmt.Printf("Committing changes in %s (%s)...\n", profileName, repoDir)
+		if err := gitInDir(repoDir, "add", "-A"); err != nil {
+			return err
+		}
+		if err := gitInDir(repoDir, "commit", "-m", message); err != nil {
+			return err
+		}
+	}
+
 	fmt.Printf("Pushing %s (%s)...\n", profileName, repoDir)
 	cmd := exec.Command("git", "-C", repoDir, "push")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// gitInDir runs a git subcommand in dir, wiring stdout/stderr through so git's
+// output reaches the user verbatim.
+func gitInDir(dir string, args ...string) error {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

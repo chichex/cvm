@@ -10,12 +10,14 @@ import (
 
 var pushCmd = &cobra.Command{
 	Use:   "push [profile-name]",
-	Short: "Push local profile changes to its git remote",
-	Long: `Push commits in the profile's source repo to its git remote.
-Without arguments, pushes the active profile's source repo.
+	Short: "Commit pending profile changes and push them to its git remote",
+	Long: `Commit any pending changes in the profile's source repo and push them
+to its git remote, in one step. Without arguments, uses the active profile.
 
-cvm is a transparent pass-through: git's output (including non-fast-forward
-rejections) is surfaced verbatim. cvm never merges on your behalf.`,
+If the working tree is dirty, cvm stages everything (git add -A) and commits
+with -m's message (or a default "cvm: update <profile> profile") before pushing.
+git's output — including non-fast-forward rejections — is surfaced verbatim;
+cvm never merges on your behalf.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := ""
@@ -34,12 +36,14 @@ rejections) is surfaced verbatim. cvm never merges on your behalf.`,
 			name = resolved
 		}
 
-		return remote.Push(name)
+		message, _ := cmd.Flags().GetString("message")
+		return remote.Push(name, message)
 	},
 }
 
 func init() {
 	pushCmd.Flags().String("harness", "", "Harness whose active profile to push (default: claude)")
+	pushCmd.Flags().StringP("message", "m", "", "Commit message for pending changes (default: \"cvm: update <profile> profile\")")
 }
 
 // activeProfileName resolves the active profile for the selected harness.

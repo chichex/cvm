@@ -75,7 +75,7 @@ Before symlinking an item, if a **real** (non-symlink) file or dir already exist
 | `cvm add <name> <giturl>` | `git clone` (keeping `.git`) into `~/.cvm/profiles/<name>` |
 | `cvm add <name> --path <dir>` | Register an existing local repo as the source (no clone) |
 | `cvm pull` | `git pull --ff-only` the active profile's source repo |
-| `cvm push` | `git push` the active profile's source repo |
+| `cvm push` | commit pending changes + `git push` the active profile's source repo |
 | `cvm rm <name>` | Unregister a profile |
 | `cvm harness` | Inspect harness targets/items |
 | `cvm upgrade` | Update the cvm binary itself |
@@ -120,16 +120,17 @@ cvm rm work             # unregister a profile
 
 ### Update and publish
 
-`cvm pull` and `cvm push` are transparent pass-throughs to git on the profile's source repo. cvm does **not** manage conflicts — git does.
+`cvm pull` fast-forwards from git; `cvm push` commits any pending changes and pushes them in one step. cvm does **not** manage conflicts — git does.
 
 ```bash
 cvm pull                # git -C <source> pull --ff-only
 cvm pull chiche         # pull a specific profile
-cvm push                # git -C <source> push (active profile)
+cvm push                # commit pending changes + git push (active profile)
+cvm push -m "tweak"     # use a custom commit message
 ```
 
 - `pull` uses `--ff-only`: if the branch has diverged it refuses cleanly, never auto-merges. If the working tree is dirty, the pull is skipped with a warning — resolve it with git in the source repo.
-- `push` surfaces git's output verbatim, including non-fast-forward rejections. No merge smarts, no conflict markers — just git.
+- `push` first commits a dirty tree (`git add -A` + commit, message from `-m` or a default `cvm: update <profile> profile`), then pushes. git's output — including non-fast-forward rejections — is surfaced verbatim. No merge smarts, no conflict markers — just git.
 
 ### Upgrade cvm
 
