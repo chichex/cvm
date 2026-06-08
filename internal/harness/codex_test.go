@@ -25,17 +25,3 @@ func TestCodexTargetDirUsesCodexHome(t *testing.T) {
 		t.Fatalf("target with CODEX_HOME = %q, want %q", got, custom)
 	}
 }
-
-func TestCodexScaffoldAssetSupportsInstructionsOnly(t *testing.T) {
-	asset, err := Codex().ScaffoldAsset("instructions", "")
-	if err != nil {
-		t.Fatalf("scaffold instructions: %v", err)
-	}
-	if got, want := asset.ProfilePath, "AGENTS.md"; got != want {
-		t.Fatalf("profile path = %q, want %q", got, want)
-	}
-
-	if _, err := Codex().ScaffoldAsset("skill", "deploy"); err == nil {
-		t.Fatal("codex skill scaffolding should fail")
-	}
-}

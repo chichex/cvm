@@ -22,6 +22,11 @@ type State struct {
 	Global  GlobalState       `json:"global"`
 	Local   map[string]any    `json:"local,omitempty"`   // legacy, ignored
 	Remotes map[string]Remote `json:"remotes,omitempty"` // key = profile name
+	// Sources maps a profile name to the on-disk source repo dir that backs it:
+	// either a cloned profile (~/.cvm/profiles/<name>) or a path-registered repo
+	// (cvm add <name> --path <dir>). Empty/missing means the caller falls back to
+	// the default cloned location.
+	Sources map[string]string `json:"sources,omitempty"`
 }
 
 type GlobalState struct {
@@ -33,6 +38,7 @@ type GlobalState struct {
 func Load() (*State, error) {
 	s := &State{
 		Remotes: make(map[string]Remote),
+		Sources: make(map[string]string),
 	}
 
 	data, err := os.ReadFile(config.StatePath())
@@ -49,6 +55,9 @@ func Load() (*State, error) {
 
 	s.Global.normalize()
 	s.Remotes = normalizeRemotes(s.Remotes)
+	if s.Sources == nil {
+		s.Sources = make(map[string]string)
+	}
 	s.Local = nil
 
 	return s, nil
@@ -131,6 +140,40 @@ func (s *State) RemoveRemotesByProfile(profile string) int {
 		}
 	}
 	return removed
+}
+
+// SetSource records the on-disk source repo dir backing a profile.
+func (s *State) SetSource(profile, dir string) {
+	if s.Sources == nil {
+		s.Sources = make(map[string]string)
+	}
+	if profile == "" {
+		return
+	}
+	if dir == "" {
+		delete(s.Sources, profile)
+		return
+	}
+	s.Sources[profile] = dir
+}
+
+// GetSource returns the registered source repo dir for a profile, if any.
+func (s *State) GetSource(profile string) (string, bool) {
+	if s.Sources == nil {
+		return "", false
+	}
+	dir, ok := s.Sources[profile]
+	if !ok || dir == "" {
+		return "", false
+	}
+	return dir, true
+}
+
+// RemoveSource forgets the source dir for a profile.
+func (s *State) RemoveSource(profile string) {
+	if s.Sources != nil {
+		delete(s.Sources, profile)
+	}
 }
 
 func normalizeRemotes(remotes map[string]Remote) map[string]Remote {

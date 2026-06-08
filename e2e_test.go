@@ -88,25 +88,13 @@ func (e *testEnv) mustFail(args ...string) string {
 	return out
 }
 
-// runWithEnv executes cvm with extra environment variables merged into the environment.
-func (e *testEnv) runWithEnv(extra map[string]string, args ...string) string {
-	e.t.Helper()
-	cmd := exec.Command(cvmBin, args...)
-	cmd.Dir = e.projectDir
-	env := append(os.Environ(), "HOME="+e.home, "CODEX_HOME=", "OPENCODE_CONFIG_DIR=")
-	for k, v := range extra {
-		env = append(env, k+"="+v)
-	}
-	cmd.Env = env
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		e.t.Fatalf("cvm %s failed: %v\noutput: %s", strings.Join(args, " "), err, string(out))
-	}
-	return string(out)
+// profilesDir returns ~/.cvm/profiles for this env.
+func (e *testEnv) profilesDir() string {
+	return filepath.Join(e.home, ".cvm", "profiles")
 }
 
-// seedClaudeDir creates a minimal ~/.claude/ with a CLAUDE.md so profiles
-// have something to snapshot.
+// seedGlobalClaude creates a minimal ~/.claude/ with a CLAUDE.md so the
+// vanilla-stash machinery has a real file to move aside.
 func (e *testEnv) seedGlobalClaude(content string) {
 	e.t.Helper()
 	dir := filepath.Join(e.home, ".claude")
@@ -118,27 +106,27 @@ func (e *testEnv) seedGlobalClaude(content string) {
 	}
 }
 
-// seedLocalClaude creates a .claude/ inside the project dir.
-func (e *testEnv) seedLocalClaude(content string) {
+// writeProfile lays out a profile source repo under ~/.cvm/profiles/<name>
+// with a manifest and the given asset files (paths relative to the profile root).
+func (e *testEnv) writeProfile(name, manifest string, assets map[string]string) string {
 	e.t.Helper()
-	dir := filepath.Join(e.projectDir, ".claude")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		e.t.Fatalf("creating local .claude dir: %v", err)
+	root := filepath.Join(e.profilesDir(), name)
+	writeTestFile(e.t, filepath.Join(root, "cvm.profile.toml"), manifest)
+	for rel, body := range assets {
+		writeTestFile(e.t, filepath.Join(root, rel), body)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(content), 0644); err != nil {
-		e.t.Fatalf("writing local CLAUDE.md: %v", err)
-	}
+	return root
 }
 
 // ---------------------------------------------------------------------------
-// Global profile workflow
+// Global symlink workflow
 // ---------------------------------------------------------------------------
 
 func TestGlobalWorkflow(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# global vanilla")
 
-	// init
+	// add
 	out := e.mustRun("add", "work")
 	assertContains(t, out, "Created profile")
 
@@ -146,7 +134,8 @@ func TestGlobalWorkflow(t *testing.T) {
 	out = e.mustRun("ls")
 	assertContains(t, out, "work")
 
-	// use
+	// give the profile something to symlink, then use
+	writeTestFile(t, filepath.Join(e.profilesDir(), "work", "CLAUDE.md"), "# work profile")
 	out = e.mustRun("use", "work")
 	assertContains(t, out, "Switched claude harness")
 
@@ -154,8 +143,8 @@ func TestGlobalWorkflow(t *testing.T) {
 	out = e.mustRun("ls")
 	assertContains(t, out, "IN USE")
 
-	// use --none
-	out = e.mustRun("use", "--none")
+	// off
+	out = e.mustRun("off")
 	assertContains(t, out, "vanilla")
 
 	// rm (now that it's not active)
@@ -167,64 +156,12 @@ func TestGlobalWorkflow(t *testing.T) {
 	assertContains(t, out, "No profiles")
 }
 
-// ---------------------------------------------------------------------------
-// Local profile workflow
-// ---------------------------------------------------------------------------
-
-func TestLocalWorkflow(t *testing.T) {
-	t.Skip("local profiles were hard-deleted")
-	e := newTestEnv(t)
-	e.seedLocalClaude("# local vanilla")
-
-	// init with explicit name
-	out := e.mustRun("local", "init", "dev")
-	assertContains(t, out, "Created local profile")
-
-	// ls
-	out = e.mustRun("local", "ls")
-	assertContains(t, out, "dev")
-
-	// current before use → vanilla
-	out = e.mustRun("local", "current")
-	assertContains(t, out, "(vanilla)")
-
-	// use
-	out = e.mustRun("local", "use", "dev")
-	assertContains(t, out, "Switched to local profile")
-
-	// current after use
-	out = e.mustRun("local", "current")
-	assertContains(t, out, "dev")
-
-	// save
-	out = e.mustRun("local", "save")
-	assertContains(t, out, "Saved current state")
-
-	// use --none
-	out = e.mustRun("local", "use", "--none")
-	assertContains(t, out, "vanilla")
-
-	// rm
-	out = e.mustRun("local", "rm", "dev")
-	assertContains(t, out, "Removed local profile")
-
-	out = e.mustRun("local", "ls")
-	assertContains(t, out, "No local profiles")
-}
-
-// ---------------------------------------------------------------------------
-// Status
-// ---------------------------------------------------------------------------
-
-func TestStatus(t *testing.T) {
-	t.Skip("status command removed")
-}
-
 func TestUseHarnessPersistsActiveByHarness(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
 	e.mustRun("add", "work")
+	writeTestFile(t, filepath.Join(e.profilesDir(), "work", "CLAUDE.md"), "# work")
 	out := e.mustRun("use", "work", "--harness", "claude")
 	assertContains(t, out, "Switched claude harness")
 
@@ -251,32 +188,44 @@ func TestUseHarnessPersistsActiveByHarness(t *testing.T) {
 	}
 }
 
-func TestUseSupportsManifestBackedClaudeProfile(t *testing.T) {
+// ---------------------------------------------------------------------------
+// Symlink-apply: use symlinks the profile's managed items into the target dir
+// ---------------------------------------------------------------------------
+
+func TestUseSymlinksManifestBackedClaudeProfile(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "manifested")
-	if err := os.MkdirAll(filepath.Join(profileRoot, "claude"), 0755); err != nil {
-		t.Fatalf("mkdir manifest profile: %v", err)
-	}
-	manifest := "name = \"manifested\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n"
-	if err := os.WriteFile(filepath.Join(profileRoot, "cvm.profile.toml"), []byte(manifest), 0644); err != nil {
-		t.Fatalf("write manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(profileRoot, "claude", "CLAUDE.md"), []byte("# manifest profile"), 0644); err != nil {
-		t.Fatalf("write manifest CLAUDE.md: %v", err)
-	}
+	root := e.writeProfile("manifested",
+		"name = \"manifested\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n",
+		map[string]string{"claude/CLAUDE.md": "# manifest profile"})
 
 	e.mustRun("use", "manifested")
 
 	liveClaude := filepath.Join(e.home, ".claude", "CLAUDE.md")
-	data, err := os.ReadFile(liveClaude)
+	// The live path must be a symlink pointing into the profile source repo.
+	info, err := os.Lstat(liveClaude)
 	if err != nil {
-		t.Fatalf("read live CLAUDE.md: %v", err)
+		t.Fatalf("lstat live CLAUDE.md: %v", err)
 	}
-	if strings.TrimSpace(string(data)) != "# manifest profile" {
-		t.Fatalf("unexpected live CLAUDE.md: %q", strings.TrimSpace(string(data)))
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("expected %s to be a symlink", liveClaude)
 	}
+	resolved, err := filepath.EvalSymlinks(liveClaude)
+	if err != nil {
+		t.Fatalf("eval symlink: %v", err)
+	}
+	wantSrc, _ := filepath.EvalSymlinks(filepath.Join(root, "claude", "CLAUDE.md"))
+	if resolved != wantSrc {
+		t.Fatalf("symlink resolves to %q, want %q", resolved, wantSrc)
+	}
+	assertFileContent(t, liveClaude, "# manifest profile")
+
+	// Editing through the symlink writes straight into the source repo.
+	if err := os.WriteFile(liveClaude, []byte("# edited live"), 0644); err != nil {
+		t.Fatalf("write through symlink: %v", err)
+	}
+	assertFileContent(t, filepath.Join(root, "claude", "CLAUDE.md"), "# edited live")
 }
 
 func TestUseAppliesAllManifestHarnessesByDefault(t *testing.T) {
@@ -285,11 +234,13 @@ func TestUseAppliesAllManifestHarnessesByDefault(t *testing.T) {
 	opencodeDir := filepath.Join(e.home, ".config", "opencode")
 	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode vanilla")
 
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable\"\nharnesses = [\"claude\", \"opencode\"]\n\n[assets]\nclaude = \"claude\"\nopencode = \"opencode\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "claude", "CLAUDE.md"), "# claude portable")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode portable")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "skills", "portable-spec", "SKILL.md"), "---\ndescription: portable spec\n---\n")
+	e.writeProfile("portable",
+		"name = \"portable\"\nharnesses = [\"claude\", \"opencode\"]\n\n[assets]\nclaude = \"claude\"\nopencode = \"opencode\"\n",
+		map[string]string{
+			"claude/CLAUDE.md":                          "# claude portable",
+			"opencode/AGENTS.md":                        "# opencode portable",
+			"opencode/skills/portable-spec/SKILL.md":    "---\ndescription: portable spec\n---\n",
+		})
 
 	out := e.mustRun("use", "portable")
 	assertContains(t, out, "Switched claude harness")
@@ -322,14 +273,17 @@ func TestUseHarnessFlagLimitsManifestProfileToOneHarness(t *testing.T) {
 	opencodeDir := filepath.Join(e.home, ".config", "opencode")
 	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode vanilla")
 
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable\"\nharnesses = [\"claude\", \"opencode\"]\n\n[assets]\nclaude = \"claude\"\nopencode = \"opencode\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "claude", "CLAUDE.md"), "# claude portable")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode portable")
+	e.writeProfile("portable",
+		"name = \"portable\"\nharnesses = [\"claude\", \"opencode\"]\n\n[assets]\nclaude = \"claude\"\nopencode = \"opencode\"\n",
+		map[string]string{
+			"claude/CLAUDE.md":   "# claude portable",
+			"opencode/AGENTS.md": "# opencode portable",
+		})
 
 	out := e.mustRun("use", "portable", "--harness", "opencode")
 	assertContains(t, out, "Switched opencode harness")
 	assertNotContains(t, out, "Switched claude harness")
+	// Claude was never touched: its real vanilla file is still in place.
 	assertFileContent(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# claude vanilla")
 	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode portable")
 }
@@ -337,111 +291,51 @@ func TestUseHarnessFlagLimitsManifestProfileToOneHarness(t *testing.T) {
 func TestOpenCodeHarnessGlobalWorkflow(t *testing.T) {
 	e := newTestEnv(t)
 	opencodeDir := filepath.Join(e.home, ".config", "opencode")
-	writeTestFile(t, filepath.Join(opencodeDir, "opencode.json"), `{"theme":"system","skills":{"paths":["/custom/skills"]},"mcpServers":{"user-server":{"type":"local"}}}`)
+	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# vanilla opencode")
 
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "open")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode profile")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "skills", "deploy", "SKILL.md"), "---\nname: deploy\ndescription: Deploy app\n---\n")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "opencode.json"), `{"mcpServers":{"context7":{"type":"local"}}}`)
+	e.writeProfile("open",
+		"name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n",
+		map[string]string{
+			"opencode/AGENTS.md":              "# opencode profile",
+			"opencode/skills/deploy/SKILL.md": "---\nname: deploy\ndescription: Deploy app\n---\n",
+			"opencode/opencode.json":          `{"mcpServers":{"context7":{"type":"local"}}}`,
+		})
 
 	out := e.mustRun("use", "open", "--harness", "opencode")
 	assertContains(t, out, "Switched opencode harness")
 
+	// The profile fully owns these items — they are symlinked in verbatim.
 	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode profile")
 	if _, err := os.Stat(filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md")); err != nil {
 		t.Fatalf("expected opencode skill to be installed: %v", err)
 	}
-	assertJSONKeyExists(t, filepath.Join(opencodeDir, "opencode.json"), "theme")
-	assertOpenCodeSkillPathExists(t, filepath.Join(opencodeDir, "opencode.json"), "/custom/skills")
-	assertOpenCodeSkillPathExists(t, filepath.Join(opencodeDir, "opencode.json"), filepath.Join(opencodeDir, "skills"))
+	// opencode.json is owned by the profile, not merged: it contains exactly the
+	// profile's content (no user-side keys are blended in).
 	assertMCPServerExists(t, filepath.Join(opencodeDir, "opencode.json"), "context7")
+
+	// opencode use must not touch Claude paths.
 	if _, err := os.Stat(filepath.Join(e.home, ".claude", "AGENTS.md")); err == nil {
 		t.Fatal("opencode use should not install into Claude paths")
 	}
-
 }
 
-func TestPortableAssetsRenderForOpenCode(t *testing.T) {
-	e := newTestEnv(t)
-	opencodeDir := filepath.Join(e.home, ".config", "opencode")
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-open")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-open\"\nharnesses = [\"opencode\"]\n\n[assets]\nportable = \"portable\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
-	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "---\ndescription: Deploy app\n---\n")
-	writeTestFile(t, filepath.Join(profileRoot, "portable", "agents", "reviewer.md"), "# reviewer\n")
-
-	out := e.mustRun("use", "portable-open", "--harness", "opencode")
-	assertContains(t, out, "Switched opencode harness")
-	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# portable instructions")
-	assertFileContent(t, filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md"), "---\ndescription: Deploy app\n---")
-	assertFileContent(t, filepath.Join(opencodeDir, "agents", "reviewer.md"), "# reviewer")
-
-	out = e.mustFail("use", "--none", "--harness", "opencode")
-	assertContains(t, out, "live changes cannot be saved safely")
-	assertFileContent(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
-	assertFileContent(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "---\ndescription: Deploy app\n---")
-	assertFileContent(t, filepath.Join(profileRoot, "portable", "agents", "reviewer.md"), "# reviewer")
-	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "AGENTS.md")); !os.IsNotExist(err) {
-		t.Fatalf("portable dir should not capture native AGENTS.md, got err %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "skills", "deploy", "SKILL.md")); !os.IsNotExist(err) {
-		t.Fatalf("portable dir should not capture native skill layout, got err %v", err)
-	}
-}
-
-func TestHarnessAssetsOverrideRenderedPortableAssets(t *testing.T) {
-	e := newTestEnv(t)
-	opencodeDir := filepath.Join(e.home, ".config", "opencode")
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-open")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-open\"\nharnesses = [\"opencode\"]\n\n[assets]\nportable = \"portable\"\nopencode = \"opencode\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
-	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# opencode override")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "skills", "deploy", "SKILL.md"), "opencode skill")
-
-	e.mustRun("use", "portable-open", "--harness", "opencode")
-	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# opencode override")
-	assertFileContent(t, filepath.Join(opencodeDir, "skills", "deploy", "SKILL.md"), "opencode skill")
-
-	otherRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "other-open")
-	writeTestFile(t, filepath.Join(otherRoot, "cvm.profile.toml"), "name = \"other-open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
-	writeTestFile(t, filepath.Join(otherRoot, "opencode", "AGENTS.md"), "# other")
-	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# live edit")
-
-	e.mustRun("use", "other-open", "--harness", "opencode")
-	assertFileContent(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# live edit")
-	assertFileContent(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# portable instructions")
-}
-
-func TestPortableInstructionsRenderForCodex(t *testing.T) {
+func TestUseCodexProfile(t *testing.T) {
 	e := newTestEnv(t)
 	codexDir := filepath.Join(e.home, ".codex")
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable-codex")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"portable-codex\"\nharnesses = [\"codex\"]\n\n[assets]\nportable = \"portable\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# codex instructions")
-	writeTestFile(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
 
-	out := e.mustRun("use", "portable-codex", "--harness", "codex")
+	e.writeProfile("codexer",
+		"name = \"codexer\"\nharnesses = [\"codex\"]\n\n[assets]\ncodex = \"codex\"\n",
+		map[string]string{"codex/AGENTS.md": "# codex instructions"})
+
+	out := e.mustRun("use", "codexer", "--harness", "codex")
 	assertContains(t, out, "Switched codex harness")
 	assertFileContent(t, filepath.Join(codexDir, "AGENTS.md"), "# codex instructions")
-	if _, err := os.Stat(filepath.Join(codexDir, "skills")); !os.IsNotExist(err) {
-		t.Fatalf("codex should not install portable skills without native support, got err %v", err)
-	}
-
-	out = e.mustFail("use", "--none", "--harness", "codex")
-	assertContains(t, out, "live changes cannot be saved safely")
-	assertFileContent(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# codex instructions")
-	assertFileContent(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "portable skill")
-	if _, err := os.Stat(filepath.Join(profileRoot, "portable", "AGENTS.md")); !os.IsNotExist(err) {
-		t.Fatalf("portable dir should not capture codex AGENTS.md, got err %v", err)
-	}
 }
 
 func TestLiteProfileActivatesForClaude(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "lite")
+	profileRoot := filepath.Join(e.profilesDir(), "lite")
 	if err := cvmprofile.CopyDir(filepath.Join("profiles", "lite"), profileRoot); err != nil {
 		t.Fatalf("copy lite profile: %v", err)
 	}
@@ -452,226 +346,83 @@ func TestLiteProfileActivatesForClaude(t *testing.T) {
 	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "harnesses = [\"claude\"]")
 }
 
+// ---------------------------------------------------------------------------
+// Vanilla stash round-trip via the CLI: off restores the pre-cvm real file
+// ---------------------------------------------------------------------------
+
+func TestOffRestoresVanillaStash(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedGlobalClaude("# original vanilla content")
+
+	e.writeProfile("temp",
+		"name = \"temp\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \".\"\n",
+		map[string]string{"CLAUDE.md": "# profile content"})
+
+	e.mustRun("use", "temp")
+	// Live file is now a symlink serving profile content.
+	assertFileContent(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# profile content")
+
+	out := e.mustRun("off")
+	assertContains(t, out, "vanilla")
+
+	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
+	info, err := os.Lstat(claudeMD)
+	if err != nil {
+		t.Fatalf("CLAUDE.md should exist after off: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("expected restored real file, got symlink")
+	}
+	data, err := os.ReadFile(claudeMD)
+	if err != nil {
+		t.Fatalf("read restored CLAUDE.md: %v", err)
+	}
+	if !strings.Contains(string(data), "original vanilla content") {
+		t.Fatalf("expected vanilla content, got: %s", string(data))
+	}
+}
+
 func TestOpenCodeHarnessRestoreGlobalVanilla(t *testing.T) {
 	e := newTestEnv(t)
 	opencodeDir := filepath.Join(e.home, ".config", "opencode")
 	writeTestFile(t, filepath.Join(opencodeDir, "AGENTS.md"), "# vanilla opencode")
 
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "open")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# profile opencode")
+	e.writeProfile("open",
+		"name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n",
+		map[string]string{"opencode/AGENTS.md": "# profile opencode"})
 
 	e.mustRun("use", "open", "--harness", "opencode")
 	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# profile opencode")
 
-	out := e.mustRun("restore", "--harness", "opencode")
-	assertContains(t, out, "Restored config to vanilla (opencode harness)")
+	out := e.mustRun("off", "--harness", "opencode")
+	assertContains(t, out, "Switched opencode harness to vanilla")
 	assertFileContent(t, filepath.Join(opencodeDir, "AGENTS.md"), "# vanilla opencode")
 }
 
-func TestOpenCodeHarnessLocalWorkflow(t *testing.T) {
-	t.Skip("local profiles were hard-deleted")
-	e := newTestEnv(t)
+// ---------------------------------------------------------------------------
+// Profile switch: switching profiles re-points the symlinks
+// ---------------------------------------------------------------------------
 
-	profileRoot := filepath.Join(e.home, ".cvm", "local", "profiles", "open-local")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"open-local\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# local opencode profile")
-
-	out := e.mustRun("use", "open-local", "--harness", "opencode")
-	assertContains(t, out, "Switched opencode harness")
-	assertFileContent(t, filepath.Join(e.projectDir, ".opencode", "AGENTS.md"), "# local opencode profile")
-	if _, err := os.Stat(filepath.Join(e.home, ".config", "opencode", "AGENTS.md")); err == nil {
-		t.Fatal("local opencode use should not install into global OpenCode paths")
-	}
-
-	e.mustRun("nuke", "--harness", "opencode", "--force")
-	if _, err := os.Stat(filepath.Join(e.projectDir, ".opencode", "AGENTS.md")); !os.IsNotExist(err) {
-		t.Fatalf("expected local opencode AGENTS.md to be nuked, got err %v", err)
-	}
-}
-
-func TestManifestBackedProfileOverridesRestoreFromAssetDir(t *testing.T) {
-	t.Skip("override command removed from core CLI surface")
+func TestProfileSwitchRepointsSymlinks(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "manifested")
-	writeTestFile(t, filepath.Join(profileRoot, "cvm.profile.toml"), "name = \"manifested\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n")
-	writeTestFile(t, filepath.Join(profileRoot, "claude", "skills", "deploy", "SKILL.md"), "base skill")
+	e.writeProfile("alpha",
+		"name = \"alpha\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \".\"\n",
+		map[string]string{"CLAUDE.md": "# alpha"})
+	e.writeProfile("beta",
+		"name = \"beta\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \".\"\n",
+		map[string]string{"CLAUDE.md": "# beta"})
 
-	e.mustRun("use", "manifested")
+	e.mustRun("use", "alpha")
+	assertFileContent(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# alpha")
 
-	liveSkill := filepath.Join(e.home, ".claude", "skills", "deploy", "SKILL.md")
-	overrideSkill := filepath.Join(e.home, ".cvm", "global", "overrides", "manifested", "skills", "deploy", "SKILL.md")
-	writeTestFile(t, overrideSkill, "override skill")
-	e.mustRun("override", "apply")
+	e.mustRun("use", "beta")
+	assertFileContent(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# beta")
 
-	data, err := os.ReadFile(liveSkill)
-	if err != nil {
-		t.Fatalf("read live skill after apply: %v", err)
-	}
-	if strings.TrimSpace(string(data)) != "override skill" {
-		t.Fatalf("unexpected live override content: %q", strings.TrimSpace(string(data)))
-	}
-
-	e.mustRun("save")
-
-	data, err = os.ReadFile(filepath.Join(profileRoot, "claude", "skills", "deploy", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("read base skill after save: %v", err)
-	}
-	if strings.TrimSpace(string(data)) != "base skill" {
-		t.Fatalf("base skill should have been restored from manifest asset dir before save, got %q", strings.TrimSpace(string(data)))
-	}
-}
-
-func TestProfileInspect(t *testing.T) {
-	t.Skip("profile command removed from core CLI surface")
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# vanilla")
-
-	e.mustRun("add", "inspect")
-
-	globalSkillDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect", "skills")
-	globalAgentDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect", "agents")
-	globalHookDir := filepath.Join(e.home, ".cvm", "global", "profiles", "inspect", "hooks")
-	if err := os.MkdirAll(globalSkillDir, 0755); err != nil {
-		t.Fatalf("mkdir global skill dir: %v", err)
-	}
-	if err := os.MkdirAll(globalAgentDir, 0755); err != nil {
-		t.Fatalf("mkdir global agent dir: %v", err)
-	}
-	if err := os.MkdirAll(globalHookDir, 0755); err != nil {
-		t.Fatalf("mkdir global hook dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(globalSkillDir, "deploy.md"), []byte(""), 0644); err != nil {
-		t.Fatalf("write global skill: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(globalAgentDir, "reviewer.md"), []byte(""), 0644); err != nil {
-		t.Fatalf("write global agent: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(globalHookDir, "post.sh"), []byte(""), 0644); err != nil {
-		t.Fatalf("write global hook: %v", err)
-	}
-
-	e.mustRun("use", "inspect")
-
-	out := e.mustRun("profile")
-	assertContains(t, out, "Profile: inspect")
-	assertContains(t, out, "Skills (1): deploy.md")
-	assertContains(t, out, "Agents (1): reviewer.md")
-	assertContains(t, out, "Hooks (1): post.sh")
-
-	out = e.mustRun("profile", "show", "inspect")
-	assertContains(t, out, "Profile: inspect")
-	assertContains(t, out, "Skills (1): deploy.md")
-}
-
-func TestProfileAddScaffoldsPortableAssets(t *testing.T) {
-	t.Skip("profile command removed from core CLI surface")
-	e := newTestEnv(t)
-
-	e.mustRun("add", "portable")
-
-	out := e.mustRun("profile", "add", "skill", "deploy", "--profile", "portable")
-	assertContains(t, out, "Created portable skill")
-	assertContains(t, out, "Created manifest:")
-	assertContains(t, out, "portable assets are authored now")
-	out = e.mustRun("profile", "add", "agent", "reviewer", "--profile", "portable")
-	assertContains(t, out, "Created portable agent")
-	out = e.mustRun("profile", "add", "instructions", "--profile", "portable")
-	assertContains(t, out, "Created portable instructions")
-	out = e.mustRun("profile", "add", "instructions", "--profile", "portable", "--harness", "opencode")
-	assertContains(t, out, "Created opencode instructions")
-
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "portable")
-	assertFileContains(t, filepath.Join(profileRoot, "portable", "skills", "deploy.md"), "description:")
-	assertFileContains(t, filepath.Join(profileRoot, "portable", "agents", "reviewer.md"), "# reviewer")
-	assertFileContains(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# Profile Instructions")
-	assertFileContains(t, filepath.Join(profileRoot, "opencode", "AGENTS.md"), "# Profile Instructions")
-	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "portable = \"portable\"")
-	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "opencode = \"opencode\"")
-}
-
-func TestProfileAddScaffoldsHarnessSpecificHookFromFile(t *testing.T) {
-	t.Skip("profile command removed from core CLI surface")
-	e := newTestEnv(t)
-
-	e.mustRun("add", "hooks")
-
-	out := e.mustFail("profile", "add", "hook", "post", "--profile", "hooks")
-	assertContains(t, out, "--harness")
-
-	source := filepath.Join(e.projectDir, "post.sh")
-	writeTestFile(t, source, "#!/bin/sh\nexit 0\n")
-	out = e.mustRun("profile", "add", "hook", "post", "--profile", "hooks", "--harness", "claude", "--from-file", source)
-	assertContains(t, out, "Created claude hook")
-
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "hooks")
-	assertFileContent(t, filepath.Join(profileRoot, "claude", "hooks", "post.sh"), "#!/bin/sh\nexit 0")
-	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "claude = \"claude\"")
-}
-
-func TestProfileAddRejectsInvalidHarnessAndSource(t *testing.T) {
-	t.Skip("profile command removed from core CLI surface")
-	e := newTestEnv(t)
-
-	e.mustRun("add", "invalid")
-
-	out := e.mustFail("profile", "add", "skill", "deploy", "--profile", "invalid", "--harness", "missing")
-	assertContains(t, out, "unknown harness")
-
-	sourceDir := filepath.Join(e.projectDir, "source-dir")
-	if err := os.MkdirAll(sourceDir, 0755); err != nil {
-		t.Fatalf("mkdir source dir: %v", err)
-	}
-	out = e.mustFail("profile", "add", "skill", "deploy", "--profile", "invalid", "--from-file", sourceDir)
-	assertContains(t, out, "is a directory")
-
-	out = e.mustFail("profile", "add", "hook", "post", "--profile", "invalid", "--harness", "opencode")
-	assertContains(t, out, "opencode does not support hook scaffolding")
-}
-
-func TestProfileAddDoesNotOverwriteExistingAsset(t *testing.T) {
-	t.Skip("profile command removed from core CLI surface")
-	e := newTestEnv(t)
-
-	e.mustRun("add", "existing")
-	source := filepath.Join(e.projectDir, "deploy.md")
-	writeTestFile(t, source, "first")
-	e.mustRun("profile", "add", "skill", "deploy", "--profile", "existing", "--from-file", source)
-
-	writeTestFile(t, source, "second")
-	out := e.mustRun("profile", "add", "skill", "deploy", "--profile", "existing", "--from-file", source)
-	assertContains(t, out, "Profile asset already exists")
-
-	assertFileContent(t, filepath.Join(e.home, ".cvm", "global", "profiles", "existing", "portable", "skills", "deploy.md"), "first")
-}
-
-func TestProfileAddDefaultsToActiveProfile(t *testing.T) {
-	t.Skip("profile command removed from core CLI surface")
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# vanilla")
-
-	e.mustRun("add", "active")
-	e.mustRun("use", "active")
-
-	out := e.mustRun("profile", "add", "instructions")
-	assertContains(t, out, "Created portable instructions")
-
-	profileRoot := filepath.Join(e.home, ".cvm", "global", "profiles", "active")
-	assertFileContains(t, filepath.Join(profileRoot, "portable", "instructions.md"), "# Profile Instructions")
-	assertFileContains(t, filepath.Join(profileRoot, "cvm.profile.toml"), "claude = \".\"")
-}
-
-func TestProfileAddHelpExplainsAuthoringLayers(t *testing.T) {
-	t.Skip("profile command removed from core CLI surface")
-	e := newTestEnv(t)
-
-	out := e.mustRun("profile", "add", "--help")
-	assertContains(t, out, "Portable assets")
-	assertContains(t, out, "Hooks are always harness-specific")
-	assertContains(t, out, "Harness rendering")
+	// Switching back to vanilla restores the originally-stashed real file.
+	e.mustRun("off")
+	assertFileContent(t, filepath.Join(e.home, ".claude", "CLAUDE.md"), "# vanilla")
 }
 
 func TestLsShowsInUseProfiles(t *testing.T) {
@@ -679,6 +430,7 @@ func TestLsShowsInUseProfiles(t *testing.T) {
 	e.seedGlobalClaude("# vanilla")
 
 	e.mustRun("add", "work")
+	writeTestFile(t, filepath.Join(e.profilesDir(), "work", "CLAUDE.md"), "# work")
 	e.mustRun("use", "work")
 
 	out := e.mustRun("ls")
@@ -686,124 +438,11 @@ func TestLsShowsInUseProfiles(t *testing.T) {
 	assertContains(t, out, "IN USE")
 }
 
-func TestBypassCommand(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# vanilla")
-
-	e.mustRun("add", "bypass-global")
-	e.mustRun("use", "bypass-global")
-
-	out := e.mustRun("bypass", "status")
-	assertContains(t, out, "profile \"bypass-global\"")
-
-	out = e.mustRun("bypass", "on")
-	assertContains(t, out, "bypassPermissions")
-
-	overrideSettings := filepath.Join(e.home, ".cvm", "global", "overrides", "bypass-global", "settings.json")
-	activeSettings := filepath.Join(e.home, ".claude", "settings.json")
-	assertSettingsMode(t, overrideSettings, "bypassPermissions")
-	assertSettingsMode(t, activeSettings, "bypassPermissions")
-
-	out = e.mustRun("bypass", "off")
-	assertContains(t, out, "default")
-	if _, err := os.Stat(overrideSettings); !os.IsNotExist(err) {
-		t.Fatalf("expected override settings.json to be removed after bypass off")
-	}
-	// Active settings.json should not have bypassPermissions (may not exist if base profile had none)
-	if _, err := os.Stat(activeSettings); err == nil {
-		assertSettingsNotMode(t, activeSettings, "bypassPermissions")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Nuke --force (global)
-// ---------------------------------------------------------------------------
-
-func TestNukeGlobal(t *testing.T) {
-	t.Skip("nuke command removed; restore covers the use case")
-}
-
-// ---------------------------------------------------------------------------
-// Nuke --force (local)
-// ---------------------------------------------------------------------------
-
-func TestNukeLocal(t *testing.T) {
-	t.Skip("local profiles were hard-deleted")
-	e := newTestEnv(t)
-	e.seedLocalClaude("# will be nuked locally")
-
-	localClaudeMD := filepath.Join(e.projectDir, ".claude", "CLAUDE.md")
-	if _, err := os.Stat(localClaudeMD); err != nil {
-		t.Fatal("local CLAUDE.md should exist before nuke")
-	}
-
-	out := e.mustRun("nuke", "--force")
-	assertContains(t, out, "Nuked local config")
-
-	if _, err := os.Stat(localClaudeMD); err == nil {
-		t.Fatal("local CLAUDE.md should have been removed by nuke")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Restore
-// ---------------------------------------------------------------------------
-
-func TestRestore(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# original vanilla content")
-
-	// Create and use a profile to trigger vanilla backup
-	e.mustRun("add", "temp")
-	e.mustRun("use", "temp")
-
-	// Write something different to ~/.claude/CLAUDE.md
-	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
-	os.WriteFile(claudeMD, []byte("# modified by profile"), 0644)
-
-	// Restore
-	out := e.mustRun("restore")
-	assertContains(t, out, "Restored config to vanilla")
-
-	// Verify the original content is back
-	data, err := os.ReadFile(claudeMD)
-	if err != nil {
-		t.Fatalf("CLAUDE.md should exist after restore: %v", err)
-	}
-	if !strings.Contains(string(data), "original vanilla content") {
-		t.Fatalf("expected vanilla content, got: %s", string(data))
-	}
-}
-
-func TestRestoreWithHarness(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# original vanilla content")
-
-	e.mustRun("add", "temp")
-	e.mustRun("use", "temp", "--harness", "claude")
-
-	claudeMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
-	if err := os.WriteFile(claudeMD, []byte("# modified by profile"), 0644); err != nil {
-		t.Fatalf("modify CLAUDE.md: %v", err)
-	}
-
-	out := e.mustRun("restore", "--harness", "claude")
-	assertContains(t, out, "Restored config to vanilla")
-
-	data, err := os.ReadFile(claudeMD)
-	if err != nil {
-		t.Fatalf("CLAUDE.md should exist after harness restore: %v", err)
-	}
-	if !strings.Contains(string(data), "original vanilla content") {
-		t.Fatalf("expected vanilla content, got: %s", string(data))
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Edge cases
 // ---------------------------------------------------------------------------
 
-func TestEdgeDuplicateInit(t *testing.T) {
+func TestEdgeDuplicateAdd(t *testing.T) {
 	e := newTestEnv(t)
 
 	e.mustRun("add", "dup")
@@ -816,6 +455,7 @@ func TestEdgeRmActiveProfile(t *testing.T) {
 	e.seedGlobalClaude("# vanilla")
 
 	e.mustRun("add", "active")
+	writeTestFile(t, filepath.Join(e.profilesDir(), "active", "CLAUDE.md"), "# active")
 	e.mustRun("use", "active")
 
 	out := e.mustFail("rm", "active")
@@ -849,18 +489,6 @@ func TestEdgeFromNonexistent(t *testing.T) {
 	assertContains(t, out, "not found")
 }
 
-func TestEdgeSaveWithNoActiveProfile(t *testing.T) {
-	t.Skip("save command removed")
-}
-
-func TestEdgeLocalSaveNoActive(t *testing.T) {
-	t.Skip("local profiles were hard-deleted")
-	e := newTestEnv(t)
-
-	out := e.mustFail("local", "save")
-	assertContains(t, out, "no active local profile")
-}
-
 func TestEdgeUseNoArgs(t *testing.T) {
 	e := newTestEnv(t)
 
@@ -880,7 +508,7 @@ func TestVersion(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Core CLI surface: help output matches expected commands
+// Core CLI surface: help output matches the post-refactor commands
 // ---------------------------------------------------------------------------
 
 func TestCoreCommandSurface(t *testing.T) {
@@ -888,15 +516,19 @@ func TestCoreCommandSurface(t *testing.T) {
 
 	out := e.mustRun("--help")
 
-	// Core commands must be present
-	for _, want := range []string{"add", "use", "ls", "rm", "pull", "restore", "bypass"} {
+	// Core commands must be present.
+	for _, want := range []string{"add", "use", "off", "ls", "rm", "pull", "push"} {
 		assertContains(t, out, want)
 	}
 
-	// Removed commands must not appear as top-level commands.
-	// Use Cobra's two-space-prefixed row format ("  <cmd> ") to avoid
-	// false positives against the description text (e.g. "profiles.").
-	for _, notWant := range []string{"  current ", "  save ", "  status ", "  nuke ", "  remote ", "  completion ", "  override ", "  edit ", "  profile "} {
+	// Removed commands must not appear as top-level commands. Use Cobra's
+	// two-space-prefixed row format ("  <cmd> ") to avoid false positives
+	// against description text.
+	for _, notWant := range []string{
+		"  current ", "  save ", "  status ", "  nuke ", "  remote ",
+		"  completion ", "  override ", "  edit ", "  profile ",
+		"  restore ", "  bypass ", "  local ",
+	} {
 		assertNotContains(t, out, notWant)
 	}
 }
@@ -909,9 +541,10 @@ func TestMultipleProfilesCoexist(t *testing.T) {
 	e := newTestEnv(t)
 	e.seedGlobalClaude("# vanilla")
 
-	e.mustRun("add", "alpha")
-	e.mustRun("add", "beta")
-	e.mustRun("add", "gamma")
+	for _, name := range []string{"alpha", "beta", "gamma"} {
+		e.mustRun("add", name)
+		writeTestFile(t, filepath.Join(e.profilesDir(), name, "CLAUDE.md"), "# "+name)
+	}
 
 	out := e.mustRun("ls")
 	assertContains(t, out, "alpha")
@@ -936,139 +569,14 @@ func TestMultipleProfilesCoexist(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Restore with no vanilla backup
+// off with no active profile is a clean no-op
 // ---------------------------------------------------------------------------
 
-func TestRestoreNoVanilla(t *testing.T) {
+func TestOffNoActiveProfile(t *testing.T) {
 	e := newTestEnv(t)
 
-	out := e.mustRun("restore")
-	assertContains(t, out, "No vanilla backup found")
-}
-
-// ---------------------------------------------------------------------------
-// Profile content isolation: switching profiles applies correct content
-// ---------------------------------------------------------------------------
-
-func TestProfileContentIsolation(t *testing.T) {
-	t.Skip("save command removed; profile snapshot path no longer exposed via CLI")
-}
-
-func TestUseAppliesChicheMCPServersToClaudeUserConfig(t *testing.T) {
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# vanilla")
-	if err := os.WriteFile(filepath.Join(e.home, ".claude.json"), []byte(`{
-  "theme": "dark",
-  "oauthAccount": {
-    "emailAddress": "user@example.com"
-  }
-}
-`), 0644); err != nil {
-		t.Fatalf("write live user config: %v", err)
-	}
-
-	e.mustRun("add", "chiche")
-
-	profileUserConfig := filepath.Join(e.home, ".cvm", "global", "profiles", "chiche", ".claude.json")
-	if err := os.WriteFile(profileUserConfig, []byte(`{
-  "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"]
-    },
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp@latest"]
-    }
-  }
-}
-`), 0644); err != nil {
-		t.Fatalf("write profile user config: %v", err)
-	}
-
-	e.mustRun("use", "chiche")
-
-	claudeUserConfig := filepath.Join(e.home, ".claude.json")
-	assertMCPServerExists(t, claudeUserConfig, "playwright")
-	assertMCPServerExists(t, claudeUserConfig, "context7")
-	assertJSONKeyExists(t, claudeUserConfig, "oauthAccount")
-}
-
-// ---------------------------------------------------------------------------
-// Nuke both scopes
-// ---------------------------------------------------------------------------
-
-func TestNukeBothScopes(t *testing.T) {
-	t.Skip("local profiles were hard-deleted")
-	e := newTestEnv(t)
-	e.seedGlobalClaude("# global content")
-	e.seedLocalClaude("# local content")
-
-	out := e.mustRun("nuke", "--force")
-	assertContains(t, out, "Nuked global config")
-	assertContains(t, out, "Nuked local config")
-
-	globalMD := filepath.Join(e.home, ".claude", "CLAUDE.md")
-	localMD := filepath.Join(e.projectDir, ".claude", "CLAUDE.md")
-
-	if _, err := os.Stat(globalMD); err == nil {
-		t.Fatal("global CLAUDE.md should be removed after nuke")
-	}
-	if _, err := os.Stat(localMD); err == nil {
-		t.Fatal("local CLAUDE.md should be removed after nuke")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Local restore
-// ---------------------------------------------------------------------------
-
-func TestLocalRestore(t *testing.T) {
-	t.Skip("local profiles were hard-deleted")
-	e := newTestEnv(t)
-	e.seedLocalClaude("# original local vanilla")
-
-	// Create and use a local profile to trigger vanilla backup
-	e.mustRun("local", "init", "localtemp")
-	e.mustRun("local", "use", "localtemp")
-
-	// Nuke local
-	e.mustRun("nuke", "--force")
-
-	// Restore local
-	out := e.mustRun("restore")
-	assertContains(t, out, "Restored local config to vanilla")
-
-	localMD := filepath.Join(e.projectDir, ".claude", "CLAUDE.md")
-	data, err := os.ReadFile(localMD)
-	if err != nil {
-		t.Fatalf("local CLAUDE.md should exist after restore: %v", err)
-	}
-	if !strings.Contains(string(data), "original local vanilla") {
-		t.Fatalf("expected vanilla content, got: %s", string(data))
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Default profile name for local init (project dir name)
-// ---------------------------------------------------------------------------
-
-func TestLocalInitDefaultName(t *testing.T) {
-	t.Skip("local profiles were hard-deleted")
-	e := newTestEnv(t)
-
-	out := e.mustRun("local", "init")
-	// Default name is the project dir basename = "myproject"
-	assertContains(t, out, "Created local profile")
-	assertContains(t, out, "myproject")
-}
-
-// ---------------------------------------------------------------------------
-// Global init default name
-// ---------------------------------------------------------------------------
-
-func TestGlobalInitDefaultName(t *testing.T) {
-	t.Skip("top-level add requires an explicit profile name")
+	out := e.mustRun("off")
+	assertContains(t, out, "Already vanilla")
 }
 
 // ---------------------------------------------------------------------------
@@ -1089,48 +597,6 @@ func assertNotContains(t *testing.T, haystack, needle string) {
 	}
 }
 
-func assertSettingsMode(t *testing.T, path, want string) {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read settings %s: %v", path, err)
-	}
-
-	var cfg struct {
-		Permissions struct {
-			DefaultMode string `json:"defaultMode"`
-		} `json:"permissions"`
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("unmarshal settings %s: %v", path, err)
-	}
-	if cfg.Permissions.DefaultMode != want {
-		t.Fatalf("settings %s defaultMode = %q, want %q", path, cfg.Permissions.DefaultMode, want)
-	}
-}
-
-func assertSettingsNotMode(t *testing.T, path, notWant string) {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read settings %s: %v", path, err)
-	}
-
-	var cfg struct {
-		Permissions struct {
-			DefaultMode string `json:"defaultMode"`
-		} `json:"permissions"`
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("unmarshal settings %s: %v", path, err)
-	}
-	if cfg.Permissions.DefaultMode == notWant {
-		t.Fatalf("settings %s defaultMode = %q, expected it NOT to be %q", path, cfg.Permissions.DefaultMode, notWant)
-	}
-}
-
 func assertMCPServerExists(t *testing.T, path, want string) {
 	t.Helper()
 
@@ -1148,80 +614,6 @@ func assertMCPServerExists(t *testing.T, path, want string) {
 	if _, ok := cfg.MCPServers[want]; !ok {
 		t.Fatalf("settings %s missing mcp server %q", path, want)
 	}
-}
-
-func assertMCPServerNotExists(t *testing.T, path, notWant string) {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read settings %s: %v", path, err)
-	}
-
-	var cfg struct {
-		MCPServers map[string]json.RawMessage `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("unmarshal settings %s: %v", path, err)
-	}
-	if _, ok := cfg.MCPServers[notWant]; ok {
-		t.Fatalf("settings %s should not contain mcp server %q", path, notWant)
-	}
-}
-
-func assertJSONKeyExists(t *testing.T, path, want string) {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read json %s: %v", path, err)
-	}
-
-	var cfg map[string]json.RawMessage
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("unmarshal json %s: %v", path, err)
-	}
-	if _, ok := cfg[want]; !ok {
-		t.Fatalf("json %s missing key %q", path, want)
-	}
-}
-
-func assertOpenCodeSkillPathExists(t *testing.T, path, want string) {
-	t.Helper()
-	if !openCodeSkillPathExists(t, path, want) {
-		t.Fatalf("opencode config %s missing skills path %q", path, want)
-	}
-}
-
-func assertOpenCodeSkillPathNotExists(t *testing.T, path, notWant string) {
-	t.Helper()
-	if openCodeSkillPathExists(t, path, notWant) {
-		t.Fatalf("opencode config %s should not contain skills path %q", path, notWant)
-	}
-}
-
-func openCodeSkillPathExists(t *testing.T, path, want string) bool {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read json %s: %v", path, err)
-	}
-
-	var cfg struct {
-		Skills struct {
-			Paths []string `json:"paths"`
-		} `json:"skills"`
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("unmarshal json %s: %v", path, err)
-	}
-	for _, got := range cfg.Skills.Paths {
-		if got == want {
-			return true
-		}
-	}
-	return false
 }
 
 func assertFileContent(t *testing.T, path, want string) {

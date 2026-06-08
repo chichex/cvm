@@ -12,9 +12,11 @@ import (
 
 var addCmd = &cobra.Command{
 	Use:   "add <name> [url]",
-	Short: "Add a profile (empty or from a GitHub repo)",
+	Short: "Add a profile (empty, from a GitHub repo, or from a local repo)",
 	Long: `Add a new profile. With just a name, creates an empty profile.
-With a URL, clones the profile from a GitHub repo and links it for updates.
+With a URL, clones the profile from a GitHub repo (keeping .git) and links it
+for updates. With --path, registers an existing local repo as the source
+(no clone) — edits flow straight into that repo.
 
 The URL format is: github.com/user/repo/path/to/profile
 (or just user/repo/path — github.com is assumed)
@@ -22,12 +24,27 @@ The URL format is: github.com/user/repo/path/to/profile
 Examples:
   cvm add chiche                                         # empty profile
   cvm add chiche --from work                             # copy from "work"
+  cvm add chiche --path ~/dev/my-profile                 # register local repo
   cvm add chiche github.com/chichex/cvm/profiles/chiche  # from repo
   cvm add chiche chichex/cvm/profiles/chiche              # shorthand`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		from, _ := cmd.Flags().GetString("from")
+		localPath, _ := cmd.Flags().GetString("path")
+
+		// --path provided: register an existing local repo as the source.
+		if localPath != "" {
+			if len(args) == 2 {
+				return fmt.Errorf("provide either a URL or --path, not both")
+			}
+			if err := remote.AddPath(name, localPath); err != nil {
+				return err
+			}
+			fmt.Printf("Registered profile %q from %s\n", name, localPath)
+			fmt.Printf("  activate: %s\n", useCommand(name))
+			return nil
+		}
 
 		// URL provided: clone from remote
 		if len(args) == 2 {
@@ -98,6 +115,7 @@ func parseURL(url string) (repo, repoPath string) {
 
 func init() {
 	addCmd.Flags().String("from", "", "Copy from existing profile")
+	addCmd.Flags().String("path", "", "Register an existing local repo as the profile source (no clone)")
 }
 
 func useCommand(name string) string {

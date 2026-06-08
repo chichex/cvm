@@ -2,6 +2,8 @@
 
 Profile manager for agent harnesses, starting with [Claude Code](https://claude.ai/code), OpenCode, and Codex. Switch configurations instantly, restore to vanilla. Like `nvm` but for your agent setup.
 
+A profile is just a **git repo on disk**. Activating it **symlinks** its files into `~/.claude/` (and the OpenCode/Codex config dirs). Edits you make through the harness write straight back into the repo — live and already version-controlled. No copies, no merges, no hidden state.
+
 ## Why
 
 You've built the perfect Claude Code setup: custom skills, hooks, agents, rules, keybindings. But:
@@ -10,6 +12,7 @@ You've built the perfect Claude Code setup: custom skills, hooks, agents, rules,
 - You want to **clean everything instantly** without manually deleting files
 - You want to **restore your original state** as if nothing happened
 - You want to **share configs** across machines
+- You want edits to your active profile to be **live and versioned** — no "save back to profile" dance
 
 `cvm` manages all of this with zero footprint in your projects.
 
@@ -30,65 +33,103 @@ cd cvm && make install
 ## Quick start
 
 ```bash
-# Install a profile
-cvm add lite git@github.com:chichex/cvm.git       # minimalist subagent orchestration
+# Clone a profile and activate it (symlinks into ~/.claude)
+cvm add lite git@github.com:chichex/cvm.git
 cvm use lite
 
-# That's it. Update anytime:
+# Update anytime (thin git pull --ff-only):
 cvm pull
 
-# Go back to vanilla:
-cvm use --none
+# Go back to vanilla (remove symlinks, restore your originals):
+cvm off
 ```
 
+## How it works
+
+A profile's **source dir** is a real git working repo:
+
+- For cloned profiles, that's `~/.cvm/profiles/<name>` (cloned with `.git` intact).
+- For path-registered profiles (`cvm add <name> --path <dir>`), it's your own existing repo dir — cvm just records where it is. No second copy.
+
+When you run `cvm use <name>`, cvm creates one **symlink per managed item**:
+
+```
+~/.claude/<item>  ->  <sourceDir>/<harnessSubdir>/<item>
+```
+
+`<harnessSubdir>` is `claude` / `opencode` / `codex` (or `.` when the profile is rooted at its repo, per manifest/auto-discovery).
+
+Because the live config is a symlink into the repo, **editing a file through the harness writes into the source repo** — instantly live, and already under version control. That's the whole point.
+
+### Vanilla stash
+
+Before symlinking an item, if a **real** (non-symlink) file or dir already exists at the target, cvm moves it once to `~/.cvm/vanilla/<harness>/<item>` (only if nothing is stashed there yet). `cvm off` (or `cvm use --none`) removes the symlinks and restores that stash, leaving you exactly as you were before cvm.
+
 ## Commands
+
+| Command | What it does |
+|---------|--------------|
+| `cvm ls` | List profiles, marking the active one per harness |
+| `cvm use <name>` | Symlink all managed items for the profile's harnesses |
+| `cvm off` (alias `cvm use --none`) | Remove symlinks, restore the vanilla stash |
+| `cvm add <name> <giturl>` | `git clone` (keeping `.git`) into `~/.cvm/profiles/<name>` |
+| `cvm add <name> --path <dir>` | Register an existing local repo as the source (no clone) |
+| `cvm pull` | `git pull --ff-only` the active profile's source repo |
+| `cvm push` | `git push` the active profile's source repo |
+| `cvm rm <name>` | Unregister a profile |
+| `cvm harness` | Inspect harness targets/items |
+| `cvm upgrade` | Update the cvm binary itself |
 
 ### Add profiles
 
 ```bash
-cvm add work                                   # create empty profile
-cvm add work --from chiche                     # copy from existing profile
-cvm add chiche git@github.com:chichex/cvm.git  # add from GitHub repo
-cvm add chiche chichex/cvm/profiles/chiche     # shorthand (any URL format works)
+cvm add work                                       # empty profile
+cvm add work --from chiche                          # copy from existing profile
+cvm add chiche git@github.com:chichex/cvm.git       # clone from GitHub (keeps .git)
+cvm add chiche chichex/cvm/profiles/chiche          # shorthand (any URL format works)
+cvm add mine --path ~/dev/my-profile                # register an existing local repo
 ```
 
-When adding from a repo without a path, cvm auto-discovers the profile:
+With `--path`, cvm points at **your** working repo directly — edits flow straight into it and you commit/push from there as usual. With a URL, cvm clones into `~/.cvm/profiles/<name>`, keeping `.git` so `cvm pull` / `cvm push` are just thin git wrappers.
+
+When adding from a repo without an explicit path, cvm auto-discovers the profile:
+
 1. Looks for `profiles/<name>/`
 2. Looks for `<name>/` at root
-3. If the repo root is a profile, uses that
-4. If multiple profiles found, lists them for you to pick
+3. If the repo root is itself a profile, uses that
+4. If multiple profiles are found, lists them for you to pick
 
 ### Switch profiles
 
 ```bash
-cvm use work            # activate user-level config
+cvm use work                  # activate every harness in the manifest
 cvm use work --harness claude
 cvm use work --harness opencode
 cvm use work --harness codex
-cvm use --none          # back to vanilla
+cvm off                       # remove symlinks, restore vanilla
+cvm use --none                # same as cvm off
+cvm off --harness claude      # revert a single harness
 ```
 
 ### List and remove
 
 ```bash
-cvm ls                  # list profiles, including remote source
-cvm rm work             # remove a profile
+cvm ls                  # profiles, active markers, source dir/repo
+cvm rm work             # unregister a profile
 ```
 
-### Update remote profiles
+### Update and publish
+
+`cvm pull` and `cvm push` are transparent pass-throughs to git on the profile's source repo. cvm does **not** manage conflicts — git does.
 
 ```bash
-cvm pull                # pull latest for all remote-linked profiles
+cvm pull                # git -C <source> pull --ff-only
 cvm pull chiche         # pull a specific profile
+cvm push                # git -C <source> push (active profile)
 ```
 
-### Clean up
-
-```bash
-cvm restore             # restore pre-cvm state from vanilla backup
-cvm restore --harness claude
-cvm restore --harness opencode
-```
+- `pull` uses `--ff-only`: if the branch has diverged it refuses cleanly, never auto-merges. If the working tree is dirty, the pull is skipped with a warning — resolve it with git in the source repo.
+- `push` surfaces git's output verbatim, including non-fast-forward rejections. No merge smarts, no conflict markers — just git.
 
 ### Upgrade cvm
 
@@ -114,29 +155,17 @@ Already on latest version (v0.24.0)
 
 If installed via Homebrew, the command exits with an instruction to use `brew upgrade chichex/tap/cvm` instead. The upgrade never touches profiles or harness configs.
 
-### Bypass permissions
-
-Toggle bypass mode on the active profile. Stored as an override, so it survives `cvm pull`.
-
-```bash
-cvm bypass on           # enable bypass on active profile
-cvm bypass off          # disable
-cvm bypass status       # show current state
-```
-
 ## Targets
 
 `cvm` manages only user-level harness configuration:
 
 | Harness | Target |
 |---------|--------|
-| Claude | `~/.claude/` plus `~/.claude.json` |
+| Claude | `~/.claude/` |
 | OpenCode | `~/.config/opencode/` or `$OPENCODE_CONFIG_DIR` |
 | Codex | `~/.codex/` or `$CODEX_HOME` |
 
-For OpenCode, `opencode.json` lives inside the target dir and is user-owned; `cvm` only manages its `mcpServers` section and the profile-owned `skills.paths` entry.
-
-Project-local profiles were hard-deleted. `cvm local`, `cvm global`, `--local`, `--global`, project `.claude/`, project `.opencode/`, and project `.mcp.json` are no longer part of the model. Existing project-local files are left untouched on disk; remove them manually if you no longer want them, for example `rm -rf .claude .opencode .mcp.json` from the affected project.
+Each managed item is symlinked individually, so anything not in the managed list (runtime data, machine-local state) is left untouched.
 
 ## What cvm manages
 
@@ -158,49 +187,46 @@ Legacy profiles without a manifest behave as Claude profiles rooted at the profi
 
 ### Claude
 
+Each item below is symlinked from the profile into `~/.claude/`. The profile fully owns it — there is no merging.
+
 | Item | Description |
 |------|-------------|
 | `CLAUDE.md` | Global instructions |
 | `settings.json` | Permissions, hooks config, plugins |
-| `settings.local.json` | Claude user overrides |
-| `.claude.json` | User-scoped MCP servers (managed as the `mcpServers` section only) |
+| `settings.local.json` | Claude user settings |
 | `keybindings.json` | Keyboard shortcuts |
-| `skills/` | Custom slash commands |
+| `statusline-command.sh` | Status bar script |
+| `commands/` | Slash commands |
+| `skills/` | Custom skills |
 | `agents/` | Subagent definitions |
-| `commands/` | Legacy commands |
 | `hooks/` | Hook scripts |
 | `rules/` | Path-scoped rules |
 | `output-styles/` | Response format templates |
 | `teams/` | Agent team definitions |
-| `statusline-command.sh` | Status bar script |
 
-Runtime data is **never** touched: `sessions/`, `cache/`, `history.jsonl`, `transcripts/`, `projects/` (auto-memory), `plugins/`.
+Runtime and machine-local data is **never** touched: `sessions/`, `cache/`, `history.jsonl`, `transcripts/`, `projects/` (auto-memory), `plugins/`, and `~/.claude.json`. MCP servers in `~/.claude.json` are machine-local mutable state and are not managed by cvm.
 
 ### OpenCode
 
-OpenCode support is intentionally limited to portable assets rendered into OpenCode's native config directories plus explicit OpenCode asset overrides.
+OpenCode support symlinks the profile's portable assets into OpenCode's native config directory. The profile fully owns each item.
 
 | Item | Description |
 |------|-------------|
 | `AGENTS.md` | Harness instructions |
-| `opencode.json` | OpenCode configuration, managed only as the `mcpServers` section |
+| `opencode.json` | OpenCode configuration |
 | `skills/` | OpenCode skills in native format |
 | `agents/` | OpenCode agent definitions in native format |
 | `commands/` | OpenCode commands in native format |
 
-`cvm` does not translate Claude-specific assets for OpenCode. `CLAUDE.md`, Claude `settings.json`, hooks, plugins, non-MCP top-level `opencode.json` settings, and other non-portable behavior require profile-author adaptation and are not promised compatible.
+`cvm` does not translate Claude-specific assets for OpenCode. `CLAUDE.md`, Claude `settings.json`, hooks, plugins, and other Claude-specific behavior require profile-author adaptation and are not promised compatible. OpenCode runtime storage is **never** touched, including `~/.local/share/opencode/`.
 
-OpenCode runtime storage is **never** touched, including `~/.local/share/opencode/`.
+### Codex
 
-## How switching works
+| Item | Description |
+|------|-------------|
+| `AGENTS.md` | Harness instructions |
 
-When you run `cvm use work`:
-
-1. Backs up your original `~/.claude/` state (first time only, as "vanilla")
-2. Saves current `~/.claude/` and `~/.claude.json` to the previously active profile
-3. Cleans all managed items from `~/.claude/`
-4. Copies the "work" profile into `~/.claude/`
-5. Updates `~/.cvm/state.json`
+Codex assets are symlinked into `~/.codex/` (or `$CODEX_HOME`).
 
 ## The "lite" profile
 
@@ -232,7 +258,7 @@ cvm use lite --harness claude
 
 ## Herdr integration
 
-[Herdr](https://herdr.dev) es un multiplexor de TUIs para agentes CLI. El profile `harness` trae un skill y un bootstrap para integrarse con el:
+[Herdr](https://herdr.dev) es un multiplexor de TUIs para agentes CLI. El profile `harness` trae un skill para integrarse con el:
 
 ### Skill `/herdr-detach`
 
@@ -248,28 +274,9 @@ Deriva un prompt a otro agente CLI (`claude`, `opencode`, `codex`) corriendo en 
 
 Asume que la sesion actual ya corre dentro de `herdr` y que el binario del agente derivado esta en PATH. La integracion de `herdr` con el agente (`herdr integration install <agente>`) se auto-instala si falta.
 
+Con el modelo de symlinks, la integracion de `herdr` se instala directamente en el repo del profile: `herdr integration install claude` edita `hooks/` y `settings.json` a traves de los symlinks, asi que los cambios quedan versionados en el profile y sobreviven a cada `cvm use` / `cvm pull` sin maquinaria extra.
+
 Ver `profiles/harness/claude/skills/herdr-detach/SKILL.md` para el detalle completo.
-
-### Bootstrap `scripts/bootstrap-herdr-override.sh`
-
-`herdr integration install claude` instala un hook en `~/.claude/hooks/herdr-agent-state.sh` y registra eventos en `~/.claude/settings.json` (`PreToolUse`, `UserPromptSubmit`, `Stop`, `SessionEnd`, `PermissionRequest`) para reportar status al servidor de `herdr`. El problema: cada `cvm use` / `cvm pull` corre `CleanManagedItems` + `CopyManagedItems` + `ApplyOverrides`, que borra `~/.claude/hooks/` y `~/.claude/settings.json` antes de re-copiar el profile. Sin override layer, la integracion se pierde en cada apply.
-
-`scripts/bootstrap-herdr-override.sh` deja la integracion en el override layer (`~/.cvm/global/overrides/harness/`) para que `ApplyOverrides` la restituya despues de cada limpieza:
-
-```bash
-bash scripts/bootstrap-herdr-override.sh           # default profile: harness
-bash scripts/bootstrap-herdr-override.sh <profile> # override sobre otro profile
-```
-
-Que hace, en orden:
-
-1. Verifica `cvm`, `herdr` y `python3` en PATH.
-2. Corre `herdr integration install claude` para tener el hook fresco en `~/.claude/hooks/herdr-agent-state.sh`.
-3. Copia ese hook a `~/.cvm/global/overrides/<profile>/hooks/herdr-agent-state.sh`.
-4. Mergea el bloque `hooks` en `~/.cvm/global/overrides/<profile>/settings.json` (preserva lo que ya este ahi, ej `permissions`). Los `command` usan `"$HOME/.claude/hooks/herdr-agent-state.sh"` para portabilidad entre maquinas.
-5. Re-aplica el profile (`cvm use <profile>`) y verifica que el hook y los eventos esten registrados en `~/.claude/settings.json`.
-
-Idempotente: correlo una vez por maquina nueva con `herdr` instalado y olvidate. Despues de eso, los `cvm pull` / `cvm use` mantienen la integracion intacta.
 
 ## License
 

@@ -31,13 +31,13 @@ func init() {
 	// Core profile management
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(useCmd)
+	rootCmd.AddCommand(offCmd)
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(rmCmd)
 
 	// Core operations
 	rootCmd.AddCommand(pullCmd)
-	rootCmd.AddCommand(restoreCmd)
-	rootCmd.AddCommand(bypassCmd)
+	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(upgradeCmd)
 
 }

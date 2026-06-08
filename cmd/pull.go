@@ -10,9 +10,12 @@ import (
 var pullCmd = &cobra.Command{
 	Use:   "pull [profile-name]",
 	Short: "Pull latest updates for remote-linked profiles",
-	Long: `Pull the latest version from the linked git repo.
+	Long: `Pull the latest version from the linked git repo with --ff-only.
 Without arguments, pulls all remote-linked profiles.
-With a name, pulls only that profile.`,
+With a name, pulls only that profile.
+
+If a profile's working tree is dirty, the pull is skipped with a warning;
+cvm never auto-merges. Use git directly in the source repo to resolve.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := ""

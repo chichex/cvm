@@ -1,52 +1,17 @@
 package harness
 
-import (
-	"os"
-)
-
-type ManagedPath struct {
-	ProfilePath string
-	LivePath    string
-}
-
-type ScaffoldAsset struct {
-	ProfilePath string
-	Content     string
-	Mode        os.FileMode
-}
-
 type Harness interface {
 	Name() string
 	TargetDir() string
-	DefaultAssetDir(profileDir string) string
-	ScaffoldAsset(kind, name string) (ScaffoldAsset, error)
 	ManagedDirItems() []string
-	ExternalManagedPath() (ManagedPath, bool)
 	ProfileDiscoveryItems() []string
-	MarkdownInstructionsFile() string
-	SupportsPortableSkills() bool
-	SupportsPortableAgents() bool
-	IsUserMCPPath(profilePath string) bool
-	IsMCPPath(profilePath string) bool
-
-	// EnableBypass puts the harness into "bypass permissions" mode for the
-	// given active profile. Implementations decide whether the change is
-	// persisted as a profile override (so it survives `cvm pull`) or written
-	// directly to the live config dir.
-	EnableBypass(profileName string) error
-	// DisableBypass restores the harness to its default permissions mode.
-	DisableBypass(profileName string) error
-	// BypassStatus returns a short human-readable status of the current
-	// bypass state ("" or "(default)" means "not bypassed").
-	BypassStatus(profileName string) (string, error)
 }
 
+// ManagedProfileItems returns every item a profile manages for the harness.
+// With the pure-symlink model these are exactly the managed dir items — there
+// is no longer any externally-located (e.g. ~/.claude.json) managed path.
 func ManagedProfileItems(h Harness) []string {
-	items := append([]string{}, h.ManagedDirItems()...)
-	if extra, ok := h.ExternalManagedPath(); ok {
-		items = append(items, extra.ProfilePath)
-	}
-	return items
+	return append([]string{}, h.ManagedDirItems()...)
 }
 
 func ByName(name string) (Harness, bool) {

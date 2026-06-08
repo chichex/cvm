@@ -2,93 +2,148 @@ package remote
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/chichex/cvm/internal/harness"
 	"github.com/chichex/cvm/internal/profile"
 	"github.com/chichex/cvm/internal/state"
 )
 
-func TestPullByProfileUpdatesAndReappliesActiveProfile(t *testing.T) {
+func TestAddPathRegistersExistingRepoAsSource(t *testing.T) {
 	home := t.TempDir()
-
 	t.Setenv("HOME", home)
-	t.Setenv("PATH", withFakeGit(t))
 
-	writeFile(t, filepath.Join(harness.Claude().TargetDir(), "CLAUDE.md"), "old active")
-	writeFile(t, filepath.Join(profile.ProfileDir("work"), "CLAUDE.md"), "old profile")
-	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "work", "CLAUDE.md"), "new remote")
+	// A user's own repo dir, anywhere on disk (not under ~/.cvm/profiles).
+	repo := filepath.Join(t.TempDir(), "myprofile")
+	writeFile(t, filepath.Join(repo, "cvm.profile.toml"), claudeManifest)
+	writeFile(t, filepath.Join(repo, "claude", "CLAUDE.md"), "hello")
 
-	st := &state.State{
-		Remotes: make(map[string]state.Remote),
+	if err := AddPath("mine", repo); err != nil {
+		t.Fatalf("AddPath: %v", err)
 	}
-	st.SetGlobal("work")
-	st.PutRemote(state.Remote{
-		Repo:    "example/global",
-		Path:    filepath.Join("profiles", "work"),
-		Branch:  "main",
-		Profile: "work",
-	})
+
+	st, err := state.Load()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	got, ok := st.GetSource("mine")
+	if !ok {
+		t.Fatal("expected source to be registered")
+	}
+	if got != repo {
+		t.Fatalf("source dir = %q, want %q", got, repo)
+	}
+	// No clone happened: the default cloned location must stay empty.
+	if _, err := os.Stat(profile.ProfileDir("mine")); !os.IsNotExist(err) {
+		t.Fatalf("expected no clone at %s", profile.ProfileDir("mine"))
+	}
+}
+
+func TestAddPathRejectsNonProfileDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir := t.TempDir() // empty, not a profile
+	if err := AddPath("nope", dir); err == nil {
+		t.Fatal("expected AddPath to reject a non-profile dir")
+	}
+}
+
+func TestSourceRepoDirResolvesRegisteredSourceToGitRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root := filepath.Join(t.TempDir(), "repo")
+	// Profile lives in a subdir of the git repo.
+	sub := filepath.Join(root, "profiles", "work")
+	writeFile(t, filepath.Join(sub, "cvm.profile.toml"), claudeManifest)
+	writeFile(t, filepath.Join(sub, "claude", "CLAUDE.md"), "hi")
+	gitInit(t, root)
+
+	st, _ := state.Load()
+	st.SetSource("work", sub)
 	if err := st.Save(); err != nil {
-		t.Fatalf("save state: %v", err)
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := SourceRepoDir("work")
+	if err != nil {
+		t.Fatalf("SourceRepoDir: %v", err)
+	}
+	if got != root {
+		t.Fatalf("repo root = %q, want %q", got, root)
+	}
+}
+
+func TestPullRefusesDirtyWorktree(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repo := filepath.Join(t.TempDir(), "dirty")
+	writeFile(t, filepath.Join(repo, "cvm.profile.toml"), claudeManifest)
+	writeFile(t, filepath.Join(repo, "claude", "CLAUDE.md"), "v1")
+	gitInit(t, repo)
+	// Introduce an uncommitted change.
+	writeFile(t, filepath.Join(repo, "claude", "CLAUDE.md"), "v2 uncommitted")
+
+	st, _ := state.Load()
+	st.SetSource("work", repo)
+	if err := st.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	_, err := Pull("work")
+	if err == nil {
+		t.Fatal("expected Pull to refuse a dirty worktree")
+	}
+	if !strings.Contains(err.Error(), "uncommitted") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPullFastForwardsCleanRepo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// upstream <- clone. Pull --ff-only should advance the clone.
+	upstream := filepath.Join(t.TempDir(), "upstream")
+	writeFile(t, filepath.Join(upstream, "cvm.profile.toml"), claudeManifest)
+	writeFile(t, filepath.Join(upstream, "claude", "CLAUDE.md"), "v1")
+	gitInit(t, upstream)
+
+	clone := profile.ProfileDir("work")
+	if err := os.MkdirAll(filepath.Dir(clone), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	runGit(t, "", "clone", upstream, clone)
+
+	// Advance upstream by one commit.
+	writeFile(t, filepath.Join(upstream, "claude", "CLAUDE.md"), "v2")
+	runGit(t, upstream, "add", "-A")
+	runGit(t, upstream, "commit", "-m", "v2")
+
+	st, _ := state.Load()
+	st.SetSource("work", clone)
+	if err := st.Save(); err != nil {
+		t.Fatalf("save: %v", err)
 	}
 
 	updated, err := Pull("work")
 	if err != nil {
-		t.Fatalf("pull: %v", err)
+		t.Fatalf("Pull: %v", err)
 	}
 	if len(updated) != 1 || updated[0] != "work" {
-		t.Fatalf("unexpected updated profiles: %v", updated)
+		t.Fatalf("unexpected updated: %v", updated)
 	}
-
-	assertFileContent(t, filepath.Join(harness.Claude().TargetDir(), "CLAUDE.md"), "new remote")
-}
-
-func TestPullByProfileUpdatesAndReappliesActiveOpenCodeProfile(t *testing.T) {
-	home := t.TempDir()
-
-	t.Setenv("HOME", home)
-	t.Setenv("PATH", withFakeGit(t))
-
-	manifest := "name = \"open\"\nharnesses = [\"opencode\"]\n\n[assets]\nopencode = \"opencode\"\n"
-	writeFile(t, filepath.Join(profile.ProfileDir("open"), "cvm.profile.toml"), manifest)
-	writeFile(t, filepath.Join(profile.ProfileDir("open"), "opencode", "AGENTS.md"), "old profile")
-	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "open", "cvm.profile.toml"), manifest)
-	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "open", "opencode", "AGENTS.md"), "new remote")
-	writeFile(t, filepath.Join(CacheDirFor("example/global"), "profiles", "open", "opencode", "skills", "portable-plan", "SKILL.md"), "plan skill")
-
-	st := &state.State{
-		Remotes: make(map[string]state.Remote),
-	}
-	st.SetGlobalHarness("opencode", "open")
-	st.PutRemote(state.Remote{
-		Repo:    "example/global",
-		Path:    filepath.Join("profiles", "open"),
-		Branch:  "main",
-		Profile: "open",
-	})
-	if err := st.Save(); err != nil {
-		t.Fatalf("save state: %v", err)
-	}
-
-	updated, err := Pull("open")
-	if err != nil {
-		t.Fatalf("pull: %v", err)
-	}
-	if len(updated) != 1 || updated[0] != "open" {
-		t.Fatalf("unexpected updated profiles: %v", updated)
-	}
-
-	assertFileContent(t, filepath.Join(harness.OpenCode().TargetDir(), "AGENTS.md"), "new remote")
-	assertFileContent(t, filepath.Join(harness.OpenCode().TargetDir(), "skills", "portable-plan", "SKILL.md"), "plan skill")
+	assertFileContent(t, filepath.Join(clone, "claude", "CLAUDE.md"), "v2")
 }
 
 func TestLooksLikeProfileWithManifestBackedClaudeAssets(t *testing.T) {
 	root := t.TempDir()
 
-	writeFile(t, filepath.Join(root, "cvm.profile.toml"), "name = \"work\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n")
+	writeFile(t, filepath.Join(root, "cvm.profile.toml"), claudeManifest)
 	writeFile(t, filepath.Join(root, "claude", "CLAUDE.md"), "hello")
 
 	if !looksLikeProfile(root) {
@@ -105,17 +160,28 @@ func TestLooksLikeProfileIgnoresProjectMCPOnlyClaudeProfile(t *testing.T) {
 	}
 }
 
-func withFakeGit(t *testing.T) string {
+const claudeManifest = "name = \"work\"\nharnesses = [\"claude\"]\n\n[assets]\nclaude = \"claude\"\n"
+
+func gitInit(t *testing.T, dir string) {
 	t.Helper()
+	runGit(t, dir, "init", "-q")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-q", "-m", "init")
+}
 
-	dir := t.TempDir()
-	script := filepath.Join(dir, "git")
-	content := "#!/bin/sh\nif [ \"$1\" = \"-C\" ] && [ \"$3\" = \"pull\" ] && [ \"$4\" = \"--ff-only\" ]; then\n  exit 0\nfi\necho \"unexpected git command: $@\" >&2\nexit 1\n"
-	if err := os.WriteFile(script, []byte(content), 0755); err != nil {
-		t.Fatalf("write fake git: %v", err)
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	if dir != "" {
+		cmd.Dir = dir
 	}
-
-	return dir + string(os.PathListSeparator) + os.Getenv("PATH")
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
 }
 
 func writeFile(t *testing.T, path, body string) {
