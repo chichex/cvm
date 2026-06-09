@@ -72,7 +72,7 @@ func harnessesForProfileUse(cmd *cobra.Command, name string, harnessFlagSet bool
 		return []harness.Harness{h}, nil
 	}
 
-	manifest, err := profile.LoadManifest(profile.ProfileDir(name))
+	manifest, err := profile.ManifestForProfile(name)
 	if err != nil {
 		return nil, err
 	}

@@ -207,6 +207,14 @@ func CurrentWithHarness(h harness.Harness) (string, error) {
 	return st.GetGlobalHarness(h.Name()), nil
 }
 
+func ManifestForProfile(name string) (*Manifest, error) {
+	srcDir, err := sourceDir(name)
+	if err != nil {
+		return nil, err
+	}
+	return LoadManifest(srcDir)
+}
+
 func Remove(name string) error {
 	st, err := state.Load()
 	if err != nil {

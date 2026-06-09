@@ -14,6 +14,8 @@ var managedOpenCodeDirItems = []string{
 	"skills",
 	"agents",
 	"commands",
+	"plugin",
+	"plugins",
 }
 
 func OpenCode() Harness {
