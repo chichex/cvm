@@ -47,7 +47,7 @@ for arg in "$@"; do
     --yes|-y) YES=1 ;;
     --no-backup) BACKUP=0 ;;
     --dry-run|-n) DRY=1 ;;
-    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
+    -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
@@ -64,11 +64,37 @@ act()  { if [ "$DRY" -eq 1 ]; then printf '%s[dry-run]%s would %s\n' "$YEL" "$RS
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+# Crash-safety: materialize() copies a symlink's contents to "<path>.cvm-uninstall.<pid>",
+# removes the symlink, then renames the copy into place. If we die in that window
+# the real data lives only in the temp; recover it. If the original is still there
+# (copy aborted) the temp is junk. Runs on every exit; a clean run leaves no temps.
+cleanup_temps() {
+  for d in "$CLAUDE_DIR" "$CODEX_DIR" "$OPENCODE_DIR"; do
+    [ -d "$d" ] || continue
+    for t in "$d"/*.cvm-uninstall."$$"; do
+      [ -e "$t" ] || continue
+      final="${t%.cvm-uninstall.$$}"
+      if [ -e "$final" ] || [ -L "$final" ]; then
+        rm -rf "$t"            # original intact, or swap already done — temp is junk
+      else
+        mv "$t" "$final"       # symlink gone but copy not yet in place — recover it
+      fi
+    done
+  done
+}
+trap cleanup_temps EXIT
+
 # --- Report current state (best effort, never fatal) ---
 info "cvm uninstall"
 if [ -f "$STATE_FILE" ]; then
-  # The harnesses block maps harness -> active profile; show those lines only.
-  actives=$(grep -E '"(claude|opencode|codex)": *"' "$STATE_FILE" 2>/dev/null | sed -E 's/.*"([a-z]+)": *"([^"]*)".*/\1=\2/' | tr '\n' ' ' || true)
+  # The global.harnesses block maps harness -> active profile; read only it so a
+  # profile literally named "claude"/"opencode" elsewhere can't skew the banner.
+  actives=$(awk '
+    /"harnesses"[[:space:]]*:/ {inh=1; next}
+    inh && /}/ {inh=0}
+    inh && match($0, /"[a-z]+"[[:space:]]*:[[:space:]]*"[^"]*"/) {
+      s=substr($0, RSTART, RLENGTH); gsub(/[" ]/, "", s); print s
+    }' "$STATE_FILE" 2>/dev/null | tr '\n' ' ' || true)
   [ -n "$actives" ] && info "active profile per harness: $actives"
 fi
 HAVE_BREW=0
@@ -81,9 +107,14 @@ fi
 # --- Confirmation ---
 if [ "$DRY" -eq 0 ] && [ "$YES" -eq 0 ]; then
   printf '\nThis will materialize your ACTIVE profile config as real files, then remove\n'
-  printf "cvm's state (state.json, vanilla, profiles) and the cvm binary.\n"
+  printf "cvm's state (state.json, profiles, and the vanilla stash of your ORIGINAL\n"
+  printf 'pre-cvm config) and the cvm binary.\n'
   printf 'Your repos and any non-cvm data under ~/.cvm are left untouched.\n'
-  [ "$BACKUP" -eq 1 ] && printf "A backup tarball of cvm's artifacts will be created first.\n"
+  if [ "$BACKUP" -eq 1 ]; then
+    printf "A backup tarball of cvm's artifacts (incl. the vanilla originals) is created first.\n"
+  else
+    printf '%s--no-backup is set; the vanilla originals will be kept at ~/cvm-vanilla-<ts>/ instead.%s\n' "$YEL" "$RST"
+  fi
   printf 'Continue? [y/N] '
   read -r reply || reply=""
   case "$reply" in y|Y|yes|YES) ;; *) echo "aborted."; exit 1 ;; esac
@@ -108,7 +139,13 @@ materialize() {
   if [ "$DRY" -eq 0 ]; then
     tmp="${path}.cvm-uninstall.$$"
     rm -rf "$tmp"
-    cp -RL "$path" "$tmp"   # -L dereferences the symlink and any nested links
+    # -L dereferences the symlink and any nested links. A broken nested link makes
+    # cp fail for this item only — keep the symlink, skip it, don't abort the run.
+    if ! cp -RL "$path" "$tmp" 2>/dev/null; then
+      rm -rf "$tmp"
+      warn "$label: could not fully materialize $path (broken nested symlink?); left as-is"
+      return 0
+    fi
     rm -f "$path"
     mv "$tmp" "$path"
   fi
@@ -140,9 +177,26 @@ if [ "$BACKUP" -eq 1 ]; then
     info "backing up cvm artifacts ($*) to $backup"
     act "create $backup"
     if [ "$DRY" -eq 0 ]; then
-      tar -czf "$backup" -C "$CVM_HOME" "$@" && ok "backup written: $backup"
+      # A failed backup MUST abort before we delete anything — otherwise a tar
+      # failure (full disk, unwritable/quota'd $HOME) would drop us into the rm
+      # below with no backup, destroying the only copy of the vanilla originals.
+      tar -czf "$backup" -C "$CVM_HOME" "$@" \
+        || { echo "backup FAILED ($backup) — aborting before any deletion" >&2; exit 1; }
+      tar -tzf "$backup" >/dev/null 2>&1 \
+        || { echo "backup unreadable ($backup) — aborting before any deletion" >&2; exit 1; }
+      ok "backup written: $backup"
     fi
   fi
+fi
+
+# Even with --no-backup, never silently destroy the vanilla stash: cvm MOVED the
+# user's pre-cvm originals there (os.Rename), so it is their only copy. Keep it.
+if [ "$BACKUP" -eq 0 ] && [ -d "$VANILLA_DIR" ] && [ -n "$(ls -A "$VANILLA_DIR" 2>/dev/null)" ]; then
+  ts=$(date +%Y%m%d-%H%M%S 2>/dev/null || echo backup)
+  keep="${HOME}/cvm-vanilla-${ts}"
+  warn "vanilla/ holds your original pre-cvm config; preserving it at $keep despite --no-backup"
+  act "cp -R $VANILLA_DIR -> $keep"
+  [ "$DRY" -eq 1 ] || cp -R "$VANILLA_DIR" "$keep"
 fi
 
 # --- Step 3: remove cvm artifacts (surgical — ~/.cvm may be shared) ---
@@ -169,13 +223,24 @@ if [ -e "$INSTALL_BIN" ]; then
   act "rm -f $INSTALL_BIN"
   [ "$DRY" -eq 1 ] || rm -f "$INSTALL_BIN"
 fi
-# go install location, if any.
-if command -v go >/dev/null 2>&1; then
-  gobin="$(go env GOPATH 2>/dev/null)/bin/cvm"
-  if [ -e "$gobin" ]; then
-    act "rm -f $gobin"
-    [ "$DRY" -eq 1 ] || rm -f "$gobin"
-  fi
+# go install location, if any. Guard an empty GOPATH so we never form "/bin/cvm";
+# fall back to Go's default ($HOME/go) so a go-installed binary is caught even
+# when `go` itself isn't on PATH.
+gp="$(go env GOPATH 2>/dev/null || true)"
+[ -n "$gp" ] || gp="${HOME}/go"
+if [ -e "$gp/bin/cvm" ]; then
+  act "rm -f $gp/bin/cvm"
+  [ "$DRY" -eq 1 ] || rm -f "$gp/bin/cvm"
+fi
+
+# If a Homebrew-prefix binary exists but brew wasn't resolvable, we can't cleanly
+# uninstall it here (rm'ing the symlink would corrupt brew's state) — flag it.
+if [ "$HAVE_BREW" -eq 0 ]; then
+  for prefix in /opt/homebrew /usr/local; do
+    if [ -e "$prefix/bin/cvm" ]; then
+      warn "found $prefix/bin/cvm but 'brew' is not on PATH — run 'brew uninstall cvm' to remove it cleanly."
+    fi
+  done
 fi
 
 if [ "$DRY" -eq 0 ] && command -v cvm >/dev/null 2>&1; then

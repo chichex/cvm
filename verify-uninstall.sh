@@ -42,15 +42,26 @@ for p in "$CVM_HOME/state.json" "$CVM_HOME/vanilla" "$CVM_HOME/profiles"; do
 done
 [ -d "$CVM_HOME" ] && note "~/.cvm still exists (expected if shared with other tooling)"
 
-# --- Check 2: binary gone, every install method ---
+# --- Check 2: binary gone, every install method (PATH-independent where possible) ---
 if [ -e "$INSTALL_BIN" ]; then fail "binary still at $INSTALL_BIN"; else pass "no binary at install.sh path"; fi
+
+# Homebrew: probe known prefixes directly. In a non-login/non-interactive shell
+# brew's shellenv may not be sourced, so a PATH-only check would certify "clean"
+# while /opt/homebrew/bin/cvm is still installed — a dangerous false negative.
+brew_hit=0
+for prefix in /opt/homebrew /usr/local "$(brew --prefix 2>/dev/null || true)"; do
+  [ -n "$prefix" ] || continue
+  [ -e "$prefix/bin/cvm" ] && { fail "cvm binary still present at $prefix/bin/cvm"; brew_hit=1; }
+done
 if command -v brew >/dev/null 2>&1 && brew list cvm >/dev/null 2>&1; then
-  fail "cvm still installed via Homebrew (brew uninstall cvm)"
-else
-  pass "not brew-managed"
+  fail "cvm still installed via Homebrew (brew uninstall cvm)"; brew_hit=1
 fi
-if command -v go >/dev/null 2>&1 && [ -e "$(go env GOPATH 2>/dev/null)/bin/cvm" ]; then
-  fail "cvm still present in GOPATH/bin"
+[ "$brew_hit" -eq 0 ] && pass "not brew-managed"
+
+gp="$(go env GOPATH 2>/dev/null || true)"
+[ -n "$gp" ] || gp="${HOME}/go"   # Go's default when GOPATH is unset / go not on PATH
+if [ -e "$gp/bin/cvm" ]; then
+  fail "cvm still present in $gp/bin"
 else
   pass "no cvm in GOPATH/bin"
 fi
@@ -76,6 +87,13 @@ check_dir() {
       fi
       local_fail=1
     fi
+  done
+  # Orphaned temp dirs from a crashed materialization (uninstall.sh's recovery
+  # trap should have cleaned these, but flag them if a run died hard).
+  for t in "$dir"/*.cvm-uninstall.*; do
+    [ -e "$t" ] || continue
+    fail "$label: orphaned materialization temp left behind: $t"
+    local_fail=1
   done
   [ "$local_fail" -eq 0 ] && pass "$label: managed items are real files / absent (no symlinks)"
 }
