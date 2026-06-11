@@ -11,19 +11,25 @@
 #   1. MATERIALIZE — replace every cvm-managed symlink in the target dirs with a
 #      real, dereferenced copy of its current contents. This freezes the active
 #      profile's config in place as plain files, decoupled from cvm and the repo.
-#   2. BACKUP (default on) — tar up cvm's own artifacts (state.json, vanilla
-#      stash, cloned profiles) so nothing is irreversibly lost.
-#   3. REMOVE — delete ONLY cvm's artifacts inside ~/.cvm (never the whole dir,
+#   2. ORIGINALS — cvm stashed your pre-cvm config aside ("vanilla") when you
+#      first activated a profile, so it is the only copy. The active profile is
+#      kept regardless; we ASK whether to also keep a copy of those originals
+#      (default yes) and, if so, save them to ~/cvm-vanilla-<ts>/.
+#   3. BACKUP (default on) — tar up cvm's recovery data (state.json + cloned
+#      profiles) so nothing of cvm's own is irreversibly lost.
+#   4. REMOVE — delete ONLY cvm's artifacts inside ~/.cvm (never the whole dir,
 #      which may be shared with other tooling) and uninstall the cvm binary.
-#   4. VERIFY — run verify-uninstall.sh to confirm a clean end state.
+#   5. VERIFY — run verify-uninstall.sh to confirm a clean end state.
 #
 # This script does NOT depend on the cvm binary (works even if it's broken).
 #
 # Usage:
-#   ./uninstall.sh [--yes] [--no-backup] [--dry-run]
-#     --yes        skip the confirmation prompt
-#     --no-backup  don't tar cvm's artifacts before deleting them
-#     --dry-run    print what would happen, change nothing
+#   ./uninstall.sh [--yes] [--keep-originals|--discard-originals] [--no-backup] [--dry-run]
+#     --yes                skip the confirmation prompt (keeps originals unless --discard-originals)
+#     --keep-originals     keep your pre-cvm config at ~/cvm-vanilla-<ts>/ (no prompt)
+#     --discard-originals  drop your pre-cvm config (no prompt)
+#     --no-backup          don't tar cvm's profiles+state before deleting them
+#     --dry-run            print what would happen, change nothing
 set -eu
 
 CVM_HOME="${HOME}/.cvm"
@@ -41,10 +47,12 @@ CLAUDE_ITEMS="CLAUDE.md settings.json settings.local.json keybindings.json statu
 CODEX_ITEMS="AGENTS.md"
 OPENCODE_ITEMS="AGENTS.md opencode.json skills agents commands plugin plugins"
 
-YES=0; BACKUP=1; DRY=0
+YES=0; BACKUP=1; DRY=0; KEEP_ORIG=ask   # KEEP_ORIG: ask | yes | no
 for arg in "$@"; do
   case "$arg" in
     --yes|-y) YES=1 ;;
+    --keep-originals) KEEP_ORIG=yes ;;
+    --discard-originals) KEEP_ORIG=no ;;
     --no-backup) BACKUP=0 ;;
     --dry-run|-n) DRY=1 ;;
     -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
@@ -107,17 +115,35 @@ fi
 # --- Confirmation ---
 if [ "$DRY" -eq 0 ] && [ "$YES" -eq 0 ]; then
   printf '\nThis will materialize your ACTIVE profile config as real files, then remove\n'
-  printf "cvm's state (state.json, profiles, and the vanilla stash of your ORIGINAL\n"
-  printf 'pre-cvm config) and the cvm binary.\n'
+  printf "cvm's state (state.json, profiles) and the cvm binary.\n"
   printf 'Your repos and any non-cvm data under ~/.cvm are left untouched.\n'
   if [ "$BACKUP" -eq 1 ]; then
-    printf "A backup tarball of cvm's artifacts (incl. the vanilla originals) is created first.\n"
+    printf "A backup tarball of cvm's profiles + state is created first.\n"
   else
-    printf '%s--no-backup is set; the vanilla originals will be kept at ~/cvm-vanilla-<ts>/ instead.%s\n' "$YEL" "$RST"
+    printf '%s--no-backup is set; cvm profiles + state are deleted without a tarball.%s\n' "$YEL" "$RST"
   fi
   printf 'Continue? [y/N] '
   read -r reply || reply=""
   case "$reply" in y|Y|yes|YES) ;; *) echo "aborted."; exit 1 ;; esac
+fi
+
+# --- Decide what to do with your ORIGINAL pre-cvm config (the vanilla stash) ---
+# cvm MOVED these files aside when you first activated a profile, so they are the
+# only copy. The active profile is materialized regardless; this is purely about
+# whether to also keep a copy of what you had before cvm.
+VANILLA_NONEMPTY=0
+[ -d "$VANILLA_DIR" ] && [ -n "$(ls -A "$VANILLA_DIR" 2>/dev/null)" ] && VANILLA_NONEMPTY=1
+if [ "$VANILLA_NONEMPTY" -eq 1 ] && [ "$KEEP_ORIG" = ask ]; then
+  if [ "$DRY" -eq 0 ] && [ "$YES" -eq 0 ]; then
+    printf '\ncvm has your ORIGINAL pre-cvm config stashed (the files you had before cvm\n'
+    printf 'took over). The active profile is kept either way. Keep a copy of these\n'
+    printf 'originals at ~/cvm-vanilla-<ts>/? [Y/n] '
+    read -r r || r=""
+    case "$r" in n|N|no|NO) KEEP_ORIG=no ;; *) KEEP_ORIG=yes ;; esac
+  else
+    KEEP_ORIG=yes   # safe default when non-interactive (--yes / --dry-run)
+    [ "$DRY" -eq 1 ] && info "would ask whether to keep your pre-cvm originals (assuming keep)"
+  fi
 fi
 
 # --- Step 1: materialize cvm-managed symlinks into real files ---
@@ -165,21 +191,36 @@ materialize_dir "$CODEX_DIR" "$CODEX_ITEMS" "codex"
 materialize_dir "$OPENCODE_DIR" "$OPENCODE_ITEMS" "opencode"
 ok "materialization done"
 
-# --- Step 2: backup cvm's own artifacts ---
+# --- Step 2: keep a copy of your originals, if you asked to ---
+if [ "$VANILLA_NONEMPTY" -eq 1 ] && [ "$KEEP_ORIG" = yes ]; then
+  ts=$(date +%Y%m%d-%H%M%S 2>/dev/null || echo backup)
+  keep="${HOME}/cvm-vanilla-${ts}"
+  info "keeping a copy of your original pre-cvm config at $keep"
+  act "cp -R $VANILLA_DIR -> $keep"
+  if [ "$DRY" -eq 0 ]; then
+    # Guard the copy: this is the only copy of your originals, so a failure must
+    # abort before the removal below rather than silently losing them.
+    cp -R "$VANILLA_DIR" "$keep" \
+      || { echo "failed to copy originals to $keep — aborting before any deletion" >&2; exit 1; }
+    ok "originals kept: $keep"
+  fi
+elif [ "$VANILLA_NONEMPTY" -eq 1 ]; then
+  warn "discarding your original pre-cvm config (vanilla stash) as requested"
+fi
+
+# --- Step 3: backup cvm's recovery data (cloned profiles + state) ---
 if [ "$BACKUP" -eq 1 ]; then
   set --
   [ -e "$STATE_FILE" ]   && set -- "$@" state.json
-  [ -e "$VANILLA_DIR" ]  && set -- "$@" vanilla
   [ -e "$PROFILES_DIR" ] && set -- "$@" profiles
   if [ "$#" -gt 0 ]; then
     ts=$(date +%Y%m%d-%H%M%S 2>/dev/null || echo backup)
     backup="${HOME}/cvm-backup-${ts}.tar.gz"
-    info "backing up cvm artifacts ($*) to $backup"
+    info "backing up cvm recovery data ($*) to $backup"
     act "create $backup"
     if [ "$DRY" -eq 0 ]; then
-      # A failed backup MUST abort before we delete anything — otherwise a tar
-      # failure (full disk, unwritable/quota'd $HOME) would drop us into the rm
-      # below with no backup, destroying the only copy of the vanilla originals.
+      # A failed backup MUST abort before we delete anything, rather than dropping
+      # into the rm below with no backup at all.
       tar -czf "$backup" -C "$CVM_HOME" "$@" \
         || { echo "backup FAILED ($backup) — aborting before any deletion" >&2; exit 1; }
       tar -tzf "$backup" >/dev/null 2>&1 \
@@ -189,17 +230,7 @@ if [ "$BACKUP" -eq 1 ]; then
   fi
 fi
 
-# Even with --no-backup, never silently destroy the vanilla stash: cvm MOVED the
-# user's pre-cvm originals there (os.Rename), so it is their only copy. Keep it.
-if [ "$BACKUP" -eq 0 ] && [ -d "$VANILLA_DIR" ] && [ -n "$(ls -A "$VANILLA_DIR" 2>/dev/null)" ]; then
-  ts=$(date +%Y%m%d-%H%M%S 2>/dev/null || echo backup)
-  keep="${HOME}/cvm-vanilla-${ts}"
-  warn "vanilla/ holds your original pre-cvm config; preserving it at $keep despite --no-backup"
-  act "cp -R $VANILLA_DIR -> $keep"
-  [ "$DRY" -eq 1 ] || cp -R "$VANILLA_DIR" "$keep"
-fi
-
-# --- Step 3: remove cvm artifacts (surgical — ~/.cvm may be shared) ---
+# --- Step 4: remove cvm artifacts (surgical — ~/.cvm may be shared) ---
 info "removing cvm artifacts under ~/.cvm"
 for p in "$STATE_FILE" "$VANILLA_DIR" "$PROFILES_DIR"; do
   if [ -e "$p" ]; then
@@ -213,7 +244,7 @@ if [ -d "$CVM_HOME" ] && [ -z "$(ls -A "$CVM_HOME" 2>/dev/null)" ]; then
   [ "$DRY" -eq 1 ] || rmdir "$CVM_HOME"
 fi
 
-# --- Step 3b: remove the binary (detect install method) ---
+# --- Step 4b: remove the binary (detect install method) ---
 info "removing cvm binary"
 if [ "$HAVE_BREW" -eq 1 ]; then
   act "brew uninstall cvm"
@@ -252,7 +283,7 @@ if [ "$DRY" -eq 1 ]; then
   exit 0
 fi
 
-# --- Step 4: verify ---
+# --- Step 5: verify ---
 echo
 info "verifying clean uninstall"
 if [ -f "$SCRIPT_DIR/verify-uninstall.sh" ]; then
